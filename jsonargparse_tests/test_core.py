@@ -4,7 +4,6 @@ import json
 import os
 import pickle
 import sys
-from calendar import Calendar
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -948,6 +947,10 @@ def test_print_config_reuse_name():
     assert json_or_yaml_load(out) == {"x": 1}
 
 
+class Subclass:
+    pass
+
+
 def test_default_config_files(parser, subtests, tmp_cwd):
     default_config_file = tmp_cwd / "defaults.yaml"
     default_config_file.write_text(json_or_yaml_dump({"op1": "from default config file"}))
@@ -969,8 +972,8 @@ def test_default_config_files(parser, subtests, tmp_cwd):
 
     with subtests.test("get_default"):
         assert parser.get_default("op1") == "from default config file"
-        parser.add_subclass_arguments(Calendar, "cal")
-        assert parser.get_default("cal") is None
+        parser.add_subclass_arguments(Subclass, "cls")
+        assert parser.get_default("cls") is None
 
     with subtests.test("set invalid"):
         with pytest.raises(ValueError) as ctx:

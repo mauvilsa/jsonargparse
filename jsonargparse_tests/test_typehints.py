@@ -6,7 +6,6 @@ import random
 import sys
 import time
 import uuid
-from calendar import Calendar, TextCalendar
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -226,18 +225,27 @@ def test_type_typehint_without_arg(parser):
     assert json_or_yaml_load(parser.dump(cfg)) == {"type": "uuid.UUID"}
 
 
+class BaseC:
+    def __init__(self, p: int = 0):
+        self.p = p
+
+
+class SubC(BaseC):
+    pass
+
+
 def test_type_typehint_with_arg(parser):
-    parser.add_argument("--cal", type=type[Calendar])
-    cfg = parser.parse_args(["--cal=calendar.Calendar"])
-    assert cfg.cal is Calendar
-    assert json_or_yaml_load(parser.dump(cfg)) == {"cal": "calendar.Calendar"}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cal=uuid.UUID"]))
+    parser.add_argument("--cls", type=type[BaseC])
+    cfg = parser.parse_args([f"--cls={__name__}.BaseC"])
+    assert cfg.cls is BaseC
+    assert json_or_yaml_load(parser.dump(cfg)) == {"cls": f"{__name__}.BaseC"}
+    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=uuid.UUID"]))
 
 
 def test_type_typehint_help_known_subclasses(parser):
-    parser.add_argument("--cal", type=Type[Calendar])
+    parser.add_argument("--cls", type=Type[BaseC])
     help_str = get_parser_help(parser)
-    assert "known subclasses: calendar.Calendar," in help_str
+    assert f"known subclasses: {__name__}.BaseC," in help_str
 
 
 # enum tests
@@ -920,9 +928,9 @@ def test_union_new_syntax_simple_types(parser):
 
 
 def test_union_new_syntax_subclass_type(parser):
-    parser.add_argument("--op", type=Calendar | bool)
-    help_str = get_parse_args_stdout(parser, ["--op.help=calendar.TextCalendar"])
-    assert "--op.firstweekday" in help_str
+    parser.add_argument("--op", type=BaseC | bool)
+    help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.SubC"])
+    assert "--op.p" in help_str
 
 
 # callable tests
@@ -979,7 +987,7 @@ def test_callable_class_path_simple(parser):
 
     pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable={}"]))
     pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable=jsonargparse.SUPPRESS"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable=calendar.Calendar"]))
+    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--callable={__name__}.BaseC"]))
     value = {"class_path": f"{__name__}.CallableClassPath", "key": "val"}
     pytest.raises(ArgumentError, lambda: parser.parse_args([f"--callable={json.dumps(value)}"]))
 
@@ -1543,19 +1551,21 @@ def test_list_callable_return_class(parser):
 
 
 def test_lazy_instance_init_postponed():
-    class SubCalendar(Calendar):
+    class Sub(BaseC):
         init_called = False
-        getfirst = Calendar.getfirstweekday
 
         def __init__(self, *args, **kwargs):
             self.init_called = True
             super().__init__(*args, **kwargs)
 
-    lazy_calendar = lazy_instance(SubCalendar, firstweekday=3)
-    assert isinstance(lazy_calendar, SubCalendar)
-    assert lazy_calendar.init_called is False
-    assert lazy_calendar.getfirstweekday() == 3
-    assert lazy_calendar.init_called is True
+        def get_p(self):
+            return self.p
+
+    lazy_inst = lazy_instance(Sub, p=3)
+    assert isinstance(lazy_inst, Sub)
+    assert lazy_inst.init_called is False
+    assert lazy_inst.get_p() == 3
+    assert lazy_inst.init_called is True
 
 
 class IntParam:
@@ -1570,8 +1580,8 @@ def test_lazy_instance_invalid_init_value():
 
 
 def test_lazy_instance_pickleable():
-    instance1 = lazy_instance(TextCalendar, firstweekday=2)
-    instance2 = lazy_instance(TextCalendar, firstweekday=3)
+    instance1 = lazy_instance(SubC, p=2)
+    instance2 = lazy_instance(SubC, p=3)
     assert instance1.__class__.__module__ == __name__
     assert instance1.__class__ is instance2.__class__
     reloaded = pickle.loads(pickle.dumps(instance1))
@@ -1640,7 +1650,7 @@ def test_is_optional(typehint, ref_type, expected):
     assert expected == is_optional(typehint, ref_type)
 
 
-class SkipDefault(Calendar):
+class SkipDefault(BaseC):
     def __init__(self, *args, param: str = "0", **kwargs):
         super().__init__(*args, **kwargs)  # pragma: no cover
 
@@ -1649,7 +1659,7 @@ def test_dump_skip_default(parser):
     parser.add_argument("--g1.op1", default=1)
     parser.add_argument("--g1.op2", default="abc")
     parser.add_argument("--g2.op1", type=Callable, default=uuid.uuid4)
-    parser.add_argument("--g2.op2", type=Calendar, default=lazy_instance(Calendar, firstweekday=2))
+    parser.add_argument("--g2.op2", type=BaseC, default=lazy_instance(BaseC, p=2))
 
     cfg = parser.get_defaults()
     dump = parser.dump(cfg, skip_default=True)
@@ -1657,13 +1667,13 @@ def test_dump_skip_default(parser):
 
     cfg.g2.op2.class_path = f"{__name__}.SkipDefault"
     dump = json_or_yaml_load(parser.dump(cfg, skip_default=True))
-    assert dump == {"g2": {"op2": {"class_path": f"{__name__}.SkipDefault", "init_args": {"firstweekday": 2}}}}
+    assert dump == {"g2": {"op2": {"class_path": f"{__name__}.SkipDefault", "init_args": {"p": 2}}}}
 
-    cfg.g2.op2.init_args.firstweekday = 0
+    cfg.g2.op2.init_args.p = 0
     dump = json_or_yaml_load(parser.dump(cfg, skip_default=True))
     assert dump == {"g2": {"op2": {"class_path": f"{__name__}.SkipDefault"}}}
 
-    parser.link_arguments("g1.op1", "g2.op2.init_args.firstweekday")
+    parser.link_arguments("g1.op1", "g2.op2.init_args.p")
     parser.link_arguments("g1.op2", "g2.op2.init_args.param")
     del cfg["g2.op2.init_args"]
     dump = json_or_yaml_load(parser.dump(cfg, skip_default=True))

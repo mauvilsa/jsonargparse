@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-from calendar import Calendar, TextCalendar
 from dataclasses import dataclass
-from importlib.util import find_spec
 from typing import Any, Callable, List, Mapping, Optional, Union
 
 import pytest
@@ -89,34 +87,39 @@ def test_on_parse_compute_fn_single_arguments(parser, subtests):
         ctx.match('Parser key "b.v2"')
 
 
+class BaseC:
+    def __init__(self, p: int = 0):
+        self.p = p
+
+
+class SubC(BaseC):
+    pass
+
+
 def test_on_parse_compute_fn_subclass_spec(parser, subtests):
     parser.add_argument("--cfg", action="config")
-    parser.add_argument("--cal1", type=Calendar, default=lazy_instance(TextCalendar))
-    parser.add_argument("--cal2", type=Calendar, default=lazy_instance(Calendar))
+    parser.add_argument("--obj1", type=BaseC, default=lazy_instance(SubC))
+    parser.add_argument("--obj2", type=BaseC, default=lazy_instance(BaseC))
     parser.link_arguments(
-        "cal1",
-        "cal2.init_args.firstweekday",
-        compute_fn=lambda c: c.init_args.firstweekday + 1,
+        "obj1",
+        "obj2.init_args.p",
+        compute_fn=lambda c: c.init_args.p + 1,
     )
 
     with subtests.test("from config and default init_args"):
-        cfg = parser.parse_args(['--cfg={"cal1": "Calendar"}'])
-        assert cfg.cal1.init_args.firstweekday == 0
-        assert cfg.cal2.init_args.firstweekday == 1
+        cfg = parser.parse_args(['--cfg={"obj1": "BaseC"}'])
+        assert cfg.obj1.init_args.p == 0
+        assert cfg.obj2.init_args.p == 1
 
     with subtests.test("from given init_args"):
-        cfg = parser.parse_args(["--cal1.init_args.firstweekday=2"])
-        assert cfg.cal1.init_args.firstweekday == 2
-        assert cfg.cal2.init_args.firstweekday == 3
+        cfg = parser.parse_args(["--obj1.init_args.p=2"])
+        assert cfg.obj1.init_args.p == 2
+        assert cfg.obj2.init_args.p == 3
 
     with subtests.test("invalid init parameter"):
-        parser.set_defaults(cal1=None)
-        with pytest.raises(ArgumentError) as ctx:
-            parser.parse_args(["--cal1.firstweekday=-"])
-        if find_spec("typeshed_client"):
-            ctx.match('Parser key "cal1"')
-        else:
-            ctx.match("Call to compute_fn of link")
+        parser.set_defaults(obj1=None)
+        with pytest.raises(ArgumentError, match='Parser key "obj1"'):
+            parser.parse_args(["--obj1.p=-"])
 
 
 class ClassA:
@@ -312,29 +315,29 @@ class ClassF:
     def __init__(
         self,
         v: Union[int, str] = 1,
-        c: Optional[Calendar] = None,
+        c: Optional[BaseC] = None,
     ):
         self.c = c
 
 
 def test_on_parse_add_subclass_arguments_with_instantiate_false(parser, subtests):
     parser.add_subclass_arguments(ClassF, "f")
-    parser.add_subclass_arguments(Calendar, "c", instantiate=False)
+    parser.add_subclass_arguments(BaseC, "c", instantiate=False)
     parser.link_arguments("c", "f.init_args.c")
 
     f_value = {"class_path": f"{__name__}.ClassF"}
     c_value = {
-        "class_path": "calendar.Calendar",
+        "class_path": f"{__name__}.BaseC",
         "init_args": {
-            "firstweekday": 3,
+            "p": 3,
         },
     }
 
     with subtests.test("parse_args"):
         cfg = parser.parse_args([f"--f={json.dumps(f_value)}", f"--c={json.dumps(c_value)}"])
         assert cfg.c.as_dict() == {
-            "class_path": "calendar.Calendar",
-            "init_args": {"firstweekday": 3},
+            "class_path": f"{__name__}.BaseC",
+            "init_args": {"p": 3},
         }
         assert cfg.c == cfg.f.init_args.c
 
@@ -342,8 +345,8 @@ def test_on_parse_add_subclass_arguments_with_instantiate_false(parser, subtests
         init = parser.instantiate(cfg)
         assert isinstance(init.c, Namespace)
         assert isinstance(init.f, ClassF)
-        assert isinstance(init.f.c, Calendar)
-        assert init.f.c.firstweekday == 3
+        assert isinstance(init.f.c, BaseC)
+        assert init.f.c.p == 3
 
     with subtests.test("dump removal of target"):
         dump = json_or_yaml_load(parser.dump(cfg))
@@ -351,7 +354,7 @@ def test_on_parse_add_subclass_arguments_with_instantiate_false(parser, subtests
 
     with subtests.test("dump keep target"):
         dump = json_or_yaml_load(parser.dump(cfg, skip_link_targets=False))
-        assert dump["f"]["init_args"]["c"] == {"class_path": "calendar.Calendar", "init_args": {"firstweekday": 3}}
+        assert dump["f"]["init_args"]["c"] == {"class_path": f"{__name__}.BaseC", "init_args": {"p": 3}}
 
 
 class ClassD:
@@ -369,16 +372,16 @@ def test_on_parse_add_subclass_arguments_compute_fn_return_dict(parser):
         return value
 
     parser.add_subclass_arguments(ClassD, "d")
-    parser.add_subclass_arguments(Calendar, "c")
+    parser.add_subclass_arguments(BaseC, "c")
     parser.link_arguments("c", "d.init_args.a1", compute_fn=return_dict)
     parser.link_arguments("c", "d.init_args.a2")
     parser.link_arguments("c", "d.init_args.a3")
 
     d_value = {"class_path": f"{__name__}.ClassD"}
     c_value = {
-        "class_path": "calendar.Calendar",
+        "class_path": f"{__name__}.BaseC",
         "init_args": {
-            "firstweekday": 3,
+            "p": 3,
         },
     }
 
@@ -388,7 +391,7 @@ def test_on_parse_add_subclass_arguments_compute_fn_return_dict(parser):
 
     init = parser.instantiate(cfg)
     assert isinstance(init.d, ClassD)
-    assert isinstance(init.c, Calendar)
+    assert isinstance(init.c, BaseC)
 
 
 def test_on_parse_add_subclass_help_group_title(parser):
@@ -636,28 +639,28 @@ def test_on_instantiate_link_from_subclass_with_compute_fn():
 
 
 class ClassN:
-    def __init__(self, calendar: Calendar):
-        self.calendar = calendar  # pragma: no cover
+    def __init__(self, obj: BaseC):
+        self.obj = obj  # pragma: no cover
 
 
 def test_on_parse_and_instantiate_link_entire_instance(parser):
-    parser.add_argument("--firstweekday", type=int)
+    parser.add_argument("--p", type=int)
     parser.add_class_arguments(ClassN, "n", instantiate=False)
-    parser.add_class_arguments(Calendar, "c")
-    parser.link_arguments("firstweekday", "c.firstweekday", apply_on="parse")
-    parser.link_arguments("c", "n.calendar", apply_on="instantiate")
+    parser.add_class_arguments(BaseC, "c")
+    parser.link_arguments("p", "c.p", apply_on="parse")
+    parser.link_arguments("c", "n.obj", apply_on="instantiate")
 
-    cfg = parser.parse_args(["--firstweekday=2"])
-    assert cfg == Namespace(c=Namespace(firstweekday=2), firstweekday=2)
+    cfg = parser.parse_args(["--p=2"])
+    assert cfg == Namespace(c=Namespace(p=2), p=2)
     init = parser.instantiate(cfg)
     assert isinstance(init.n, Namespace)
-    assert isinstance(init.c, Calendar)
-    assert init.c is init.n.calendar
+    assert isinstance(init.c, BaseC)
+    assert init.c is init.n.obj
 
 
 class ClassM:
-    def __init__(self, calendars: List[Calendar]):
-        self.calendars = calendars
+    def __init__(self, objs: List[BaseC]):
+        self.objs = objs
 
 
 def test_on_instantiate_link_multi_source(parser):
@@ -665,49 +668,49 @@ def test_on_instantiate_link_multi_source(parser):
         return [*items]
 
     parser.add_class_arguments(ClassM, "m")
-    parser.add_class_arguments(Calendar, "c.one")
-    parser.add_class_arguments(TextCalendar, "c.two")
-    parser.link_arguments(("c.one", "c.two"), "m.calendars", apply_on="instantiate", compute_fn=as_list)
+    parser.add_class_arguments(BaseC, "c.one")
+    parser.add_class_arguments(SubC, "c.two")
+    parser.link_arguments(("c.one", "c.two"), "m.objs", apply_on="instantiate", compute_fn=as_list)
 
     cfg = parser.parse_args([])
-    assert cfg.as_dict() == {"c": {"one": {"firstweekday": 0}, "two": {"firstweekday": 0}}}
+    assert cfg.as_dict() == {"c": {"one": {"p": 0}, "two": {"p": 0}}}
     init = parser.instantiate(cfg)
-    assert isinstance(init.c.one, Calendar)
-    assert isinstance(init.c.two, TextCalendar)
-    assert init.m.calendars == [init.c.one, init.c.two]
+    assert isinstance(init.c.one, BaseC)
+    assert isinstance(init.c.two, SubC)
+    assert init.m.objs == [init.c.one, init.c.two]
 
 
 class ClassP:
-    def __init__(self, firstweekday: int = 1):
-        self.calendar = Calendar(firstweekday=firstweekday)
+    def __init__(self, p: int = 1):
+        self.obj = BaseC(p=p)
 
 
 class ClassQ:
-    def __init__(self, calendar: Calendar, q2: int = 2):
-        self.calendar = calendar
+    def __init__(self, obj: BaseC, q2: int = 2):
+        self.obj = obj
 
 
 def test_on_instantiate_link_object_in_attribute(parser):
     parser.add_class_arguments(ClassP, "p")
     parser.add_class_arguments(ClassQ, "q")
-    parser.link_arguments("p.calendar", "q.calendar", apply_on="instantiate")
+    parser.link_arguments("p.obj", "q.obj", apply_on="instantiate")
 
-    cfg = parser.parse_args(["--p.firstweekday=2", "--q.q2=3"])
-    assert cfg.p == Namespace(firstweekday=2)
+    cfg = parser.parse_args(["--p.p=2", "--q.q2=3"])
+    assert cfg.p == Namespace(p=2)
     assert cfg.q == Namespace(q2=3)
     init = parser.instantiate(cfg)
-    assert init.p.calendar is init.q.calendar
-    assert init.q.calendar.firstweekday == 2
+    assert init.p.obj is init.q.obj
+    assert init.q.obj.p == 2
 
 
 def test_on_parse_link_entire_subclass(parser):
     parser.add_class_arguments(ClassN, "n")
     parser.add_class_arguments(ClassQ, "q")
-    parser.link_arguments("n.calendar", "q.calendar", apply_on="parse")
+    parser.link_arguments("n.obj", "q.obj", apply_on="parse")
 
-    cal = {"class_path": "Calendar", "init_args": {"firstweekday": 4}}
-    cfg = parser.parse_args([f"--n.calendar={json.dumps(cal)}", "--q.q2=7"])
-    assert cfg.n.calendar == cfg.q.calendar
+    obj = {"class_path": f"{__name__}.BaseC", "init_args": {"p": 4}}
+    cfg = parser.parse_args([f"--n.obj={json.dumps(obj)}", "--q.q2=7"])
+    assert cfg.n.obj == cfg.q.obj
     assert cfg.q.q2 == 7
 
 
@@ -1086,8 +1089,8 @@ def test_on_parse_link_failure_invalid_source_attribute(parser):
     parser.add_class_arguments(ClassP, "p")
     parser.add_class_arguments(ClassQ, "q")
     with pytest.raises(ValueError) as ctx:
-        parser.link_arguments("p.calendar", "q.calendar", apply_on="parse")
-    ctx.match('key "p.calendar"')
+        parser.link_arguments("p.obj", "q.obj", apply_on="parse")
+    ctx.match('key "p.obj"')
 
 
 def test_on_instantiate_link_failure_cycle_self():

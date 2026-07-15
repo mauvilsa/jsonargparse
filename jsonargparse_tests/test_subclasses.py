@@ -4,7 +4,7 @@ import json
 import os
 import textwrap
 import warnings
-from calendar import Calendar, HTMLCalendar, TextCalendar
+from calendar import Calendar
 from copy import deepcopy
 from dataclasses import dataclass
 from gzip import GzipFile
@@ -36,17 +36,30 @@ from jsonargparse_tests.conftest import (
 )
 
 
-@pytest.mark.parametrize("type", [Calendar, Optional[Calendar]])
+class BaseC:
+    def __init__(self, p: int = 0):
+        self.p = p
+
+
+class SubA(BaseC):
+    pass
+
+
+class SubB(BaseC):
+    pass
+
+
+@pytest.mark.parametrize("type", [BaseC, Optional[BaseC]])
 def test_subclass_basics(parser, type):
     value = {
-        "class_path": "calendar.Calendar",
-        "init_args": {"firstweekday": 3},
+        "class_path": f"{__name__}.BaseC",
+        "init_args": {"p": 3},
     }
     parser.add_argument("--op", type=type)
     cfg = parser.parse_args([f"--op={json.dumps(value)}"])
     init = parser.instantiate(cfg)
-    assert isinstance(init["op"], Calendar)
-    assert 3 == init["op"].firstweekday
+    assert isinstance(init["op"], BaseC)
+    assert 3 == init["op"].p
 
     init = parser.instantiate(parser.parse_args([]))
     assert init["op"] is None
@@ -71,22 +84,22 @@ def test_subclass_defaults(parser):
 
 
 def test_subclass_init_args_in_subcommand(parser, subparser):
-    subparser.add_subclass_arguments(Calendar, "cal", default=lazy_instance(Calendar))
+    subparser.add_subclass_arguments(BaseC, "obj", default=lazy_instance(BaseC))
     subcommands = parser.add_subcommands()
     subcommands.add_subcommand("cmd", subparser)
-    cfg = parser.parse_args(["cmd", "--cal.init_args.firstweekday=4"])
-    assert cfg.cmd.cal.init_args == Namespace(firstweekday=4)
+    cfg = parser.parse_args(["cmd", "--obj.init_args.p=4"])
+    assert cfg.cmd.obj.init_args == Namespace(p=4)
 
 
 def test_subclass_positional(parser):
-    parser.add_argument("cal", type=Calendar)
+    parser.add_argument("obj", type=BaseC)
 
-    cfg = parser.parse_args(["TextCalendar"])
-    assert cfg.cal.class_path == "calendar.TextCalendar"
+    cfg = parser.parse_args(["SubA"])
+    assert cfg.obj.class_path == f"{__name__}.SubA"
 
     help_str = get_parser_help(parser)
-    assert "required, type: <class 'Calendar'>" in help_str
-    assert "--cal.help" in help_str
+    assert "required, type: <class 'BaseC'>" in help_str
+    assert "--obj.help" in help_str
 
 
 class Instantiate1:
@@ -132,52 +145,51 @@ def test_subclass_set_defaults(parser):
 
 
 def test_subclass_optional_list(parser, subtests):
-    parser.add_argument("--op", type=Optional[List[Calendar]])
-    class_path = '"class_path": "calendar.Calendar"'
+    parser.add_argument("--op", type=Optional[List[BaseC]])
+    class_path = f'"class_path": "{__name__}.BaseC"'
 
     with subtests.test("without init_args"):
-        expected = [{"class_path": "calendar.Calendar", "init_args": {"firstweekday": 0}}]
+        expected = [{"class_path": f"{__name__}.BaseC", "init_args": {"p": 0}}]
         cfg = parser.parse_args(["--op=[{" + class_path + "}]"])
         assert cfg.as_dict()["op"] == expected
-        cfg = parser.parse_args(['--op=["calendar.Calendar"]'])
+        cfg = parser.parse_args([f'--op=["{__name__}.BaseC"]'])
         assert cfg.as_dict()["op"] == expected
         init = parser.instantiate(cfg)
-        assert isinstance(init.op[0], Calendar)
+        assert isinstance(init.op[0], BaseC)
 
     with subtests.test("with init_args"):
-        init_args = '"init_args": {"firstweekday": 3}'
+        init_args = '"init_args": {"p": 3}'
         cfg = parser.parse_args(["--op=[{" + class_path + ", " + init_args + "}]"])
-        assert cfg["op"][0]["init_args"].as_dict() == {"firstweekday": 3}
+        assert cfg["op"][0]["init_args"].as_dict() == {"p": 3}
         init = parser.instantiate(cfg)
-        assert isinstance(init["op"][0], Calendar)
-        assert 3 == init["op"][0].firstweekday
+        assert isinstance(init["op"][0], BaseC)
+        assert 3 == init["op"][0].p
 
     with subtests.test("error"):
-        with pytest.raises(ArgumentError) as ctx:
+        with pytest.raises(ArgumentError, match="Not a valid subclass of BaseC"):
             parser.parse_args(["--op=[1]"])
-        ctx.match("Not a valid subclass of Calendar")
 
 
 def test_subclass_union_with_str(parser):
-    parser.add_argument("--op", type=Optional[Union[str, Calendar]])
+    parser.add_argument("--op", type=Optional[Union[str, BaseC]])
     cfg = parser.parse_args(["--op=value"])
     assert cfg.op == "value"
     cfg = parser.parse_args(
         [
-            "--op=TextCalendar",
-            "--op.firstweekday=1",
-            "--op.firstweekday=2",
+            "--op=SubA",
+            "--op.p=1",
+            "--op.p=2",
         ]
     )
-    assert cfg.op == Namespace(class_path="calendar.TextCalendar", init_args=Namespace(firstweekday=2))
+    assert cfg.op == Namespace(class_path=f"{__name__}.SubA", init_args=Namespace(p=2))
 
 
 def test_subclass_union_help(parser):
-    parser.add_argument("--op", type=Union[str, Mapping[str, int], Calendar])
+    parser.add_argument("--op", type=Union[str, Mapping[str, int], BaseC])
     help_str = get_parser_help(parser)
-    assert "Show the help for the given subclass of Calendar" in help_str
-    help_str = get_parse_args_stdout(parser, ["--op.help", "TextCalendar"])
-    assert "--op.firstweekday" in help_str
+    assert "Show the help for the given subclass of BaseC" in help_str
+    help_str = get_parse_args_stdout(parser, ["--op.help", "SubA"])
+    assert "--op.p" in help_str
 
 
 class DefaultsDisabled:
@@ -192,24 +204,24 @@ def test_subclass_parse_defaults_disabled(parser):
 
 
 def test_subclass_known_subclasses(parser):
-    parser.add_argument("--cal", type=Calendar)
+    parser.add_argument("--obj", type=BaseC)
     help_str = get_parser_help(parser)
-    assert "known subclasses: calendar.Calendar," in help_str
+    assert f"known subclasses: {__name__}.BaseC," in help_str
 
 
 def test_subclass_known_subclasses_ignore_local_class(parser):
-    class LocalCalendar(Calendar):
+    class LocalSubC(BaseC):
         pass
 
-    parser.add_argument("--op", type=Calendar)
+    parser.add_argument("--op", type=BaseC)
     help_str = get_parser_help(parser)
-    assert "LocalCalendar" not in help_str
+    assert "LocalSubC" not in help_str
 
 
 def test_subclass_known_subclasses_multiple_bases(parser):
-    parser.add_argument("--op", type=Union[Calendar, GzipFile, None])
+    parser.add_argument("--op", type=Union[BaseC, GzipFile, None])
     help_str = get_parser_help(parser)
-    for class_path in ["calendar.Calendar", "calendar.TextCalendar", "gzip.GzipFile"]:
+    for class_path in [f"{__name__}.BaseC", f"{__name__}.SubA", f"{__name__}.SubB", "gzip.GzipFile"]:
         assert class_path in help_str
 
 
@@ -229,68 +241,68 @@ def test_subclass_allow_untyped_parameters_help(parser):
     assert "--c1.a2 A2" in help_str
 
 
-class MergeInitArgs(Calendar):
+class MergeInitArgs(BaseC):
     def __init__(self, param_a: int = 1, param_b: str = "x", **kwargs):
         super().__init__(**kwargs)  # pragma: no cover
 
 
 def test_subclass_merge_init_args_global_config(parser):
     parser.add_argument("--cfg", action="config")
-    parser.add_argument("--cal", type=Calendar)
+    parser.add_argument("--obj", type=BaseC)
 
     config1 = {
-        "cal": {
+        "obj": {
             "class_path": f"{__name__}.MergeInitArgs",
             "init_args": {
-                "firstweekday": 2,
+                "p": 2,
                 "param_b": "y",
             },
         }
     }
     config2 = deepcopy(config1)
-    config2["cal"]["init_args"] = {
+    config2["obj"]["init_args"] = {
         "param_a": 2,
-        "firstweekday": 3,
+        "p": 3,
     }
-    expected = deepcopy(config1["cal"])
-    expected["init_args"].update(config2["cal"]["init_args"])
+    expected = deepcopy(config1["obj"])
+    expected["init_args"].update(config2["obj"]["init_args"])
 
     cfg = parser.parse_args([f"--cfg={json.dumps(config1)}", f"--cfg={json.dumps(config2)}"])
-    assert cfg.cal.as_dict() == expected
+    assert cfg.obj.as_dict() == expected
 
 
 def test_subclass_init_args_without_class_path(parser):
-    parser.add_subclass_arguments(Calendar, "cal2", default=lazy_instance(Calendar))
-    parser.add_subclass_arguments(Calendar, "cal3", default=lazy_instance(Calendar, firstweekday=2))
-    cfg = parser.parse_args(["--cal2.init_args.firstweekday=4", "--cal3.init_args.firstweekday=5"])
-    assert cfg.cal2.init_args == Namespace(firstweekday=4)
-    assert cfg.cal3.init_args == Namespace(firstweekday=5)
+    parser.add_subclass_arguments(BaseC, "obj2", default=lazy_instance(BaseC))
+    parser.add_subclass_arguments(BaseC, "obj3", default=lazy_instance(BaseC, p=2))
+    cfg = parser.parse_args(["--obj2.init_args.p=4", "--obj3.init_args.p=5"])
+    assert cfg.obj2.init_args == Namespace(p=4)
+    assert cfg.obj3.init_args == Namespace(p=5)
 
 
 def test_subclass_init_args_without_class_path_dict(parser):
     parser.add_argument("--cfg", action="config")
-    parser.add_argument("--cal", type=Calendar)
-    config = {"cal": {"class_path": "TextCalendar", "init_args": {"firstweekday": 2}}}
+    parser.add_argument("--obj", type=BaseC)
+    config = {"obj": {"class_path": f"{__name__}.SubA", "init_args": {"p": 2}}}
 
-    cfg = parser.parse_args([f"--cfg={json.dumps(config)}", '--cal={"init_args": {"firstweekday": 3}}'])
-    assert cfg.cal.init_args == Namespace(firstweekday=3)
+    cfg = parser.parse_args([f"--cfg={json.dumps(config)}", '--obj={"init_args": {"p": 3}}'])
+    assert cfg.obj.init_args == Namespace(p=3)
 
-    cfg = parser.parse_args([f"--cfg={json.dumps(config)}", '--cal={"firstweekday": 4}'])
-    assert cfg.cal.init_args == Namespace(firstweekday=4)
+    cfg = parser.parse_args([f"--cfg={json.dumps(config)}", '--obj={"p": 4}'])
+    assert cfg.obj.init_args == Namespace(p=4)
 
 
 class DefaultConfig:
-    def __init__(self, cal: Optional[Calendar] = None, val: int = 2):
-        self.cal = cal  # pragma: no cover
+    def __init__(self, obj: Optional[BaseC] = None, val: int = 2):
+        self.obj = obj  # pragma: no cover
 
 
 def test_subclass_with_default_config_files(parser, tmp_cwd, logger, subtests):
     config = {
-        "class_path": "calendar.Calendar",
-        "init_args": {"firstweekday": 3},
+        "class_path": f"{__name__}.BaseC",
+        "init_args": {"p": 3},
     }
     config_path = tmp_cwd / "config.yaml"
-    config_path.write_text(json.dumps({"data": {"cal": config}}))
+    config_path.write_text(json.dumps({"data": {"obj": config}}))
 
     parser.default_config_files = [config_path]
     parser.add_argument("--op", default="from default")
@@ -299,22 +311,22 @@ def test_subclass_with_default_config_files(parser, tmp_cwd, logger, subtests):
     with subtests.test("get_defaults"):
         cfg = parser.get_defaults()
         assert str(config_path) == str(cfg["__default_config__"])
-        assert cfg.data.cal.as_dict() == config
+        assert cfg.data.obj.as_dict() == config
 
     with subtests.test("dump"):
         dump = json_or_yaml_load(parser.dump(cfg))
-        assert dump["data"]["cal"] == {"class_path": "calendar.Calendar", "init_args": {"firstweekday": 3}}
+        assert dump["data"]["obj"] == {"class_path": f"{__name__}.BaseC", "init_args": {"p": 3}}
 
     with subtests.test("disable defaults"):
-        cfg = parser.parse_args(["--data.cal.class_path=calendar.Calendar"], defaults=False)
-        assert cfg.data.cal == Namespace(class_path="calendar.Calendar")
+        cfg = parser.parse_args([f"--data.obj.class_path={__name__}.BaseC"], defaults=False)
+        assert cfg.data.obj == Namespace(class_path=f"{__name__}.BaseC")
 
     with subtests.test("logging"):
         parser.logger = logger
         with capture_logs(logger) as logs:
             cfg = parser.parse_args([])
         assert str(config_path) in logs.getvalue()
-        assert cfg.data.cal.as_dict() == config
+        assert cfg.data.obj.as_dict() == config
 
 
 class DefaultConfigSubcommands:
@@ -519,30 +531,30 @@ def test_custom_instantiation_nested(parser, clear_instantiators):
 def test_subclass_env_help(parser):
     parser.env_prefix = "APP"
     parser.default_env = True
-    parser.add_argument("--cal", type=Calendar)
+    parser.add_argument("--obj", type=BaseC)
     help_str = get_parser_help(parser)
-    assert "ARG:   --cal CAL" in help_str
-    assert "ARG:   --cal.help" in help_str
-    assert "ENV:   APP_CAL" in help_str
-    assert "APP_CAL_HELP" not in help_str
+    assert "ARG:   --obj OBJ" in help_str
+    assert "ARG:   --obj.help" in help_str
+    assert "ENV:   APP_OBJ" in help_str
+    assert "APP_OBJ_HELP" not in help_str
 
 
 def test_subclass_env_config(parser):
     parser.env_prefix = "APP"
     parser.default_env = True
-    parser.add_argument("--cal", type=Calendar)
-    env = {"APP_CAL": '{"class_path": "TextCalendar", "init_args": {"firstweekday": 4}}'}
+    parser.add_argument("--obj", type=BaseC)
+    env = {"APP_OBJ": '{"class_path": "SubA", "init_args": {"p": 4}}'}
     with patch.dict(os.environ, env):
         cfg = parser.parse_env()
-    assert cfg.cal == Namespace(class_path="calendar.TextCalendar", init_args=Namespace(firstweekday=4))
+    assert cfg.obj == Namespace(class_path=f"{__name__}.SubA", init_args=Namespace(p=4))
 
 
 # nested subclass tests
 
 
 class Nested:
-    def __init__(self, cal: Calendar, p1: int = 0):
-        self.cal = cal  # pragma: no cover
+    def __init__(self, obj: BaseC, p1: int = 0):
+        self.obj = obj  # pragma: no cover
 
 
 @pytest.mark.parametrize("prefix", ["", ".init_args"], ids=lambda v: f"prefix={v}")
@@ -552,24 +564,24 @@ def test_subclass_nested_parse(parser, prefix):
         [
             f"--op={__name__}.Nested",
             f"--op{prefix}.p1=1",
-            f"--op{prefix}.cal=calendar.TextCalendar",
-            f"--op{prefix}.cal{prefix}.firstweekday=2",
+            f"--op{prefix}.obj={__name__}.SubA",
+            f"--op{prefix}.obj{prefix}.p=2",
         ]
     )
     assert cfg.op.class_path == f"{__name__}.Nested"
     assert cfg.op.init_args.p1 == 1
-    assert cfg.op.init_args.cal.class_path == "calendar.TextCalendar"
-    assert cfg.op.init_args.cal.init_args == Namespace(firstweekday=2)
+    assert cfg.op.init_args.obj.class_path == f"{__name__}.SubA"
+    assert cfg.op.init_args.obj.init_args == Namespace(p=2)
 
 
 def test_subclass_nested_help(parser):
     parser.add_argument("--op", type=Nested)
-    help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.Nested", "--op.cal.help=TextCalendar"])
-    assert "Help for --op.cal.help=calendar.TextCalendar" in help_str
-    assert "--op.cal.firstweekday" in help_str
-    help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.Nested", "--op.cal.help"])
-    assert "Help for --op.cal.help=calendar.Calendar" in help_str
-    assert "--op.cal.firstweekday" in help_str
+    help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.Nested", f"--op.obj.help={__name__}.SubA"])
+    assert f"Help for --op.obj.help={__name__}.SubA" in help_str
+    assert "--op.obj.p" in help_str
+    help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.Nested", "--op.obj.help"])
+    assert f"Help for --op.obj.help={__name__}.BaseC" in help_str
+    assert "--op.obj.p" in help_str
 
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args([f"--op.help={__name__}.Nested", "--op.p1=1"])
@@ -616,13 +628,13 @@ def test_subclass_required_parameter_with_default_config_files(parser, tmp_cwd):
 
 
 def test_subclass_class_name_parse(parser):
-    parser.add_argument("--op", type=Union[Calendar, GzipFile, None])
-    cfg = parser.parse_args(["--op=TextCalendar"])
-    assert cfg.op.class_path == "calendar.TextCalendar"
+    parser.add_argument("--op", type=Union[BaseC, GzipFile, None])
+    cfg = parser.parse_args(["--op=SubA"])
+    assert cfg.op.class_path == f"{__name__}.SubA"
 
 
 def test_subclass_class_name_help(parser):
-    parser.add_argument("--op", type=Union[Calendar, GzipFile, None])
+    parser.add_argument("--op", type=Union[BaseC, GzipFile, None])
     help_str = get_parse_args_stdout(parser, ["--op.help=GzipFile"])
     assert "Help for --op.help=gzip.GzipFile" in help_str
     assert "--op.compresslevel" in help_str
@@ -633,40 +645,40 @@ class LocaleTextCalendar(Calendar):
 
 
 def test_subclass_class_name_set_defaults(parser):
-    parser.add_argument("--cal", type=Calendar)
+    parser.add_argument("--obj", type=BaseC)
     parser.set_defaults(
         {
-            "cal": {
-                "class_path": "TextCalendar",
+            "obj": {
+                "class_path": "SubA",
                 "init_args": {
-                    "firstweekday": 1,
+                    "p": 1,
                 },
             }
         }
     )
-    cal = parser.get_default("cal").as_dict()
-    assert cal == {"class_path": "calendar.TextCalendar", "init_args": {"firstweekday": 1}}
+    obj = parser.get_default("obj").as_dict()
+    assert obj == {"class_path": f"{__name__}.SubA", "init_args": {"p": 1}}
 
 
 def test_subclass_short_init_args(parser):
-    parser.add_argument("--op", type=Calendar)
-    cfg = parser.parse_args(["--op=TextCalendar", "--op.firstweekday=2"])
-    assert cfg.op.class_path == "calendar.TextCalendar"
-    assert cfg.op.init_args == Namespace(firstweekday=2)
+    parser.add_argument("--op", type=BaseC)
+    cfg = parser.parse_args(["--op=SubA", "--op.p=2"])
+    assert cfg.op.class_path == f"{__name__}.SubA"
+    assert cfg.op.init_args == Namespace(p=2)
 
 
 def test_subclass_invalid_class_name(parser):
-    parser.add_argument("--op", type=Calendar)
+    parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(["--cal=NotCalendarSubclass", "--cal.firstweekday=2"])
-    ctx.match("NotCalendarSubclass")
+        parser.parse_args(["--op=NotASubclass", "--op.p=2"])
+    ctx.match("NotASubclass")
 
 
 def test_subclass_class_name_then_invalid_init_args(parser):
-    parser.add_argument("--op", type=Union[Calendar, GzipFile])
+    parser.add_argument("--op", type=Union[BaseC, GzipFile])
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(["--op=TextCalendar", "--op=GzipFile", "--op.firstweekday=2"])
-    ctx.match("Option 'firstweekday' is not accepted")
+        parser.parse_args(["--op=SubA", "--op=GzipFile", "--op.p=2"])
+    ctx.match("Option 'p' is not accepted")
 
 
 # dict parameter tests
@@ -795,66 +807,66 @@ def test_subclass_list_append_single(parser, list_type):
 
 
 @final
-class IterableAppendCalendars:
-    def __init__(self, cal: Union[Calendar, Iterable[Calendar], bool] = True):
-        self.cal = cal  # pragma: no cover
+class IterableAppendObjs:
+    def __init__(self, obj: Union[BaseC, Iterable[BaseC], bool] = True):
+        self.obj = obj  # pragma: no cover
 
 
 def test_subclass_list_append_nonclass_default(parser):
-    parser.add_argument("cls", type=IterableAppendCalendars)
+    parser.add_argument("cls", type=IterableAppendObjs)
 
-    cfg = parser.parse_args(["--cls.cal=calendar.TextCalendar", "--cls.cal.firstweekday=2"])
-    assert not isinstance(cfg.cls.cal, list)
-    assert "calendar.TextCalendar" == cfg.cls.cal.class_path
-    assert 2 == cfg.cls.cal.init_args.firstweekday
+    cfg = parser.parse_args([f"--cls.obj={__name__}.SubA", "--cls.obj.p=2"])
+    assert not isinstance(cfg.cls.obj, list)
+    assert f"{__name__}.SubA" == cfg.cls.obj.class_path
+    assert 2 == cfg.cls.obj.init_args.p
 
-    cfg = parser.parse_args(["--cls.cal=TextCalendar", "--cls.cal+=HTMLCalendar"])
-    assert isinstance(cfg.cls.cal, list)
-    assert ["TextCalendar", "HTMLCalendar"] == [c.class_path.split(".")[1] for c in cfg.cls.cal]
+    cfg = parser.parse_args([f"--cls.obj={__name__}.SubA", f"--cls.obj+={__name__}.SubB"])
+    assert isinstance(cfg.cls.obj, list)
+    assert [f"{__name__}.SubA", f"{__name__}.SubB"] == [c.class_path for c in cfg.cls.obj]
 
 
-class ListAppendCalendars:
-    def __init__(self, cals: Optional[Union[Calendar, List[Calendar]]] = None):
-        self.cals = cals  # pragma: no cover
+class ListAppendObjs:
+    def __init__(self, objs: Optional[Union[BaseC, List[BaseC]]] = None):
+        self.objs = objs  # pragma: no cover
 
 
 def test_subclass_list_append_multiple(parser):
-    parser.add_class_arguments(ListAppendCalendars, "a")
+    parser.add_class_arguments(ListAppendObjs, "a")
     cfg = parser.parse_args(
         [
-            "--a.cals+=Calendar",
-            "--a.cals.firstweekday=3",
-            "--a.cals+=TextCalendar",
-            "--a.cals.firstweekday=1",
+            "--a.objs+=BaseC",
+            "--a.objs.p=3",
+            "--a.objs+=SubA",
+            "--a.objs.p=1",
         ]
     )
-    assert ["calendar.Calendar", "calendar.TextCalendar"] == [x.class_path for x in cfg.a.cals]
-    assert [3, 1] == [x.init_args.firstweekday for x in cfg.a.cals]
-    cfg = parser.parse_args([f"--a={json.dumps(cfg.a.as_dict())}", "--a.cals.firstweekday=4"])
-    assert Namespace(firstweekday=4) == cfg.a.cals[-1].init_args
-    args = ["--a.cals+=Invalid", "--a.cals+=TextCalendar"]
+    assert [f"{__name__}.BaseC", f"{__name__}.SubA"] == [x.class_path for x in cfg.a.objs]
+    assert [3, 1] == [x.init_args.p for x in cfg.a.objs]
+    cfg = parser.parse_args([f"--a={json.dumps(cfg.a.as_dict())}", "--a.objs.p=4"])
+    assert Namespace(p=4) == cfg.a.objs[-1].init_args
+    args = ["--a.objs+=Invalid", "--a.objs+=SubA"]
     pytest.raises(ArgumentError, lambda: parser.parse_args(args))
     pytest.raises(ArgumentError, lambda: parser.parse_args(args + ["--print_config"]))
 
 
 def test_subcommand_subclass_list_append_multiple(parser, subparser):
-    subparser.add_class_arguments(ListAppendCalendars, "a")
+    subparser.add_class_arguments(ListAppendObjs, "a")
     subcommands = parser.add_subcommands()
     subcommands.add_subcommand("cmd", subparser)
     cfg = parser.parse_args(
         [
             "cmd",
-            "--a.cals+=Calendar",
-            "--a.cals.firstweekday=3",
-            "--a.cals+=TextCalendar",
-            "--a.cals.firstweekday=1",
+            "--a.objs+=BaseC",
+            "--a.objs.p=3",
+            "--a.objs+=SubA",
+            "--a.objs.p=1",
         ]
     )
-    assert ["calendar.Calendar", "calendar.TextCalendar"] == [x.class_path for x in cfg.cmd.a.cals]
-    assert [3, 1] == [x.init_args.firstweekday for x in cfg.cmd.a.cals]
-    cfg = parser.parse_args(["cmd", f"--a={json.dumps(cfg.cmd.a.as_dict())}", "--a.cals.firstweekday=4"])
-    assert Namespace(firstweekday=4) == cfg.cmd.a.cals[-1].init_args
-    args = ["cmd", "--a.cals+=Invalid", "--a.cals+=TextCalendar"]
+    assert [f"{__name__}.BaseC", f"{__name__}.SubA"] == [x.class_path for x in cfg.cmd.a.objs]
+    assert [3, 1] == [x.init_args.p for x in cfg.cmd.a.objs]
+    cfg = parser.parse_args(["cmd", f"--a={json.dumps(cfg.cmd.a.as_dict())}", "--a.objs.p=4"])
+    assert Namespace(p=4) == cfg.cmd.a.objs[-1].init_args
+    args = ["cmd", "--a.objs+=Invalid", "--a.objs+=SubA"]
     pytest.raises(ArgumentError, lambda: parser.parse_args(args))
     pytest.raises(ArgumentError, lambda: parser.parse_args(args + ["--print_config"]))
 
@@ -863,9 +875,9 @@ def test_subcommand_subclass_list_append_multiple(parser, subparser):
 
 
 class AnySubclasses:
-    def __init__(self, cal1: Calendar, cal2: Any):
-        self.cal1 = cal1
-        self.cal2 = cal2
+    def __init__(self, obj1: BaseC, obj2: Any):
+        self.obj1 = obj1
+        self.obj2 = obj2
 
 
 def test_type_any_subclasses(parser):
@@ -873,13 +885,13 @@ def test_type_any_subclasses(parser):
     value = {
         "class_path": f"{__name__}.AnySubclasses",
         "init_args": {
-            "cal1": {
-                "class_path": "calendar.TextCalendar",
-                "init_args": {"firstweekday": 1},
+            "obj1": {
+                "class_path": f"{__name__}.SubA",
+                "init_args": {"p": 1},
             },
-            "cal2": {
-                "class_path": "calendar.HTMLCalendar",
-                "init_args": {"firstweekday": 2},
+            "obj2": {
+                "class_path": f"{__name__}.SubB",
+                "init_args": {"p": 2},
             },
         },
     }
@@ -887,23 +899,23 @@ def test_type_any_subclasses(parser):
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
     init = parser.instantiate(cfg)
     assert isinstance(init.any, AnySubclasses)
-    assert isinstance(init.any.cal1, TextCalendar)
-    assert isinstance(init.any.cal2, HTMLCalendar)
-    assert 1 == init.any.cal1.firstweekday
-    assert 2 == init.any.cal2.firstweekday
+    assert isinstance(init.any.obj1, SubA)
+    assert isinstance(init.any.obj2, SubB)
+    assert 1 == init.any.obj1.p
+    assert 2 == init.any.obj2.p
 
-    value["init_args"]["cal2"]["class_path"] = "does.not.exist"
+    value["init_args"]["obj2"]["class_path"] = "does.not.exist"
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
-    assert isinstance(cfg.any.init_args.cal1, Namespace)
-    assert isinstance(cfg.any.init_args.cal2, dict)
+    assert isinstance(cfg.any.init_args.obj1, Namespace)
+    assert isinstance(cfg.any.init_args.obj2, dict)
     init = parser.instantiate(cfg)
     assert isinstance(init.any, AnySubclasses)
-    assert isinstance(init.any.cal1, TextCalendar)
-    assert isinstance(init.any.cal2, dict)
-    assert 1 == init.any.cal1.firstweekday
-    assert 2 == init.any.cal2["init_args"]["firstweekday"]
+    assert isinstance(init.any.obj1, SubA)
+    assert isinstance(init.any.obj2, dict)
+    assert 1 == init.any.obj1.p
+    assert 2 == init.any.obj2["init_args"]["p"]
 
-    value["init_args"]["cal1"]["class_path"] = "does.not.exist"
+    value["init_args"]["obj1"]["class_path"] = "does.not.exist"
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
     assert isinstance(cfg.any, dict)
 
@@ -912,12 +924,12 @@ def test_type_any_list_of_subclasses(parser):
     parser.add_argument("--any", type=Any)
     value = [
         {
-            "class_path": "calendar.TextCalendar",
-            "init_args": {"firstweekday": 1},
+            "class_path": f"{__name__}.SubA",
+            "init_args": {"p": 1},
         },
         {
-            "class_path": "calendar.HTMLCalendar",
-            "init_args": {"firstweekday": 2},
+            "class_path": f"{__name__}.SubB",
+            "init_args": {"p": 2},
         },
     ]
 
@@ -925,22 +937,22 @@ def test_type_any_list_of_subclasses(parser):
     init = parser.instantiate(cfg)
     assert isinstance(init.any, list)
     assert 2 == len(init.any)
-    assert isinstance(init.any[0], TextCalendar)
-    assert isinstance(init.any[1], HTMLCalendar)
-    assert 1 == init.any[0].firstweekday
-    assert 2 == init.any[1].firstweekday
+    assert isinstance(init.any[0], SubA)
+    assert isinstance(init.any[1], SubB)
+    assert 1 == init.any[0].p
+    assert 2 == init.any[1].p
 
 
 def test_type_any_dict_of_subclasses(parser):
     parser.add_argument("--any", type=Any)
     value = {
         "k1": {
-            "class_path": "calendar.TextCalendar",
-            "init_args": {"firstweekday": 1},
+            "class_path": f"{__name__}.SubA",
+            "init_args": {"p": 1},
         },
         "k2": {
-            "class_path": "calendar.HTMLCalendar",
-            "init_args": {"firstweekday": 2},
+            "class_path": f"{__name__}.SubB",
+            "init_args": {"p": 2},
         },
     }
 
@@ -948,44 +960,44 @@ def test_type_any_dict_of_subclasses(parser):
     init = parser.instantiate(cfg)
     assert isinstance(init.any, dict)
     assert 2 == len(init.any)
-    assert isinstance(init.any["k1"], TextCalendar)
-    assert isinstance(init.any["k2"], HTMLCalendar)
-    assert 1 == init.any["k1"].firstweekday
-    assert 2 == init.any["k2"].firstweekday
+    assert isinstance(init.any["k1"], SubA)
+    assert isinstance(init.any["k2"], SubB)
+    assert 1 == init.any["k1"].p
+    assert 2 == init.any["k2"].p
 
 
 # override tests
 
 
-class OverrideA(Calendar):
+class OverrideA(BaseC):
     def __init__(self, pa: str = "a", pc: str = "", **kwds):
         super().__init__(**kwds)  # pragma: no cover
 
 
-class OverrideB(Calendar):
+class OverrideB(BaseC):
     def __init__(self, pb: str = "b", pc: int = 4, **kwds):
         super().__init__(**kwds)  # pragma: no cover
 
 
 def test_subclass_discard_init_args(parser, logger):
     parser.logger = logger
-    parser.add_subclass_arguments(Calendar, "cal")
+    parser.add_subclass_arguments(BaseC, "obj")
 
     with capture_logs(logger) as logs:
         cfg = parser.parse_args(
             [
-                f"--cal.class_path={__name__}.OverrideA",
-                "--cal.init_args.pa=A",
-                "--cal.init_args.pc=X",
-                "--cal.init_args.firstweekday=3",
-                f"--cal.class_path={__name__}.OverrideB",
-                "--cal.init_args.pb=B",
+                f"--obj.class_path={__name__}.OverrideA",
+                "--obj.init_args.pa=A",
+                "--obj.init_args.pc=X",
+                "--obj.init_args.p=3",
+                f"--obj.class_path={__name__}.OverrideB",
+                "--obj.init_args.pb=B",
             ]
         )
 
     assert "discarding init_args: {'pa': 'A', 'pc': 'X'}" in logs.getvalue()
-    assert cfg.cal.class_path == f"{__name__}.OverrideB"
-    assert cfg.cal.init_args == Namespace(pb="B", pc=4, firstweekday=3)
+    assert cfg.obj.class_path == f"{__name__}.OverrideB"
+    assert cfg.obj.init_args == Namespace(pb="B", pc=4, p=3)
 
 
 class OverrideChildBase:
@@ -1028,14 +1040,14 @@ def test_subclass_discard_init_args_nested(parser, logger):
     assert cfg.p.init_args.c.init_args == Namespace(b=2)
 
 
-class OverrideMixed(Calendar):
+class OverrideMixed(BaseC):
     def __init__(self, *args, param: int = 0, **kwargs):
         super().__init__(*args, **kwargs)  # pragma: no cover
 
 
 class OverrideMixedMain:
-    def __init__(self, cal: Union[Calendar, bool] = lazy_instance(OverrideMixed, param=1)):
-        self.cal = cal  # pragma: no cover
+    def __init__(self, obj: Union[BaseC, bool] = lazy_instance(OverrideMixed, param=1)):
+        self.obj = obj  # pragma: no cover
 
 
 def test_subclass_discard_init_args_mixed_type(parser, logger):
@@ -1043,7 +1055,7 @@ def test_subclass_discard_init_args_mixed_type(parser, logger):
     parser.logger = logger
     parser.add_class_arguments(OverrideMixedMain, "main")
     with capture_logs(logger) as logs:
-        parser.parse_args(["--main.cal=Calendar"])
+        parser.parse_args(["--main.obj=BaseC"])
     assert "discarding init_args: {'param': 1}" in logs.getvalue()
 
 
@@ -1076,7 +1088,7 @@ def test_subclass_discard_init_args_config_with_default(parser, logger):
     assert cfg.s.init_args == Namespace(s2="v2")
 
 
-class OverrideDefaultConfig(Calendar):
+class OverrideDefaultConfig(BaseC):
     def __init__(self, *args, param: str = "0", **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -1085,24 +1097,24 @@ def test_subclass_discard_init_args_with_default_config_files(parser, tmp_cwd, l
     _cached_class_parsers.clear()
     config = {
         "class_path": f"{__name__}.OverrideDefaultConfig",
-        "init_args": {"firstweekday": 2, "param": "1"},
+        "init_args": {"p": 2, "param": "1"},
     }
     config_path = tmp_cwd / "config.yaml"
-    config_path.write_text(json.dumps({"cal": config}))
+    config_path.write_text(json.dumps({"obj": config}))
 
     parser.default_config_files = [config_path]
-    parser.add_argument("--cal", type=Optional[Calendar])
+    parser.add_argument("--obj", type=Optional[BaseC])
 
     init = parser.instantiate(parser.get_defaults())
-    assert isinstance(init.cal, OverrideDefaultConfig)
+    assert isinstance(init.obj, OverrideDefaultConfig)
 
     parser.logger = logger
     with capture_logs(logger) as logs:
-        cfg = parser.parse_args(['--cal={"class_path": "calendar.Calendar", "init_args": {"firstweekday": 3}}'])
+        cfg = parser.parse_args([f'--obj={{"class_path": "{__name__}.BaseC", "init_args": {{"p": 3}}}}'])
     assert "discarding init_args: {'param': '1'}" in logs.getvalue()
-    assert cfg.cal.init_args == Namespace(firstweekday=3)
+    assert cfg.obj.init_args == Namespace(p=3)
     with capture_logs(logger) as logs:
-        assert type(parser.instantiate(cfg).cal) is Calendar
+        assert type(parser.instantiate(cfg).obj) is BaseC
     assert logs.getvalue()
 
 
@@ -1335,18 +1347,18 @@ def test_add_subclass_failure_empty_tuple(parser):
 
 
 def test_add_subclass_lazy_default(parser):
-    parser.add_subclass_arguments(Calendar, "cal", default=lazy_instance(Calendar, firstweekday=4))
+    parser.add_subclass_arguments(BaseC, "obj", default=lazy_instance(BaseC, p=4))
     cfg = parser.parse_string(parser.dump(parser.parse_args([])))
-    assert cfg.cal.class_path == "calendar.Calendar"
-    assert cfg.cal.init_args.firstweekday == 4
+    assert cfg.obj.class_path == f"{__name__}.BaseC"
+    assert cfg.obj.init_args.p == 4
 
     parser.add_argument("--config", action="config")
-    parser.set_defaults({"cal": lazy_instance(Calendar, firstweekday=5)})
+    parser.set_defaults({"obj": lazy_instance(BaseC, p=5)})
     out = get_parse_args_stdout(parser, ["--print_config"])
-    assert json_or_yaml_load(out)["cal"] == {"class_path": "calendar.Calendar", "init_args": {"firstweekday": 5}}
+    assert json_or_yaml_load(out)["obj"] == {"class_path": f"{__name__}.BaseC", "init_args": {"p": 5}}
 
     help_str = get_parser_help(parser)
-    assert "'init_args': {'firstweekday': 5}" in help_str
+    assert "'init_args': {'p': 5}" in help_str
 
 
 class TupleBaseA:
@@ -1379,20 +1391,20 @@ def test_add_subclass_tuple(parser):
 
 
 def test_add_subclass_required_group(parser):
-    pytest.raises(ValueError, lambda: parser.add_subclass_arguments(Calendar, None, required=True))
-    parser.add_subclass_arguments(Calendar, "cal", required=True)
+    pytest.raises(ValueError, lambda: parser.add_subclass_arguments(BaseC, None, required=True))
+    parser.add_subclass_arguments(BaseC, "obj", required=True)
     pytest.raises(ArgumentError, lambda: parser.parse_args([]))
     help_str = get_parser_help(parser)
-    assert "--cal.help [CLASS_PATH_OR_NAME]" in help_str
-    assert "--cal CONFIG | CLASS_PATH_OR_NAME | .INIT_ARG_NAME VALUE" in help_str
+    assert "--obj.help [CLASS_PATH_OR_NAME]" in help_str
+    assert "--obj CONFIG | CLASS_PATH_OR_NAME | .INIT_ARG_NAME VALUE" in help_str
 
 
 def test_add_subclass_not_required_group(parser):
-    parser.add_subclass_arguments(Calendar, "cal", required=False)
+    parser.add_subclass_arguments(BaseC, "obj", required=False)
     cfg = parser.parse_args([])
-    assert cfg == Namespace(cal=None)
+    assert cfg == Namespace(obj=None)
     init = parser.instantiate(cfg)
-    assert init == Namespace(cal=None)
+    assert init == Namespace(obj=None)
 
 
 class ListUnionA:
@@ -1433,15 +1445,15 @@ def test_add_subclass_list_of_union(parser):
 
 
 def test_add_subclass_set_defaults_instance_default(parser):
-    parser.add_subclass_arguments(Calendar, "cal")
+    parser.add_subclass_arguments(BaseC, "obj")
     with pytest.raises(ValueError) as ctx:
-        parser.set_defaults({"cal": Calendar(firstweekday=2)})
+        parser.set_defaults({"obj": BaseC(p=2)})
     ctx.match("Subclass types require as default either a dict with class_path or a lazy instance")
 
 
 def test_add_argument_subclass_instance_default(parser):
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--cal", type=Calendar, default=Calendar(firstweekday=2))
+        parser.add_argument("--obj", type=BaseC, default=BaseC(p=2))
     ctx.match("Subclass types require as default either a dict with class_path or a lazy instance")
 
 
@@ -1669,7 +1681,7 @@ def test_add_subclass_parameter_skip_nested(parser):
 
 @dataclass
 class PrintConfig:
-    a1: Calendar
+    a1: BaseC
     a2: int = 7
 
 
@@ -1677,11 +1689,11 @@ def test_subclass_print_config(parser):
     parser.add_argument("--config", action="config")
     parser.add_class_arguments(PrintConfig, "g")
 
-    out = get_parse_args_stdout(parser, ["--g.a1=calendar.Calendar", "--print_config"])
+    out = get_parse_args_stdout(parser, [f"--g.a1={__name__}.BaseC", "--print_config"])
     obtained = json_or_yaml_load(out)["g"]
-    assert obtained == {"a1": {"class_path": "calendar.Calendar", "init_args": {"firstweekday": 0}}, "a2": 7}
+    assert obtained == {"a1": {"class_path": f"{__name__}.BaseC", "init_args": {"p": 0}}, "a2": 7}
 
-    err = get_parse_args_stderr(parser, ["--g.a1=calendar.Calendar", "--g.a1.invalid=1", "--print_config"])
+    err = get_parse_args_stderr(parser, [f"--g.a1={__name__}.BaseC", "--g.a1.invalid=1", "--print_config"])
     assert "Option 'invalid' is not accepted" in err
 
 
@@ -1715,48 +1727,48 @@ def test_subclass_print_config_required_parameters_as_null(parser):
 
 
 def test_subclass_multifile_save(parser, tmp_cwd):
-    parser.add_subclass_arguments(Calendar, "cal")
+    parser.add_subclass_arguments(BaseC, "obj")
 
-    cal_cfg_path = Path("cal.yaml")
-    cal_cfg_path.write_text(json_or_yaml_dump({"class_path": "calendar.Calendar"}))
+    obj_cfg_path = Path("obj.yaml")
+    obj_cfg_path.write_text(json_or_yaml_dump({"class_path": f"{__name__}.BaseC"}))
     out_main_cfg = Path("out", "config.yaml")
     out_main_cfg.parent.mkdir()
 
-    cfg = parser.parse_args([f"--cal={cal_cfg_path}"])
+    cfg = parser.parse_args([f"--obj={obj_cfg_path}"])
     parser.save(cfg, out_main_cfg, multifile=True)
 
-    assert {"cal": "cal.yaml"} == json_or_yaml_load(out_main_cfg.read_text())
-    cal = json_or_yaml_load(Path("out", "cal.yaml").read_text())
-    assert cal == {"class_path": "calendar.Calendar", "init_args": {"firstweekday": 0}}
+    assert {"obj": "obj.yaml"} == json_or_yaml_load(out_main_cfg.read_text())
+    obj = json_or_yaml_load(Path("out", "obj.yaml").read_text())
+    assert obj == {"class_path": f"{__name__}.BaseC", "init_args": {"p": 0}}
 
 
 # failure cases tests
 
 
 def test_subclass_error_not_subclass(parser):
-    parser.add_argument("--op", type=Calendar)
+    parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--op={"class_path": "jsonargparse.ArgumentParser"}'])
     ctx.match("does not correspond to a subclass")
 
 
 def test_subclass_error_undefined_attribute(parser):
-    parser.add_argument("--op", type=Calendar)
+    parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--op={"class_path": "jsonargparse.DoesNotExist"}'])
     ctx.match("module 'jsonargparse' has no attribute 'DoesNotExist'")
 
 
 def test_subclass_error_undefined_module(parser):
-    parser.add_argument("--op", type=Calendar)
+    parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(['--op={"class_path": "does_not_exist_module.SubCalendar"}'])
+        parser.parse_args(['--op={"class_path": "does_not_exist_module.SomeClass"}'])
     ctx.match("No module named 'does_not_exist_module'")
 
 
 def test_subclass_error_unexpected_init_arg(parser):
-    parser.add_argument("--op", type=Calendar)
-    class_path = '"class_path": "calendar.Calendar"'
+    parser.add_argument("--op", type=BaseC)
+    class_path = f'"class_path": "{__name__}.BaseC"'
     init_args = '"init_args": {"unexpected_arg": true}'
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--op={" + class_path + ", " + init_args + "}"])
@@ -1764,19 +1776,19 @@ def test_subclass_error_unexpected_init_arg(parser):
 
 
 def test_subclass_invalid_class_path_value(parser):
-    parser.add_argument("--cal", type=Calendar, default=lazy_instance(Calendar))
+    parser.add_argument("--obj", type=BaseC, default=lazy_instance(BaseC))
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(["--cal.class_path.init_args.firstweekday=2"])
-    ctx.match('Parser key "cal"')
+        parser.parse_args(["--obj.class_path.init_args.p=2"])
+    ctx.match('Parser key "obj"')
 
 
 def test_subclass_invalid_init_args_in_yaml(parser):
-    value = """cal:
-        class_path: calendar.Calendar
+    value = f"""obj:
+        class_path: {__name__}.BaseC
         init_args:
     """
     parser.add_argument("--cfg", action="config")
-    parser.add_argument("--cal", type=Calendar)
+    parser.add_argument("--obj", type=BaseC)
     pytest.raises(ArgumentError, lambda: parser.parse_args([f"--cfg={value}"]))
 
 
@@ -1817,7 +1829,7 @@ def test_subclass_class_name_ambiguous(parser, option):
 
 
 def test_subclass_help_not_subclass(parser):
-    parser.add_argument("--op", type=Calendar)
+    parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--op.help=uuid.UUID"])
     ctx.match("is not a subclass of")
