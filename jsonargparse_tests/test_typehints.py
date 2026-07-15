@@ -229,6 +229,9 @@ class BaseC:
     def __init__(self, p: int = 0):
         self.p = p
 
+    def get_p(self):
+        return self.p
+
 
 class SubC(BaseC):
     pass
@@ -1553,18 +1556,16 @@ def test_list_callable_return_class(parser):
 def test_lazy_instance_init_postponed():
     class Sub(BaseC):
         init_called = False
+        also_get_p = BaseC.get_p
 
         def __init__(self, *args, **kwargs):
             self.init_called = True
             super().__init__(*args, **kwargs)
 
-        def get_p(self):
-            return self.p
-
     lazy_inst = lazy_instance(Sub, p=3)
     assert isinstance(lazy_inst, Sub)
     assert lazy_inst.init_called is False
-    assert lazy_inst.get_p() == 3
+    assert lazy_inst.also_get_p() == 3
     assert lazy_inst.init_called is True
 
 
