@@ -13,7 +13,7 @@ ci:
 repos:
 
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # v6.0.0
+  rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
   hooks:
   - id: check-added-large-files
   - id: check-ast
@@ -25,20 +25,20 @@ repos:
     exclude: .bumpversion.cfg
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 5e2fb545eba1ea9dc051f6f962d52fe8f76a9794  # v0.15.13
+  rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06  # frozen: v0.15.21
   hooks:
   - id: ruff-check
   - id: ruff-format
 
 - repo: https://github.com/crate-ci/typos
-  rev: aca895bf05aec0cb7dffa6f94495e923224d9f17  # v1.46.2
+  rev: bee27e3a4fd1ea2111cf90ab89cd076c870fce14  # frozen: v1.48.0
   hooks:
   - id: typos
     args: []
     verbose: true
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: d2823d321df3af8f878f7ee3414dc94d037145b9  # v2.1.0
+  rev: 41e691678310dfd3833f7ab4e180ddb014310356  # frozen: v2.3.0
   hooks:
   - id: mypy
     files: jsonargparse.*/.*.py
