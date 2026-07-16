@@ -3,7 +3,6 @@ from __future__ import annotations
 import calendar
 import inspect
 import xml.dom
-from calendar import Calendar
 from random import shuffle
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
@@ -361,6 +360,15 @@ class SGD(Optimizer):
         self.lr = lr
 
 
+class BaseC:
+    def __init__(self, p: int = 0):
+        self.p = p
+
+
+class SubC(BaseC):
+    pass
+
+
 class ClassInstanceDefaults:
     def __init__(
         self,
@@ -368,12 +376,12 @@ class ClassInstanceDefaults:
         number: float = 0.2,
         elements: Callable[..., List[int]] = lambda *a: list(a),
         node: Callable[[], xml.dom.Node] = lambda: xml.dom.Node(),
-        cal1: Calendar = Calendar(firstweekday=1),
-        cal2: Calendar = calendar.TextCalendar(2),
+        inst1: BaseC = BaseC(p=1),
+        inst2: BaseC = SubC(2),
         opt1: Callable[[List[int]], Optimizer] = lambda p: SGD(p, lr=0.01),
         opt2: Callable[[List[int]], Optimizer] = lambda p: SGD(p, 0.02),
         opt3: Callable[[List[int]], Optimizer] = lambda p, lr=0.1: SGD(p, lr=lr),  # type: ignore[misc]
-        opt4: Callable[[List[int]], Optimizer] = lambda p: Calendar(firstweekday=3),  # type: ignore[assignment,return-value]
+        opt4: Callable[[List[int]], Optimizer] = lambda p: BaseC(p=3),  # type: ignore[assignment,return-value]
         **kwargs,
     ):
         """
@@ -382,8 +390,8 @@ class ClassInstanceDefaults:
             number: help for number
             elements: help for elements
             node: help for node
-            cal1: help for cal1
-            cal2: help for cal2
+            inst1: help for inst1
+            inst2: help for inst2
             opt1: help for opt1
             opt2: help for opt2
             opt3: help for opt3
@@ -708,8 +716,8 @@ def test_get_params_class_instance_defaults(subtests):
             "number",
             "elements",
             "node",
-            "cal1",
-            "cal2",
+            "inst1",
+            "inst2",
             "opt1",
             "opt2",
             "opt3",
@@ -722,10 +730,10 @@ def test_get_params_class_instance_defaults(subtests):
         assert is_lambda(params[2].default)
     with subtests.test("supported defaults"):
         assert params[3].default == dict(class_path="xml.dom.Node")
-        assert params[4].default == dict(class_path="calendar.Calendar", init_args=dict(firstweekday=1))
+        assert params[4].default == dict(class_path=f"{__name__}.BaseC", init_args=dict(p=1))
         assert params[6].default == dict(class_path=f"{__name__}.SGD", init_args=dict(lr=0.01))
     with subtests.test("unsupported defaults"):
-        assert isinstance(params[5].default, calendar.TextCalendar)
+        assert isinstance(params[5].default, SubC)
         assert is_lambda(params[7].default)
         assert is_lambda(params[9].default)
     with subtests.test("invalid defaults"):

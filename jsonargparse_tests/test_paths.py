@@ -5,7 +5,6 @@ import os
 import pathlib
 import stat
 import zipfile
-from calendar import Calendar
 from io import StringIO
 from typing import Any, Dict, List, Optional, Union
 from unittest.mock import patch
@@ -570,13 +569,13 @@ def test_sub_configs_dict(parser, tmp_cwd):
 
 
 def test_sub_configs_subclass(parser, tmp_cwd):
-    cal = {"class_path": "calendar.Calendar"}
-    pathlib.Path("cal.yaml").write_text(json.dumps(cal))
+    obj = {"class_path": f"{__name__}.Base"}
+    pathlib.Path("obj.yaml").write_text(json.dumps(obj))
 
-    parser.add_argument("--cal", type=Calendar, sub_configs=True)
-    cfg = parser.parse_args(["--cal=cal.yaml"])
+    parser.add_argument("--cls", type=Base, sub_configs=True)
+    cfg = parser.parse_args(["--cls=obj.yaml"])
     init = parser.instantiate(cfg)
-    assert isinstance(init["cal"], Calendar)
+    assert isinstance(init["cls"], Base)
 
 
 def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):

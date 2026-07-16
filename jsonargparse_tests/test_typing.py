@@ -5,7 +5,6 @@ import pickle
 import random
 import sys
 import uuid
-from calendar import Calendar
 from datetime import datetime, timedelta
 from decimal import Decimal
 from random import Random
@@ -544,26 +543,30 @@ def test_class_from_function_given_return_type():
     assert isinstance(cls(), Random)
 
 
-def get_calendar(a1: str, a2: int = 2) -> Calendar:
-    """Returns instance of Calendar"""
-    cal = Calendar()
-    cal.a1 = a1  # type: ignore[attr-defined]
-    cal.a2 = a2  # type: ignore[attr-defined]
-    return cal
+class AnObj:
+    pass
+
+
+def get_obj(a1: str, a2: int = 2) -> AnObj:
+    """Returns instance of AnObj"""
+    obj = AnObj()
+    obj.a1 = a1  # type: ignore[attr-defined]
+    obj.a2 = a2  # type: ignore[attr-defined]
+    return obj
 
 
 def test_add_class_from_function_arguments(parser):
-    get_calendar_class = class_from_function(get_calendar)
-    parser.add_class_arguments(get_calendar_class, "a")
+    get_obj_class = class_from_function(get_obj)
+    parser.add_class_arguments(get_obj_class, "a")
 
     if docstring_parser_support:
         help_str = get_parser_help(parser)
-        assert "Returns instance of Calendar" in help_str
+        assert "Returns instance of AnObj" in help_str
 
     cfg = parser.parse_args(["--a.a1=v", "--a.a2=3"])
     assert cfg.a == Namespace(a1="v", a2=3)
     init = parser.instantiate(cfg)
-    assert isinstance(init.a, Calendar)
+    assert isinstance(init.a, AnObj)
     assert init.a.a1 == "v"
     assert init.a.a2 == 3
 
