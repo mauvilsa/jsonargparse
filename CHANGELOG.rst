@@ -59,8 +59,8 @@ Deprecated
 -  ``Optional`` type parameters without a default and required parameters
    without a type annotation when using ``fail_untyped=False`` are currently set
    to optional with default ``None``. In v5.0.0 they will be required. Warnings
-   visible with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#929
-  <https://github.com/omni-us/jsonargparse/pull/929>`__).
+   visible with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#930
+  <https://github.com/omni-us/jsonargparse/pull/930>`__).
 
 
 v4.49.0 (2026-05-15)
