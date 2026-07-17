@@ -12,6 +12,7 @@ from importlib import import_module
 from inspect import getmodule as inspect_getmodule
 from io import StringIO
 from types import ModuleType
+from typing import Optional
 from unittest.mock import patch
 from warnings import catch_warnings
 
@@ -1341,3 +1342,49 @@ def test_parse_string_path_rename(parser):
         message="Parameter 'cfg_path' was renamed to 'path'",
         code='parser.parse_string(content=\'{"p1": 2.1}\', cfg_path="cfg.yaml")',
     )
+
+
+def test_optional_parameter_without_default_deprecation(parser, monkeypatch):
+    def without_default(value: Optional[int]):
+        pass  # pragma: no cover
+
+    monkeypatch.delenv("JSONARGPARSE_DEPRECATION_WARNINGS", raising=False)
+    with catch_warnings(record=True) as warnings:
+        parser.add_function_arguments(without_default)
+    assert warnings == []
+
+    monkeypatch.setenv("JSONARGPARSE_DEPRECATION_WARNINGS", "all")
+
+    def without_default_warning(other: Optional[int]):
+        pass  # pragma: no cover
+
+    with catch_warnings(record=True) as warnings:
+        parser.add_function_arguments(without_default_warning)
+    assert len(warnings) == 1
+    assert "Optional type parameters without a default" in str(warnings[0].message)
+    assert "In v5 they will be required" in str(warnings[0].message)
+
+    assert parser.get_defaults() == Namespace(value=None, other=None)
+
+
+def test_fail_untyped_false_required_parameter_deprecation(parser, monkeypatch):
+    def with_untyped_required(a1, a2=None):
+        pass  # pragma: no cover
+
+    monkeypatch.delenv("JSONARGPARSE_DEPRECATION_WARNINGS", raising=False)
+    with catch_warnings(record=True) as warnings:
+        parser.add_function_arguments(with_untyped_required, fail_untyped=False)
+    assert warnings == []
+
+    monkeypatch.setenv("JSONARGPARSE_DEPRECATION_WARNINGS", "all")
+
+    def with_untyped_required_warning(b1, b2=None):
+        pass  # pragma: no cover
+
+    with catch_warnings(record=True) as warnings:
+        parser.add_function_arguments(with_untyped_required_warning, fail_untyped=False)
+    assert len(warnings) == 1
+    assert "fail_untyped=False" in str(warnings[0].message)
+    assert "In v5 the type will be set to Any but the parameter will remain required" in str(warnings[0].message)
+
+    assert parser.get_defaults() == Namespace(a1=None, a2=None, b1=None, b2=None)
