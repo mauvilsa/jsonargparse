@@ -109,7 +109,8 @@ dev = [
     "jsonargparse[coverage]",
     "jsonargparse[doc]",
     "pre-commit>=2.19.0",
-    "tox>=3.25.0",
+    "tox>=4.0.0",
+    "tox-uv>=1.0.0",
     "build>=0.10.0",
 ]
 doc = [
@@ -178,9 +179,6 @@ ignore = [
     "E721",  # Allow comparing types with type()
 ]
 
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-
 
 [tool.typos.default.extend-identifiers]
 Villegas = "Villegas"
@@ -199,6 +197,10 @@ extras =
     argparse: coverage
 changedir = jsonargparse_tests
 allowlist_externals = rm
+passenv = UV_EXCLUDE_NEWER
+# Ensure uv installs into the tox env even if UV_SYSTEM_PYTHON=1 set outside
+setenv =
+    UV_SYSTEM_PYTHON = 0
 commands =
     all-extras: python -m pytest {posargs}
     no-extras: python -m pytest {posargs}
@@ -207,10 +209,15 @@ commands =
     argparse: python -m pytest -W ignore::pytest.PytestUnknownMarkWarning --tb=no -m "not (not_supported or implementation_specific or investigate)" tests_argparse_{env_name}.py {posargs}
 usedevelop = true
 
+[testenv:.pkg]
+setenv =
+    {[testenv]setenv}
+
 [testenv:omegaconf]
 extras = test,coverage,all
 changedir = jsonargparse_tests
 setenv =
+    {[testenv]setenv}
     JSONARGPARSE_OMEGACONF_FULL_TEST = true
 commands =
     python -m pytest {posargs}
@@ -226,7 +233,7 @@ commands =
         copy('conftest.py', Path(r'{envtmpdir}', 'conftest.py')); \
         copy('test_pydantic.py', Path(r'{envtmpdir}', 'test_pydantic.py'))\
     "
-    pip install "pydantic<2"
+    uv pip install --python {envpython} "pydantic<2"
     python -m pytest {posargs} {envtmpdir}/test_pydantic.py
 
     # Test with pydantic>=2 importing from pydantic.v1
@@ -238,13 +245,13 @@ commands =
         content = re.sub(r'^annotated = [^\\n]*', 'annotated = False', content, flags=re.MULTILINE); \
         path.write_text(content)\
     "
-    pip install "pydantic>=2"
+    uv pip install --python {envpython} "pydantic>=2"
     python -m pytest {posargs} {envtmpdir}/test_pydantic.py
 
 [testenv:without-pyyaml]
 extras = test,coverage,all
 commands =
-    pip uninstall -y argcomplete omegaconf pyyaml responses ruamel.yaml ruamel.yaml.clib types-PyYAML
+    uv pip uninstall --python {envpython} argcomplete omegaconf pyyaml responses ruamel.yaml ruamel.yaml.clib types-PyYAML
     python -m pytest {posargs}
 
 [testenv:without-future-annotations]
