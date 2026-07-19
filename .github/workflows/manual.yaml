@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # Only resolve distributions published at least one week ago, reducing the
+  # chance of installing packages affected by undetected supply chain attacks
+  UV_EXCLUDE_NEWER: 7 days
+  # Make uv pip install into the python provided by setup-python
+  UV_SYSTEM_PYTHON: 1
+
 jobs:
   tox-coverage:
     runs-on: ${{ inputs.OS }}
@@ -30,7 +37,11 @@ jobs:
             3.12
             3.13
             3.14
-      - run: pip install -e ".[dev]"
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install -e ".[dev]"
       - run: tox -- --cov=../jsonargparse --cov-append
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
