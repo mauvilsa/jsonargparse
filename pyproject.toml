@@ -127,10 +127,10 @@ maintainer = [
 Documentation-stable = "https://jsonargparse.readthedocs.io/en/stable/"
 Documentation-latest = "https://jsonargparse.readthedocs.io/en/latest/"
 Changes = "https://jsonargparse.readthedocs.io/en/stable/changelog.html"
-GitHub = "https://github.com/omni-us/jsonargparse"
+GitHub = "https://github.com/mauvilsa/jsonargparse"
 PyPI = "https://pypi.org/project/jsonargparse"
-SonarCloud = "https://sonarcloud.io/dashboard?id=omni-us_jsonargparse"
-Codecov = "https://codecov.io/gh/omni-us/jsonargparse"
+SonarCloud = "https://sonarcloud.io/dashboard?id=mauvilsa_jsonargparse"
+Codecov = "https://codecov.io/gh/mauvilsa/jsonargparse"
 
 
 [tool.setuptools]

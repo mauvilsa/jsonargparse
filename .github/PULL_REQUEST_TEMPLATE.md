@@ -1,6 +1,6 @@
 <!--
 Thank you for contributing! If you enjoy this project, please consider:
-- ⭐ Starring it on GitHub: https://github.com/omni-us/jsonargparse
+- ⭐ Starring it on GitHub: https://github.com/mauvilsa/jsonargparse
 - 🩷 Sponsoring it: https://github.com/sponsors/mauvilsa
 
 Even small donations are greatly appreciated and help sustain the project.
@@ -29,7 +29,7 @@ Use the following list as tasks to be completed before marking a pull request as
 task is not relevant or leave empty when in doubt.
 -->
 
-- [ ] Did you read the [contributing guideline](https://github.com/omni-us/jsonargparse/blob/main/CONTRIBUTING.rst)?
+- [ ] Did you read the [contributing guideline](https://github.com/mauvilsa/jsonargparse/blob/main/CONTRIBUTING.rst)?
 - [ ] If you used a **coding agent**, did you fully understand and validate all generated code and ensure it follows the contributing guidelines?
 - [ ] Did you update **the documentation**? (readme and public docstrings)
 - [ ] Did you write **unit tests** such that there is 100% coverage on related code? (required for bug fixes and new features)

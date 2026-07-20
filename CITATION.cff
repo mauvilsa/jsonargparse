@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you want to cite this software, please do as follows."
 title: jsonargparse
 license: MIT
-repository-code: https://github.com/omni-us/jsonargparse
+repository-code: https://github.com/mauvilsa/jsonargparse
 authors:
   - family-names: Villegas
     given-names: Mauricio

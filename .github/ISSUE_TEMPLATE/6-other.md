@@ -8,7 +8,7 @@ assignees: ''
 
 <!--
 Thank you for contributing! If you enjoy this project, please consider:
-- ⭐ Starring it on GitHub: https://github.com/omni-us/jsonargparse
+- ⭐ Starring it on GitHub: https://github.com/mauvilsa/jsonargparse
 - 🩷 Sponsoring it: https://github.com/sponsors/mauvilsa
 
 Even small donations are greatly appreciated and help sustain the project.

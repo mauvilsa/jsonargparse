@@ -1,11 +1,11 @@
 .. image:: https://readthedocs.org/projects/jsonargparse/badge/?version=stable
     :target: https://readthedocs.org/projects/jsonargparse/
-.. image:: https://github.com/omni-us/jsonargparse/actions/workflows/tests.yaml/badge.svg
-    :target: https://github.com/omni-us/jsonargparse/actions/workflows/tests.yaml
-.. image:: https://codecov.io/gh/omni-us/jsonargparse/branch/main/graph/badge.svg
-    :target: https://codecov.io/gh/omni-us/jsonargparse
-.. image:: https://sonarcloud.io/api/project_badges/measure?project=omni-us_jsonargparse&metric=alert_status
-    :target: https://sonarcloud.io/dashboard?id=omni-us_jsonargparse
+.. image:: https://github.com/mauvilsa/jsonargparse/actions/workflows/tests.yaml/badge.svg
+    :target: https://github.com/mauvilsa/jsonargparse/actions/workflows/tests.yaml
+.. image:: https://codecov.io/gh/mauvilsa/jsonargparse/branch/main/graph/badge.svg
+    :target: https://codecov.io/gh/mauvilsa/jsonargparse
+.. image:: https://sonarcloud.io/api/project_badges/measure?project=mauvilsa_jsonargparse&metric=alert_status
+    :target: https://sonarcloud.io/dashboard?id=mauvilsa_jsonargparse
 .. image:: https://badge.fury.io/py/jsonargparse.svg
     :target: https://badge.fury.io/py/jsonargparse
 
@@ -13,7 +13,7 @@
 jsonargparse
 ============
 
-Docs: https://jsonargparse.readthedocs.io/ | Source: https://github.com/omni-us/jsonargparse/
+Docs: https://jsonargparse.readthedocs.io/ | Source: https://github.com/mauvilsa/jsonargparse/
 
 ``jsonargparse`` is a library for creating command-line interfaces (CLIs) and
 making Python apps easily configurable. It is a well-maintained project with
@@ -23,7 +23,7 @@ coverage.
 
 Although ``jsonargparse`` might not be widely recognized yet, it already boasts
 a `substantial user base
-<https://github.com/omni-us/jsonargparse/network/dependents>`__. Most notably,
+<https://github.com/mauvilsa/jsonargparse/network/dependents>`__. Most notably,
 it serves as the framework behind pytorch-lightning's `LightningCLI
 <https://lightning.ai/docs/pytorch/stable/cli/lightning_cli.html>`__.
 
@@ -197,4 +197,4 @@ To install the latest development version, use the following command:
 
 .. code-block:: bash
 
-    pip install "jsonargparse[signatures] @ https://github.com/omni-us/jsonargparse/zipball/main"
+    pip install "jsonargparse[signatures] @ https://github.com/mauvilsa/jsonargparse/zipball/main"

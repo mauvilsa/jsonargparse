@@ -4,7 +4,7 @@ Contributing
 Contributions to jsonargparse are very welcome. There are multiple ways for
 people to help and contribute, among them:
 
-- Star ⭐ the GitHub project `<https://github.com/omni-us/jsonargparse/>`__.
+- Star ⭐ the GitHub project `<https://github.com/mauvilsa/jsonargparse/>`__.
 - `Sponsor 🩷 <https://github.com/sponsors/mauvilsa>`__ its maintenance and
   development.
 - Spread the word in your community about the features you like from
@@ -12,9 +12,9 @@ people to help and contribute, among them:
 - Help others to learn how to use jsonargparse by creating tutorials, such as
   blog posts and videos.
 - Become active in existing GitHub issues and pull requests.
-- Create `issues <https://github.com/omni-us/jsonargparse/issues>`__ for
+- Create `issues <https://github.com/mauvilsa/jsonargparse/issues>`__ for
   reporting bugs and proposing improvements.
-- Create `pull requests <https://github.com/omni-us/jsonargparse/pulls>`__ with
+- Create `pull requests <https://github.com/mauvilsa/jsonargparse/pulls>`__ with
   documentation improvements, bug fixes or new features.
 
 .. note::
@@ -44,7 +44,7 @@ install the development requirements. More precisely the steps are:
 
 .. code-block:: bash
 
-    git clone https://github.com/omni-us/jsonargparse.git
+    git clone https://github.com/mauvilsa/jsonargparse.git
     cd jsonargparse
     python -m venv venv
     . venv/bin/activate
@@ -192,7 +192,7 @@ branch in your fork for the changes you want to contribute, instead of using the
 
 The required tasks to do for a pull request, are listed in
 `PULL_REQUEST_TEMPLATE.md
-<https://github.com/omni-us/jsonargparse/blob/main/.github/PULL_REQUEST_TEMPLATE.md>`__.
+<https://github.com/mauvilsa/jsonargparse/blob/main/.github/PULL_REQUEST_TEMPLATE.md>`__.
 
 One of the tasks is adding a changelog entry. For this, note that this project
 uses semantic versioning. Depending on whether the contribution is a bug fix or

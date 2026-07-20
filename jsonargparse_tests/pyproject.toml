@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.urls]
-GitHub = "https://github.com/omni-us/jsonargparse"
+GitHub = "https://github.com/mauvilsa/jsonargparse"
 
 
 [tool.setuptools]
