@@ -739,6 +739,9 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
         arg_nodes = getattr(node, "posonlyargs", []) + node.args
         default_nodes = [None] * (len(arg_nodes) - len(node.defaults)) + node.defaults
         default_nodes = [d for n, d in enumerate(default_nodes) if arg_nodes[n].arg in param_names]
+        for kw_arg, kw_default in zip(node.kwonlyargs, node.kw_defaults):
+            if kw_arg.arg in param_names and kw_default is not None:
+                default_nodes.append(kw_default)
         return default_nodes
 
     def get_kwargs_pop_or_get_parameter(self, node, component, parent, doc_params):
