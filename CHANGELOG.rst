@@ -33,6 +33,9 @@ Fixed
 - Misleading error message for ``parse_optionals_as_positionals=True`` and
   unrecognized non-positional arguments (`#922
   <https://github.com/mauvilsa/jsonargparse/pull/922>`__).
+- Fix subclass instance defaults not being converted to dict format when the
+  parameter is keyword-only (declared after ``*``) (`#933
+  <https://github.com/mauvilsa/jsonargparse/pull/933>`__).
 
 Changed
 ^^^^^^^

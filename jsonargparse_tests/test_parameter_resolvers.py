@@ -740,6 +740,23 @@ def test_get_params_class_instance_defaults(subtests):
         assert is_lambda(params[8].default)
 
 
+class ClassInstanceDefaultsKwOnly:
+    def __init__(
+        self,
+        pos_inst: BaseC = BaseC(p=1),
+        *,
+        kw_inst: BaseC = BaseC(p=2),
+    ):
+        pass  # pragma: no cover
+
+
+def test_get_params_class_instance_defaults_kw_only():
+    params = get_params(ClassInstanceDefaultsKwOnly)
+    assert_params(params, ["pos_inst", "kw_inst"], help=False)
+    assert params[0].default == dict(class_path=f"{__name__}.BaseC", init_args=dict(p=1))
+    assert params[1].default == dict(class_path=f"{__name__}.BaseC", init_args=dict(p=2))
+
+
 def test_get_params_class_conditional_global_constant():
     params = get_params(ConditionalGlobalConstant)
     assert ["p1", "p3"] == [p.name for p in params]
