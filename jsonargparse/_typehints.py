@@ -99,6 +99,7 @@ NotRequired = typing_extensions_import("NotRequired")
 Required = typing_extensions_import("Required")
 _TypedDictMeta = typing_extensions_import("_TypedDictMeta")
 Unpack = typing_extensions_import("Unpack")
+get_type_hints = typing_extensions_import("get_type_hints")
 
 
 def _capture_typing_extension_shadows(name: str, *collections) -> None:
@@ -781,13 +782,44 @@ def raise_union_unexpected_value(subtypes, val: Any, exceptions: list[Exception]
     ) from exceptions[0]
 
 
-def resolve_forward_ref(ref):
+def resolve_forward_ref(ref, global_vars=None):
     if not isinstance(ref, ForwardRef) or not ref.__forward_module__:
         return ref
 
     aliases = __builtins__.copy()
     aliases.update(vars(import_module(ref.__forward_module__)))
+    if global_vars:
+        aliases.update(global_vars)
     return aliases.get(ref.__forward_arg__, ref)
+
+
+def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
+    from ._postponed_annotations import get_global_vars
+
+    # Includes the names from TYPE_CHECKING blocks, given as localns so that each base
+    # keeps resolving with the globals of the module in which it was defined.
+    global_vars = get_global_vars(typed_dict, logger)
+    try:
+        # Resolves forward references (e.g. from "from __future__ import annotations") and
+        # gathers inherited keys, while include_extras keeps the Required/NotRequired wrappers.
+        return get_type_hints(typed_dict, None, global_vars, include_extras=True)
+    except Exception as ex:
+        if logger:
+            logger.debug(f"Failed to resolve the annotations of {typed_dict}", exc_info=ex)
+    # A single key failing (e.g. a missing import or a typo) makes the resolution of the
+    # entire TypedDict fail. Thus, resolve one by one to keep the keys that do work.
+    return {k: resolve_forward_ref(v, global_vars) for k, v in typed_dict.__annotations__.items()}
+
+
+def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
+    # The totality of each class (including inheritance) is reflected in __required_keys__,
+    # even when the annotations are postponed. Required and NotRequired instead may not be
+    # reflected there (e.g. below Python 3.11 or with postponed annotations), so they are
+    # adjusted based on the resolved annotations.
+    required_keys = set(getattr(typed_dict, "__required_keys__", set(annotations)))
+    required_keys.update({k for k, v in annotations.items() if get_typehint_origin(v) in required_types})
+    required_keys.difference_update({k for k, v in annotations.items() if get_typehint_origin(v) in not_required_types})
+    return required_keys
 
 
 def adapt_typehints(
@@ -1009,27 +1041,16 @@ def adapt_typehints(
                         kwargs["prev_val"] = None
                 val[k] = adapt_typehints(v, subtypehints[1], **kwargs)
         if type(typehint) in typed_dict_meta_types:
-            if hasattr(typehint, "__required_keys__"):
-                required_keys = set(typehint.__required_keys__)
-                # The standard library TypedDict below Python 3.11 does not store runtime
-                # information about optional and required keys when using Required or NotRequired.
-                # Thus, capture explicitly Required keys
-                required_keys.update(
-                    {k for k, v in typehint.__annotations__.items() if get_typehint_origin(v) in required_types}
-                )
-                # And remove explicitly NotRequired keys
-                required_keys.difference_update(
-                    {k for k, v in typehint.__annotations__.items() if get_typehint_origin(v) in not_required_types}
-                )
+            dict_annotations = get_typed_dict_annotations(typehint, logger)
+            required_keys = get_typed_dict_required_keys(typehint, dict_annotations)
             missing_keys = required_keys - val.keys()
             if missing_keys:
                 raise_unexpected_value(f"Missing required keys: {missing_keys}", val)
-            extra_keys = val.keys() - typehint.__annotations__.keys()
+            extra_keys = val.keys() - dict_annotations.keys()
             if extra_keys:
                 raise_unexpected_value(f"Unexpected keys: {extra_keys}", val)
             for k, v in val.items():
-                subtypehint = resolve_forward_ref(typehint.__annotations__[k])
-                val[k] = adapt_typehints(v, subtypehint, **adapt_kwargs)
+                val[k] = adapt_typehints(v, dict_annotations[k], **adapt_kwargs)
         if typehint_origin is MappingProxyType and not serialize:
             val = MappingProxyType(val)
         elif typehint_origin is OrderedDict:

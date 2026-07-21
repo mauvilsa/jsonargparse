@@ -316,16 +316,29 @@ def replace_generic_type_vars(params: ParamList, parent) -> None:
             param.annotation = replace_type_vars(param.annotation)
 
 
-def unpack_typed_dict_kwargs(params: ParamList, kwargs_idx: int) -> int:
+def unpack_typed_dict_kwargs(params: ParamList, kwargs_idx: int, logger=None) -> int:
+    from ._typehints import (
+        NotRequired,
+        get_typed_dict_annotations,
+        get_typed_dict_required_keys,
+        not_required_types,
+    )
+
     kwargs = params[kwargs_idx]
     annotation = kwargs.annotation
     if is_unpack_typehint(annotation):
         params.pop(kwargs_idx)
         annotation_args: tuple = getattr(annotation, "__args__", ())
         assert len(annotation_args) == 1, "Unpack requires a single type argument"
-        dict_annotations = annotation_args[0].__annotations__
+        typed_dict = annotation_args[0]
+        dict_annotations = get_typed_dict_annotations(typed_dict, logger)
+        required_keys = get_typed_dict_required_keys(typed_dict, dict_annotations)
         new_params = []
         for nm, annot in dict_annotations.items():
+            if nm not in required_keys and get_typehint_origin(annot) not in not_required_types:
+                # Mark optional keys (e.g. from total=False) as NotRequired so that they
+                # are added as non-required arguments.
+                annot = NotRequired[annot]
             new_params.append(
                 ParamData(
                     name=nm,
@@ -878,7 +891,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
         )
         self.replace_param_default_subclass_specs(params)
         if kwargs_idx >= 0:
-            kwargs_idx = unpack_typed_dict_kwargs(params, kwargs_idx)
+            kwargs_idx = unpack_typed_dict_kwargs(params, kwargs_idx, self.logger)
         if args_idx >= 0 or kwargs_idx >= 0:
             self.doc_params = doc_params
             with mro_context(self.parent):

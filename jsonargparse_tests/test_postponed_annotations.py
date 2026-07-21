@@ -6,7 +6,7 @@ import os
 import sys
 from textwrap import dedent
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Tuple, Type, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +26,7 @@ from jsonargparse._postponed_annotations import (
     get_types,
     type_requires_eval,
 )
+from jsonargparse._typehints import Unpack, get_typed_dict_annotations
 from jsonargparse.typing import Path_drw
 from jsonargparse_tests.conftest import capture_logs, source_unavailable
 from jsonargparse_tests.test_dataclasses import DifferentModuleBaseData
@@ -149,6 +150,7 @@ def test_type_checking_visitor_failure(logger):
 
 if TYPE_CHECKING:  # pragma: no cover
     import xml.dom
+    from decimal import Decimal
 
     class TypeCheckingClass1:
         pass
@@ -238,6 +240,95 @@ def test_get_types_type_checking_tuple():
     assert list(types) == ["p1"]
     tpl = "typing.Tuple"
     assert str(types["p1"]) == f"{tpl}[{__name__}.TypeCheckingClass1, {__name__}.TypeCheckingClass2]"
+
+
+# Types only imported in a TYPE_CHECKING block are resolved for TypedDict keys, the same
+# as for regular parameters of a signature.
+
+
+class TypeCheckingTypedDict(TypedDict, total=False):
+    num: int
+    amount: Decimal
+    only_typing: TypeCheckingClass1
+
+
+class TypeCheckingTypedDictClass:
+    def __init__(self, **kwargs: Unpack[TypeCheckingTypedDict]) -> None:
+        self.kwargs = kwargs  # pragma: no cover
+
+
+def test_get_typed_dict_annotations_type_checking():
+    annotations = get_typed_dict_annotations(TypeCheckingTypedDict)
+    assert annotations["num"] is int
+    assert annotations["amount"] is __import__("decimal").Decimal
+    assert annotations["only_typing"].__name__ == "TypeCheckingClass1"
+
+
+def test_typed_dict_type_checking_type(parser):
+    parser.add_argument("--opts", type=TypeCheckingTypedDict)
+    cfg = parser.parse_args(['--opts={"num": 1, "amount": "1.5"}'])
+    assert cfg.opts == {"num": 1, "amount": __import__("decimal").Decimal("1.5")}
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_typed_dict_type_checking_unpack(parser):
+    added = parser.add_class_arguments(TypeCheckingTypedDictClass, "cls")
+    assert added == ["cls.num", "cls.amount", "cls.only_typing"]
+    cfg = parser.parse_args(["--cls.num=1", "--cls.amount=1.5"])
+    assert cfg.cls == Namespace(num=1, amount=__import__("decimal").Decimal("1.5"))
+
+
+# When an annotation can't be resolved, e.g. a missing import or a typo, get_type_hints
+# fails for the entire TypedDict. Thus, the annotations are resolved one by one so that
+# the keys that do resolve remain usable.
+
+
+class UnresolvableTypedDict(TypedDict, total=False):
+    num: int
+    typo: MisspelledType  # type: ignore[name-defined]  # noqa: F821
+
+
+func_unresolvable_typed_dict = TypedDict(
+    "func_unresolvable_typed_dict",
+    {"num": int, "ref": "Path_drw", "typo": "MisspelledType"},  # type: ignore[name-defined]  # noqa: F821
+    total=False,
+)
+
+
+def assert_unresolved_forward_ref(annotation, name):
+    assert isinstance(annotation, ForwardRef)
+    assert annotation.__forward_arg__ == name
+
+
+def test_get_typed_dict_annotations_unresolvable_key():
+    annotations = get_typed_dict_annotations(UnresolvableTypedDict)
+    assert annotations["num"] is int
+    assert_unresolved_forward_ref(annotations["typo"], "MisspelledType")
+
+
+def test_get_typed_dict_annotations_unresolvable_key_functional():
+    annotations = get_typed_dict_annotations(func_unresolvable_typed_dict)
+    assert annotations["num"] is int  # not a forward ref, used as is
+    assert annotations["ref"] is Path_drw  # forward ref resolved from the module
+    assert_unresolved_forward_ref(annotations["typo"], "MisspelledType")
+
+
+def test_typed_dict_unresolvable_key_type(parser):
+    parser.add_argument("--opts", type=UnresolvableTypedDict)
+    cfg = parser.parse_args(['--opts={"num": 1}'])
+    assert cfg.opts == {"num": 1}
+
+
+class UnresolvableTypedDictClass:
+    def __init__(self, **kwargs: Unpack[UnresolvableTypedDict]) -> None:
+        self.kwargs = kwargs  # pragma: no cover
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_typed_dict_unresolvable_key_unpack(parser):
+    added = parser.add_class_arguments(UnresolvableTypedDictClass, "cls")
+    assert added == ["cls.num"]  # the unresolvable key is skipped
+    assert parser.parse_args(["--cls.num=1"]).cls == Namespace(num=1)
 
 
 def function_type_checking_type(p1: Type["TypeCheckingClass2"]):
