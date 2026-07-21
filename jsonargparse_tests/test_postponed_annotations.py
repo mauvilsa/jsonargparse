@@ -258,30 +258,24 @@ class TypeCheckingTypedDictClass:
 
 
 def test_get_typed_dict_annotations_type_checking():
-    from decimal import Decimal as RuntimeDecimal
-
     annotations = get_typed_dict_annotations(TypeCheckingTypedDict)
     assert annotations["num"] is int
-    assert annotations["amount"] is RuntimeDecimal
+    assert annotations["amount"] is __import__("decimal").Decimal
     assert annotations["only_typing"].__name__ == "TypeCheckingClass1"
 
 
 def test_typed_dict_type_checking_type(parser):
-    from decimal import Decimal as RuntimeDecimal
-
     parser.add_argument("--opts", type=TypeCheckingTypedDict)
     cfg = parser.parse_args(['--opts={"num": 1, "amount": "1.5"}'])
-    assert cfg["opts"] == {"num": 1, "amount": RuntimeDecimal("1.5")}
+    assert cfg.opts == {"num": 1, "amount": __import__("decimal").Decimal("1.5")}
 
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
 def test_typed_dict_type_checking_unpack(parser):
-    from decimal import Decimal as RuntimeDecimal
-
     added = parser.add_class_arguments(TypeCheckingTypedDictClass, "cls")
     assert added == ["cls.num", "cls.amount", "cls.only_typing"]
     cfg = parser.parse_args(["--cls.num=1", "--cls.amount=1.5"])
-    assert cfg.cls == Namespace(num=1, amount=RuntimeDecimal("1.5"))
+    assert cfg.cls == Namespace(num=1, amount=__import__("decimal").Decimal("1.5"))
 
 
 # When an annotation can't be resolved, e.g. a missing import or a typo, get_type_hints
@@ -321,7 +315,8 @@ def test_get_typed_dict_annotations_unresolvable_key_functional():
 
 def test_typed_dict_unresolvable_key_type(parser):
     parser.add_argument("--opts", type=UnresolvableTypedDict)
-    assert parser.parse_args(['--opts={"num": 1}'])["opts"] == {"num": 1}
+    cfg = parser.parse_args(['--opts={"num": 1}'])
+    assert cfg.opts == {"num": 1}
 
 
 class UnresolvableTypedDictClass:

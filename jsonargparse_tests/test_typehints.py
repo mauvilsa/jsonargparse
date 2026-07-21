@@ -855,7 +855,7 @@ def test_unpack_total_false_typeddict_parse(parser):
     cfg = parser.parse_args(["--cls.c=1.5", "--cls.a=2", "--cls.b=x"])
     assert cfg.cls == Namespace(a=2, b="x", c=1.5)
     # the Required key is still required
-    with pytest.raises(ArgumentError):
+    with pytest.raises(ArgumentError, match="the following arguments are required: cls.c"):
         parser.parse_args([])
 
 
@@ -912,9 +912,9 @@ def test_unpack_typeddict_totality_inheritance(parser):
     assert cfg.cls == Namespace(a=1, c=3)
     cfg = parser.parse_args(["--cls.a=1", "--cls.b=2", "--cls.c=3"])
     assert cfg.cls == Namespace(a=1, b=2, c=3)
-    with pytest.raises(ArgumentError):
+    with pytest.raises(ArgumentError, match="the following arguments are required: cls.c"):
         parser.parse_args(["--cls.a=1", "--cls.b=2"])
-    with pytest.raises(ArgumentError):
+    with pytest.raises(ArgumentError, match="the following arguments are required: cls.a"):
         parser.parse_args(["--cls.b=2", "--cls.c=3"])
 
 
@@ -944,15 +944,14 @@ if Required and NotRequired:
 def test_typeddict_required_notrequired_totality_type(parser):
     parser.add_argument("--top", type=OverrideTopDict, required=False)
     # all required keys provided, optional (b, x) omitted
-    assert {"a": 1, "c": 3, "y": "z"} == parser.parse_args(['--top={"a": 1, "c": 3, "y": "z"}'])["top"]
+    cfg = parser.parse_args(['--top={"a": 1, "c": 3, "y": "z"}'])
+    assert cfg.top == {"a": 1, "c": 3, "y": "z"}
     # Required override in a total=False class is required
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys: {'y'}"):
         parser.parse_args(['--top={"a": 1, "c": 3}'])
-    ctx.match("Missing required keys: {'y'}")
     # NotRequired override in a total=True class is optional (no error for missing x)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys: {'c'}"):
         parser.parse_args(['--top={"a": 1, "y": "z"}'])
-    ctx.match("Missing required keys: {'c'}")
 
 
 @pytest.mark.skipif(not (Unpack and Required and NotRequired), reason="Unpack/Required/NotRequired required")
