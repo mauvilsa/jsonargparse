@@ -36,6 +36,17 @@ Fixed
 - Fix subclass instance defaults not being converted to dict format when the
   parameter is keyword-only (declared after ``*``) (`#933
   <https://github.com/mauvilsa/jsonargparse/pull/933>`__).
+- Signature ``**kwargs: Unpack[TypedDict]`` where the ``TypedDict`` has
+  ``total=False`` incorrectly made the non-``Required`` keys required (`#934
+  <https://github.com/mauvilsa/jsonargparse/pull/934>`__).
+- ``TypedDict`` requiredness of keys not correctly resolved when using
+  postponed annotations (``from __future__ import annotations``) together with
+  ``Required``/``NotRequired`` or totality-flipping inheritance, affecting both
+  ``Unpack`` and ``type=`` cases (`#934
+  <https://github.com/mauvilsa/jsonargparse/pull/934>`__).
+- ``TypedDict`` keys annotated with types only imported in ``TYPE_CHECKING``
+  blocks not being resolved (`#934
+  <https://github.com/mauvilsa/jsonargparse/pull/934>`__).
 
 Changed
 ^^^^^^^

@@ -820,16 +820,55 @@ def test_invalid_inherited_unpack_typeddict(parser, init_args):
         parser.parse_args([f"--testclass={json.dumps(test_config)}"])
 
 
+if Unpack:
+    TotalFalseDict = TypedDict(
+        "TotalFalseDict",
+        {"a": int, "b": str, "c": Required[float]},
+        total=False,
+    )
+
+    class TotalFalseUnpackClass:
+        def __init__(self, **kwargs: Unpack[TotalFalseDict]) -> None:  # pragma: no cover
+            self.a = kwargs.get("a")
+            self.b = kwargs.get("b")
+            self.c = kwargs["c"]
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_unpack_total_false_typeddict_optionality(parser):
+    added = parser.add_class_arguments(TotalFalseUnpackClass, "cls")
+    assert set(added) == {"cls.a", "cls.b", "cls.c"}
+    required = {action.dest for action in parser._actions if getattr(action, "required", False)}
+    # total=False keys without Required are optional
+    assert "cls.a" not in required
+    assert "cls.b" not in required
+    # keys wrapped in Required stay required even when total=False
+    assert "cls.c" in required
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_unpack_total_false_typeddict_parse(parser):
+    parser.add_class_arguments(TotalFalseUnpackClass, "cls")
+    # only the Required key needs to be provided
+    cfg = parser.parse_args(["--cls.c=1.5"])
+    assert cfg.cls.c == 1.5
+    cfg = parser.parse_args(["--cls.c=1.5", "--cls.a=2", "--cls.b=x"])
+    assert cfg.cls == Namespace(a=2, b="x", c=1.5)
+    # the Required key is still required
+    with pytest.raises(ArgumentError):
+        parser.parse_args([])
+
+
 class BottomDict(TypedDict, total=True):
-    a: int
+    a: int  # total=True -> required
 
 
 class MiddleDict(BottomDict, total=False):
-    b: int
+    b: int  # total=False -> optional
 
 
 class TopDict(MiddleDict, total=True):
-    c: int
+    c: int  # total=True -> required
 
 
 def test_typeddict_totality_inheritance(parser):
@@ -851,6 +890,77 @@ def test_typeddict_totality_inheritance(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--topdict={"b":2, "c": 3}'])
     ctx.match("Missing required keys")
+
+
+if Unpack:
+
+    class TotalityInheritanceUnpackClass:
+        def __init__(self, **kwargs: Unpack[TopDict]) -> None:  # pragma: no cover
+            self.a = kwargs["a"]
+            self.b = kwargs.get("b")
+            self.c = kwargs["c"]
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_unpack_typeddict_totality_inheritance(parser):
+    parser.add_class_arguments(TotalityInheritanceUnpackClass, "cls")
+    required = {action.dest for action in parser._actions if getattr(action, "required", False)}
+    # requiredness follows each class' own totality: a (total=True), b (total=False), c (total=True)
+    assert required == {"cls.a", "cls.c"}
+    cfg = parser.parse_args(["--cls.a=1", "--cls.c=3"])
+    # the optional key (total=False) is omitted when not provided
+    assert cfg.cls == Namespace(a=1, c=3)
+    cfg = parser.parse_args(["--cls.a=1", "--cls.b=2", "--cls.c=3"])
+    assert cfg.cls == Namespace(a=1, b=2, c=3)
+    with pytest.raises(ArgumentError):
+        parser.parse_args(["--cls.a=1", "--cls.b=2"])
+    with pytest.raises(ArgumentError):
+        parser.parse_args(["--cls.b=2", "--cls.c=3"])
+
+
+# Required/NotRequired overriding the class totality, across totality-flipping inheritance.
+# The test module uses "from __future__ import annotations" so these are postponed annotations.
+if Required and NotRequired:
+
+    class OverrideBaseDict(TypedDict, total=True):
+        a: int  # total=True -> required
+        x: NotRequired[str]  # override -> optional
+
+    class OverrideMiddleDict(OverrideBaseDict, total=False):
+        b: int  # total=False -> optional
+        y: Required[str]  # override -> required
+
+    class OverrideTopDict(OverrideMiddleDict, total=True):
+        c: int  # total=True -> required
+
+    if Unpack:
+
+        class OverrideUnpackClass:
+            def __init__(self, **kwargs: Unpack[OverrideTopDict]) -> None:  # pragma: no cover
+                self.kwargs = kwargs
+
+
+@pytest.mark.skipif(not (Required and NotRequired), reason="Required/NotRequired required")
+def test_typeddict_required_notrequired_totality_type(parser):
+    parser.add_argument("--top", type=OverrideTopDict, required=False)
+    # all required keys provided, optional (b, x) omitted
+    assert {"a": 1, "c": 3, "y": "z"} == parser.parse_args(['--top={"a": 1, "c": 3, "y": "z"}'])["top"]
+    # Required override in a total=False class is required
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--top={"a": 1, "c": 3}'])
+    ctx.match("Missing required keys: {'y'}")
+    # NotRequired override in a total=True class is optional (no error for missing x)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--top={"a": 1, "y": "z"}'])
+    ctx.match("Missing required keys: {'c'}")
+
+
+@pytest.mark.skipif(not (Unpack and Required and NotRequired), reason="Unpack/Required/NotRequired required")
+def test_typeddict_required_notrequired_totality_unpack(parser):
+    added = parser.add_class_arguments(OverrideUnpackClass, "cls")
+    assert set(added) == {"cls.a", "cls.b", "cls.c", "cls.x", "cls.y"}
+    required = {action.dest for action in parser._actions if getattr(action, "required", False)}
+    assert required == {"cls.a", "cls.c", "cls.y"}
 
 
 def test_mapping_proxy_type(parser):
