@@ -12,7 +12,7 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
-v4.50.0 (unreleased)
+v4.50.0 (2026-07-22)
 --------------------
 
 Added
@@ -20,8 +20,8 @@ Added
 - ``FromConfigMixin.from_config`` with ``config_read_mode_fsspec_enabled=True``
   now supports fsspec config loading including the resolving of relative paths
   (`#918 <https://github.com/mauvilsa/jsonargparse/pull/918>`__).
-- Add :obj:`.Unset` sentinel and ``unset_sentinel`` setting in
-  ``.set_parsing_settings`` to distinguish between arguments not provided and
+- Add ``.Unset`` sentinel and ``unset_sentinel`` setting in
+  ``set_parsing_settings`` to distinguish between arguments not provided and
   those explicitly set to ``null`` (`#909
   <https://github.com/mauvilsa/jsonargparse/pull/909>`__).
 
@@ -57,10 +57,9 @@ Changed
 
 Deprecated
 ^^^^^^^^^^
-- ``skip_none`` parameter of :meth:`dump <.ArgumentParser.dump>`, :meth:`save
-  <.ArgumentParser.save>`, and :meth:`validate <.ArgumentParser.validate>` was
-  deprecated and will be removed in v5.0.0. Use ``skip_unset`` instead (`#909
-  <https://github.com/mauvilsa/jsonargparse/pull/909>`__).
+- ``skip_none`` parameter of ``ArgumentParser``'s ``dump``, ``save``, and
+  ``validate`` was deprecated and will be removed in v5.0.0. Use ``skip_unset``
+  instead (`#909 <https://github.com/mauvilsa/jsonargparse/pull/909>`__).
 - ``skip_null`` flag for ``--print_config`` was deprecated and will be removed
   in v5.0.0. Use ``skip_unset`` instead (`#909
   <https://github.com/mauvilsa/jsonargparse/pull/909>`__).
@@ -70,10 +69,10 @@ Deprecated
 - ``ArgumentParser.merge_config`` is deprecated and will be removed in v5.0.0.
   There is no replacement since it is considered internal (`#925
   <https://github.com/mauvilsa/jsonargparse/pull/925>`__).
--  ``Optional`` type parameters without a default and required parameters
-   without a type annotation when using ``fail_untyped=False`` are currently set
-   to optional with default ``None``. In v5.0.0 they will be required. Warnings
-   visible with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#930
+- ``Optional`` type parameters without a default and required parameters
+  without a type annotation when using ``fail_untyped=False`` are currently set
+  to optional with default ``None``. In v5.0.0 they will be required. Warnings
+  visible with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#930
   <https://github.com/mauvilsa/jsonargparse/pull/930>`__).
 
 
