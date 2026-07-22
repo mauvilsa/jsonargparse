@@ -4,14 +4,19 @@ import calendar
 import inspect
 import xml.dom
 from random import shuffle
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Protocol, Union
 from unittest.mock import patch
 
 import pytest
 
 from jsonargparse import Namespace, class_from_function
 from jsonargparse._optionals import docstring_parser_support
-from jsonargparse._parameter_resolvers import ConditionalDefault, is_lambda
+from jsonargparse._parameter_resolvers import (
+    ConditionalDefault,
+    ParamData,
+    is_lambda,
+    is_param_subclass_instance_default,
+)
 from jsonargparse._parameter_resolvers import get_signature_parameters as get_params
 from jsonargparse_tests.conftest import BaseClass, capture_logs, source_unavailable, wrap_fn
 
@@ -1017,3 +1022,44 @@ def test_get_params_failures():
     pytest.raises(ValueError, lambda: get_params("invalid"))
     pytest.raises(ValueError, lambda: get_params(Param, "p1"))
     pytest.raises(AttributeError, lambda: get_params(Param, "p2"))
+
+
+# non-runtime-checkable protocol tests
+
+
+class _NonRTCheckableProtocol(Protocol):
+    """A Protocol without @runtime_checkable, like openai's Client in strands."""
+
+    def execute(self) -> None: ...
+
+
+class _ConcreteImpl:
+    """Implements _NonRTCheckableProtocol structurally."""
+
+    def execute(self) -> None:
+        pass
+
+
+class _DoesNotImpl:
+    """Does NOT implement _NonRTCheckableProtocol."""
+
+
+@pytest.mark.parametrize(
+    "default, expected",
+    [
+        (None, False),  # falsy: None doesn't implement the protocol
+        (False, False),  # falsy non-None: bool doesn't implement the protocol
+        (_ConcreteImpl(), True),  # structurally implements the protocol → True
+        (_DoesNotImpl(), False),  # does not implement the protocol → False
+    ],
+    ids=["none_default", "false_default", "implementing_instance", "non_implementing_instance"],
+)
+def test_is_param_subclass_instance_default_non_runtime_checkable_protocol(default, expected):
+    param = ParamData(
+        name="client",
+        annotation=Optional[_NonRTCheckableProtocol],
+        default=default,
+        kind=inspect.Parameter.KEYWORD_ONLY,
+        component=None,
+    )
+    assert is_param_subclass_instance_default(param) is expected

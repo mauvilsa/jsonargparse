@@ -382,12 +382,12 @@ ast_literals = {ast.dump(ast.parse(v, mode="eval").body): partial(ast.literal_ev
 
 
 def is_param_subclass_instance_default(param: ParamData) -> bool:
-    from ._typehints import ActionTypeHint, get_optional_arg, get_subclass_types
+    from ._typehints import ActionTypeHint, get_optional_arg, get_subclass_types, is_instance_or_supports_protocol
 
     annotation = get_optional_arg(param.annotation)
     class_types = get_subclass_types(annotation, callable_return=True)
     return bool(
-        (class_types and isinstance(param.default, class_types))
+        (class_types and any(is_instance_or_supports_protocol(param.default, ct) for ct in class_types))
         or (
             is_lambda(param.default)
             and ActionTypeHint.is_callable_typehint(annotation)
