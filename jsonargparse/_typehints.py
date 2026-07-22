@@ -793,12 +793,55 @@ def resolve_forward_ref(ref, global_vars=None):
     return aliases.get(ref.__forward_arg__, ref)
 
 
+def replace_unresolved_forward_refs(typehint):
+    """Replaces the unresolved forward references of a type hint with Any.
+
+    Postponed annotations that fail to resolve, e.g. because of a missing import or a
+    typo, remain as a string or a ForwardRef. Replacing only the unresolved parts with
+    Any keeps the parameter usable, though without validation, instead of discarding it.
+    """
+    if isinstance(typehint, (str, ForwardRef)):
+        return Any
+    if get_typehint_origin(typehint) in literal_types:
+        return typehint  # the args of a Literal are values, not types
+    args = getattr(typehint, "__args__", None)
+    if not args:
+        return typehint
+    new_args = tuple(replace_unresolved_forward_refs(a) for a in args)
+    if new_args == args:
+        return typehint
+    try:
+        if hasattr(typehint, "copy_with"):
+            return typehint.copy_with(new_args)
+        return get_typehint_origin(typehint)[new_args]
+    except Exception:
+        return Any
+
+
 def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
-    from ._postponed_annotations import get_global_vars
+    from ._postponed_annotations import get_global_vars, update_module_global_vars
 
     # Includes the names from TYPE_CHECKING blocks, given as localns so that each base
     # keeps resolving with the globals of the module in which it was defined.
     global_vars = get_global_vars(typed_dict, logger)
+    # Keys inherited from a base defined in a different module also need the names of
+    # that module, including its TYPE_CHECKING blocks. The modules are taken from the
+    # forward references because a TypedDict does not keep its bases in __mro__, and
+    # __orig_bases__ is not available in all supported python versions. The names of the
+    # TypedDict's own module take precedence over the inherited ones.
+    inherited_modules = []
+    for annotation in typed_dict.__annotations__.values():
+        module = getattr(annotation, "__forward_module__", None)
+        module = getattr(module, "__name__", module)
+        if isinstance(module, str) and module != typed_dict.__module__ and module not in inherited_modules:
+            inherited_modules.append(module)
+    if inherited_modules:
+        inherited_vars: dict = {}
+        for module in inherited_modules:
+            update_module_global_vars(module, inherited_vars, logger)
+        for key, value in inherited_vars.items():
+            if key not in global_vars:
+                global_vars[key] = value
     try:
         # Resolves forward references (e.g. from "from __future__ import annotations") and
         # gathers inherited keys, while include_extras keeps the Required/NotRequired wrappers.

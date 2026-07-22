@@ -31,6 +31,7 @@ from ._typehints import (
     is_list_pathlike,
     is_optional,
     not_required_types,
+    replace_unresolved_forward_refs,
     sequence_origin_types,
 )
 from ._util import NoneType, get_import_path, get_private_kwargs, get_typehint_origin, iter_to_set_str
@@ -338,6 +339,15 @@ class SignatureArguments(LoggerProperty):
         name = param.name
         kind = param.kind
         annotation = param.annotation
+        unresolved_replaced = replace_unresolved_forward_refs(annotation)
+        if unresolved_replaced is not annotation:
+            self.logger.debug(
+                f'Unable to resolve the type of parameter "{name}" from '
+                f'"{get_parameter_origins(param.component, param.parent)}": {annotation}. '
+                "The unresolved parts are replaced with Any, so the parameter is accepted "
+                "but its value is not validated."
+            )
+            annotation = unresolved_replaced
         if default == inspect_empty:
             default = param.default
             if default == inspect_empty:

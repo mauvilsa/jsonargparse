@@ -12,6 +12,23 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
+v4.51.0 (unreleased)
+--------------------
+
+Fixed
+^^^^^
+- ``TypedDict`` keys inherited from a base defined in a different module not
+  resolving the types only imported in the ``TYPE_CHECKING`` block of that
+  module (`#935 <https://github.com/mauvilsa/jsonargparse/pull/935>`__).
+
+Changed
+^^^^^^^
+- Signature parameters with a type hint that fails to resolve, e.g. a missing
+  import or a typo in a postponed annotation, are now accepted with the
+  unresolved parts replaced by ``Any``, instead of the parameter being silently
+  skipped (`#935 <https://github.com/mauvilsa/jsonargparse/pull/935>`__).
+
+
 v4.50.0 (2026-07-22)
 --------------------
 
