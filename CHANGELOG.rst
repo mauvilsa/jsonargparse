@@ -20,6 +20,16 @@ Fixed
 - ``TypeError`` when adding arguments for a class that has a parameter that has
   a default and is annotated with a non-``@runtime_checkable`` ``Protocol`` type
   (`#935 <https://github.com/mauvilsa/jsonargparse/pull/935>`__).
+- ``TypedDict`` keys inherited from a base defined in a different module not
+  resolving the types only imported in the ``TYPE_CHECKING`` block of that
+  module (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__).
+
+Changed
+^^^^^^^
+- Signature parameters with a type hint that fails to resolve, e.g. a missing
+  import or a typo in a postponed annotation, are now accepted with the
+  unresolved parts replaced by ``Any``, instead of the parameter being silently
+  skipped (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__).
 
 Changed
 ^^^^^^^

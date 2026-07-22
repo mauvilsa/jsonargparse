@@ -1,6 +1,7 @@
 from __future__ import annotations  # keep
 
 import dataclasses
+import decimal
 import importlib.util
 import os
 import sys
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import Namespace
+from jsonargparse import ArgumentError, Namespace
 from jsonargparse import _postponed_annotations as postponed_annotations
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse._parameter_resolvers import get_signature_parameters as get_params
@@ -26,9 +27,15 @@ from jsonargparse._postponed_annotations import (
     get_types,
     type_requires_eval,
 )
-from jsonargparse._typehints import Unpack, get_typed_dict_annotations
+from jsonargparse._typehints import (
+    Required,
+    Unpack,
+    get_typed_dict_annotations,
+    get_typed_dict_required_keys,
+)
 from jsonargparse.typing import Path_drw
 from jsonargparse_tests.conftest import capture_logs, source_unavailable
+from jsonargparse_tests.different_module_type_checking import DifferentModuleTypeCheckingTypedDict
 from jsonargparse_tests.test_dataclasses import DifferentModuleBaseData
 
 
@@ -327,8 +334,68 @@ class UnresolvableTypedDictClass:
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
 def test_typed_dict_unresolvable_key_unpack(parser):
     added = parser.add_class_arguments(UnresolvableTypedDictClass, "cls")
-    assert added == ["cls.num"]  # the unresolvable key is skipped
+    assert added == ["cls.num", "cls.typo"]  # the unresolvable key falls back to Any
+    cfg = parser.parse_args(["--cls.num=1", "--cls.typo=abc"])
+    assert cfg.cls == Namespace(num=1, typo="abc")
+    # being Any, the unresolvable key accepts any value without validation
+    cfg = parser.parse_args(["--cls.num=1", '--cls.typo={"x": [1, 2]}'])
+    assert cfg.cls.typo == {"x": [1, 2]}
+    # and it remains not required, since the key is not required
     assert parser.parse_args(["--cls.num=1"]).cls == Namespace(num=1)
+
+
+def function_unresolvable_annotation(num: int = 1, typo: "MisspelledType" = None):  # type: ignore[name-defined]  # noqa: F821
+    return num  # pragma: no cover
+
+
+def test_function_unresolvable_annotation_falls_back_to_any(parser):
+    added = parser.add_function_arguments(function_unresolvable_annotation, "fn")
+    assert added == ["fn.num", "fn.typo"]  # the unresolvable annotation falls back to Any
+    cfg = parser.parse_args(["--fn.typo=abc"])
+    assert cfg.fn == Namespace(num=1, typo="abc")
+
+
+def test_unresolvable_annotation_debug_log(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        parser.add_function_arguments(function_unresolvable_annotation, "fn")
+    assert "Unable to resolve the type of parameter" in logs.getvalue()
+    assert "typo" in logs.getvalue()
+
+
+# A TypedDict that inherits from a TypedDict in a different module must resolve the
+# names of that module's TYPE_CHECKING block, not only the names of its own module.
+
+
+class InheritDifferentModuleTypedDict(DifferentModuleTypeCheckingTypedDict, total=False):
+    extra: bool
+
+
+class InheritDifferentModuleTypedDictClass:
+    def __init__(self, **kwargs: Unpack[InheritDifferentModuleTypedDict]) -> None:
+        self.kwargs = kwargs  # pragma: no cover
+
+
+def test_get_typed_dict_annotations_inherit_different_module_type_checking():
+    annotations = get_typed_dict_annotations(InheritDifferentModuleTypedDict)
+    assert annotations["name"] == Required[str]
+    assert annotations["amount"] is decimal.Decimal
+    assert annotations["extra"] is bool
+    # only_in_base is exclusive to the TYPE_CHECKING block of the base class' module
+    assert annotations["only_in_base"].__name__ == "TypeCheckingOnlyInDifferentModule"
+    required_keys = get_typed_dict_required_keys(InheritDifferentModuleTypedDict, annotations)
+    assert required_keys == {"name"}
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_typed_dict_inherit_different_module_type_checking_unpack(parser):
+    added = parser.add_class_arguments(InheritDifferentModuleTypedDictClass, "cls")
+    assert added == ["cls.name", "cls.amount", "cls.only_in_base", "cls.extra"]
+    cfg = parser.parse_args(["--cls.name=x", "--cls.amount=1.5", "--cls.extra=true"])
+    assert cfg.cls == Namespace(name="x", amount=decimal.Decimal("1.5"), extra=True)
+    # the key wrapped in Required stays required even though the bases are total=False
+    with pytest.raises(ArgumentError, match="required: cls.name"):
+        parser.parse_args(["--cls.amount=1.5"])
 
 
 def function_type_checking_type(p1: Type["TypeCheckingClass2"]):

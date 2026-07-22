@@ -243,22 +243,27 @@ def _enrich_globals_for_string_forward_refs(global_vars: dict[str, Any]) -> None
         _update_missing_from_module_vars(global_vars, missing, mod_vars)
 
 
+def update_module_global_vars(module: str, global_vars: dict, logger: logging.Logger | None) -> None:
+    """Adds to global_vars the names of a module, including those of its TYPE_CHECKING blocks."""
+    for key, value in vars(import_module(module)).items():  # needed for pydantic-v1
+        if key not in global_vars:
+            global_vars[key] = value
+    try:
+        module_source = inspect.getsource(sys.modules[module]) if module in sys.modules else ""
+        if "TYPE_CHECKING" in module_source:
+            TypeCheckingVisitor().update_aliases(module_source, module, global_vars, logger)
+    except Exception as ex:
+        if logger:
+            logger.debug(f"Failed to update aliases for TYPE_CHECKING blocks in {module}", exc_info=ex)
+
+
 def get_global_vars(obj: Any, logger: logging.Logger | None) -> dict:
     global_vars = getattr(obj, "__globals__", {}).copy()
     if is_dataclass(obj):
         next_mro = inspect.getmro(obj)[1]  # type: ignore[arg-type]
         if is_dataclass(next_mro):
             global_vars.update(get_global_vars(next_mro, logger))
-    for key, value in vars(import_module(obj.__module__)).items():  # needed for pydantic-v1
-        if key not in global_vars:
-            global_vars[key] = value
-    try:
-        module_source = inspect.getsource(sys.modules[obj.__module__]) if obj.__module__ in sys.modules else ""
-        if "TYPE_CHECKING" in module_source:
-            TypeCheckingVisitor().update_aliases(module_source, obj.__module__, global_vars, logger)
-    except Exception as ex:
-        if logger:
-            logger.debug(f"Failed to update aliases for TYPE_CHECKING blocks in {obj.__module__}", exc_info=ex)
+    update_module_global_vars(obj.__module__, global_vars, logger)
     _enrich_globals_for_string_forward_refs(global_vars)
     return global_vars
 
