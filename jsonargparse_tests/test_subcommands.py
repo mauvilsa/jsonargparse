@@ -183,6 +183,12 @@ def test_subcommands_parse_args_config_explicit_subcommand_arg(subcommands_parse
     }
 
 
+def test_subcommands_parse_string_missing_explicit_subcommand(subcommands_parser):
+    with pytest.raises(ValueError) as ctx:
+        subcommands_parser.parse_string('{"a": {"ap1": "ap1_cfg"}, "b": {"nums": {"val1": 2}}}')
+    ctx.match("Multiple subcommand settings .* without providing an explicit 'subcommand' key")
+
+
 env = {
     "APP_O1": "o1_env",
     "APP_A__AP1": "ap1_env",

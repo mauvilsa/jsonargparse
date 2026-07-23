@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import (  # type: ignore[attr-defined]
     Generic,
-    Protocol,
     TypeVar,
     _GenericAlias,
 )
@@ -64,14 +63,6 @@ class _UnsetType:
 Unset = _UnsetType()
 
 
-class InstantiatorCallable(Protocol):
-    def __call__(self, class_type: type[ClassType], *args, **kwargs) -> ClassType:
-        pass  # pragma: no cover
-
-
-InstantiatorsDictType = dict[tuple[type, bool], InstantiatorCallable]
-
-
 parent_parser: ContextVar[ArgumentParser | None] = ContextVar("parent_parser", default=None)
 parser_capture: ContextVar[bool] = ContextVar("parser_capture", default=False)
 defaults_cache: ContextVar[Namespace | None] = ContextVar("defaults_cache", default=None)
@@ -80,7 +71,6 @@ parsing_defaults: ContextVar[bool] = ContextVar("parsing_defaults", default=Fals
 single_subcommand: ContextVar[bool] = ContextVar("single_subcommand", default=True)
 validating_defaults: ContextVar[bool] = ContextVar("validating_defaults", default=False)
 load_value_mode: ContextVar[str | None] = ContextVar("load_value_mode", default=None)
-class_instantiators: ContextVar[InstantiatorsDictType | None] = ContextVar("class_instantiators", default=None)
 nested_links: ContextVar[list[dict]] = ContextVar("nested_links", default=[])
 applied_instantiation_links: ContextVar[set | None] = ContextVar("applied_instantiation_links", default=None)
 path_dump_preserve_relative: ContextVar[bool] = ContextVar("path_dump_preserve_relative", default=False)
@@ -95,7 +85,6 @@ parser_context_vars = {
     "single_subcommand": single_subcommand,
     "validating_defaults": validating_defaults,
     "load_value_mode": load_value_mode,
-    "class_instantiators": class_instantiators,
     "nested_links": nested_links,
     "applied_instantiation_links": applied_instantiation_links,
     "path_dump_preserve_relative": path_dump_preserve_relative,
@@ -482,11 +471,6 @@ class LoggerProperty:
 
     @logger.setter
     def logger(self, logger: bool | str | dict | logging.Logger):
-        if logger is None:
-            from ._deprecated import deprecation_warning, logger_property_none_message
-
-            deprecation_warning((LoggerProperty.logger, None), logger_property_none_message, stacklevel=6)
-            logger = False
         if not logger and debug_mode_active():
             logger = {"level": "DEBUG"}
         self._logger = parse_logger(logger, type(self).__name__)

@@ -76,9 +76,6 @@ argcomplete = [
 ruamel = [
     "ruamel.yaml>=0.18.15",
 ]
-ruyaml = [
-    "jsonargparse[ruamel]",
-]
 omegaconf = [
     "omegaconf>=2.1.1",
 ]

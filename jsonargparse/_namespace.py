@@ -303,12 +303,3 @@ def get_non_meta_sorted_keys(namespace: Namespace) -> list[str]:
 def get_value_and_parent(namespace: Namespace, key: str) -> tuple[Any, Namespace, str]:
     leaf_key, parent_ns, _ = namespace._parse_required_key(key)
     return parent_ns[leaf_key], parent_ns, leaf_key
-
-
-# Temporal to provide backward compatibility in pytorch-lightning
-from importlib.util import find_spec  # noqa: E402
-
-if find_spec("yaml"):
-    import yaml
-
-    yaml.SafeDumper.add_representer(Namespace, lambda d, x: d.represent_mapping("tag:yaml.org,2002:map", x.as_dict()))

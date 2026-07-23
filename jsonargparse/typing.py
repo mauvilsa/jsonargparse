@@ -10,11 +10,10 @@ from collections.abc import Callable
 from typing import Any, TypeAlias, get_type_hints
 
 from ._common import ClassType, is_final_class, is_subclass, path_dump_preserve_relative
-from ._deprecated import renamed_parameter_warning
 from ._namespace import Namespace
 from ._optionals import final, is_alias_type, pydantic_support
 from ._paths import Path, change_to_path_dir
-from ._util import ClassFromFunctionBase, get_import_path, get_private_kwargs, import_object
+from ._util import ClassFromFunctionBase, get_import_path, import_object
 
 __all__ = [
     "final",
@@ -390,7 +389,7 @@ def _serialize_path(path: Path):
     return str(path)
 
 
-def path_type(mode: str, docstring: str | None = None, **kwargs) -> TypeAlias:
+def path_type(mode: str, docstring: str | None = None) -> TypeAlias:
     """Creates or returns an already registered path type class.
 
     Args:
@@ -404,14 +403,6 @@ def path_type(mode: str, docstring: str | None = None, **kwargs) -> TypeAlias:
     name = "Path_" + mode
     key_name = "path " + "".join(sorted(mode))
 
-    skip_check = get_private_kwargs(kwargs, skip_check=False)
-    if skip_check:
-        from ._deprecated import path_skip_check_deprecation
-
-        path_skip_check_deprecation(stacklevel=4)
-        name += "_skip_check"
-        key_name += " skip_check"
-
     register_key = (key_name, str)
     if register_key in registered_types:
         return registered_types[register_key]
@@ -419,15 +410,14 @@ def path_type(mode: str, docstring: str | None = None, **kwargs) -> TypeAlias:
     class PathType(Path):
         _expression = name
         _mode = mode
-        _skip_check = skip_check
         _type = _serialize_path
 
         def __init__(self, v, **k):
             if isinstance(v, dict) and set(v) == {"cwd", "relative"}:
                 with change_to_path_dir(v["cwd"]):
-                    super().__init__(v["relative"], mode=self._mode, skip_check=self._skip_check, **k)
+                    super().__init__(v["relative"], mode=self._mode, **k)
             else:
-                super().__init__(v, mode=self._mode, skip_check=self._skip_check, **k)
+                super().__init__(v, mode=self._mode, **k)
 
     restricted_type = type(name, (PathType,), {"__doc__": docstring})
     add_type(restricted_type, register_key, type_check=_is_path_type)
@@ -466,7 +456,6 @@ class RegisteredType:
             raise ex2 from ex
 
 
-@renamed_parameter_warning({"type_class": "class_type"})
 def register_type(
     class_type: _TypeClass,
     serializer: Callable = str,
@@ -532,9 +521,9 @@ def add_type(class_type: type, uniqueness_key: tuple | None, type_check: Callabl
     if class_type.__name__ in globals():
         raise ValueError(f'Type name "{class_type.__name__}" clashes with name already defined in jsonargparse.typing.')
     globals()[class_type.__name__] = class_type
-    kwargs = {"uniqueness_key": uniqueness_key}
+    kwargs: dict = {"uniqueness_key": uniqueness_key}
     if type_check is not None:
-        kwargs["type_check"] = type_check  # type: ignore[assignment]
+        kwargs["type_check"] = type_check
     register_type(class_type, class_type._type, **kwargs)  # type: ignore[attr-defined]
 
 

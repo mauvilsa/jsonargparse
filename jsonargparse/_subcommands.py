@@ -8,7 +8,6 @@ from typing import NoReturn
 
 from ._actions import filter_non_parsing_actions
 from ._common import parsing_defaults, single_subcommand
-from ._deprecated import deprecated_implicit_subcommand
 from ._namespace import Namespace, NSKeyError, split_key, split_key_root
 from ._type_checking import ActionsContainer, ArgumentParser
 from ._util import merge_config
@@ -130,7 +129,6 @@ class ActionSubCommands(_SubParsersAction):
         parser.default_env = self.parent_parser.default_env
         parser.parent_parser = self.parent_parser  # type: ignore[attr-defined]
         parser.parser_mode = self.parent_parser.parser_mode
-        parser._error_handler = self.parent_parser._error_handler
         parser.exit_on_error = self.parent_parser.exit_on_error
         parser.formatter_class = self.parent_parser.formatter_class
         parser.logger = self.parent_parser.logger
@@ -199,8 +197,10 @@ def get_subcommands(
     elif len(subcommand_keys) > 0 and (fail_no_subcommand or require_single):
         cfg[dest] = subcommand = subcommand_keys[0]
         if len(subcommand_keys) > 1:
-            deprecated_implicit_subcommand(get_subcommands, subcommand_keys, subcommand, dest)
-            # v5.0.0 replace deprecated_implicit_subcommand with raise ValueError
+            raise ValueError(
+                f"Multiple subcommand settings ({', '.join(subcommand_keys)}) without providing an "
+                f"explicit '{dest}' key."
+            )
 
     # Remove extra subcommand settings
     if subcommand and len(subcommand_keys) > 1:

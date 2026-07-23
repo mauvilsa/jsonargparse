@@ -27,7 +27,6 @@ from ._common import (
     parent_parser,
     supports_optionals_as_positionals,
 )
-from ._deprecated import HelpFormatterDeprecations
 from ._link_arguments import ActionLink
 from ._namespace import Namespace
 from ._optionals import import_ruamel
@@ -162,7 +161,7 @@ class YAMLCommentFormatter:
         cfg.yaml_set_comment_before_after_key(key, before="\n" + text, indent=2 * depth)
 
 
-class DefaultHelpFormatter(HelpFormatterDeprecations, HelpFormatter):
+class DefaultHelpFormatter(HelpFormatter):
     """Help message formatter that includes types, default values and env var names.
 
     This class is an extension of `argparse.HelpFormatter

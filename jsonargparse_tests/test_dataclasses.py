@@ -221,8 +221,10 @@ class OptionalWithDefault:
 def test_add_class_optional_without_default(parser):
     parser.add_class_arguments(OptionalWithDefault)
     assert parser.get_defaults() == Namespace(param=None)
-    assert parser.parse_args([]) == Namespace(param=None)
-    assert parser.parse_args(["--param=null"]) == Namespace(param=None)
+    with pytest.raises(ArgumentError, match="the following arguments are required: param"):
+        parser.parse_args([])
+    with pytest.raises(ArgumentError, match="the following arguments are required: param"):
+        parser.parse_args(["--param=null"])
 
 
 @dataclasses.dataclass

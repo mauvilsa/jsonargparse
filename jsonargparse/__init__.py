@@ -14,7 +14,6 @@ from ._cli import *  # noqa: F403
 from ._cli import CLI  # noqa: F401
 from ._common import *  # noqa: F403
 from ._core import *  # noqa: F403
-from ._deprecated import *  # noqa: F403
 from ._formatters import *  # noqa: F403
 from ._from_config import *  # noqa: F403
 from ._instantiation import *  # noqa: F403
@@ -43,7 +42,6 @@ from . import (
     _cli,
     _common,
     _core,
-    _deprecated,
     _formatters,
     _from_config,
     _instantiation,
@@ -68,7 +66,6 @@ __all__ += _common.__all__
 __all__ += _instantiation.__all__
 __all__ += _loaders_dumpers.__all__
 __all__ += _util.__all__
-__all__ += _deprecated.__all__
 
 
 __version__ = "4.50.0"

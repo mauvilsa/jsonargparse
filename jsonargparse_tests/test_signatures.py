@@ -672,17 +672,21 @@ def test_add_function_fail_untyped_true_untyped_params(parser):
 def test_add_function_fail_untyped_false(parser):
     added_args = parser.add_function_arguments(func_untyped_params, fail_untyped=False)
     assert ["a1", "a2"] == added_args
-    assert Namespace(a1=None, a2=None) == parser.parse_args([])
+    assert parser.parse_args(["--a1=x"]) == Namespace(a1="x", a2=None)
+    with pytest.raises(ArgumentError, match="the following arguments are required: a1"):
+        parser.parse_args([])
 
 
-def func_untyped_optional(a1: str, a2=None):
+def func_untyped_optional(a1: int, a2=None):
     return a1  # pragma: no cover
 
 
 def test_add_function_fail_untyped_true_untyped_optional(parser):
     added_args = parser.add_function_arguments(func_untyped_optional, fail_untyped=True)
     assert ["a1", "a2"] == added_args
-    assert Namespace(a1="x", a2=None) == parser.parse_args(["--a1=x"])
+    assert parser.parse_args(["--a1=123"]) == Namespace(a1=123, a2=None)
+    with pytest.raises(ArgumentError, match="Expected a .*int.* Got value: x"):
+        parser.parse_args(["--a1=x"])
 
 
 def test_add_function_group_config(parser, tmp_cwd):

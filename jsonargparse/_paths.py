@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from io import StringIO
 from typing import IO, Any
 
-from ._deprecated import PathDeprecations
 from ._optionals import (
     fsspec_support,
     import_fsspec,
@@ -85,7 +84,7 @@ class PathError(TypeError):
     """Exception raised for errors in the Path class."""
 
 
-class Path(PathDeprecations):
+class Path:
     """Base class for Path types. Stores a (possibly relative) path and the corresponding absolute path.
 
     From the object the absolute path can be obtained without having to remember
@@ -116,7 +115,6 @@ class Path(PathDeprecations):
         path: "str | os.PathLike | Path",
         mode: str = "fr",
         cwd: str | os.PathLike | None = None,
-        **kwargs,
     ):
         """Initializer for Path instance.
 
@@ -129,7 +127,6 @@ class Path(PathDeprecations):
             ValueError: If the provided mode is invalid.
             PathError: If the path does not exist or does not agree with the mode.
         """
-        self._deprecated_kwargs(kwargs)
         self._check_mode(mode)
         self._std_io = False
 
@@ -173,14 +170,14 @@ class Path(PathDeprecations):
         else:
             raise PathError("Expected path to be a string, os.PathLike or a Path object.")
 
-        if not self._skip_check and is_url:
+        if is_url:
             if "r" in mode:
                 requests = import_requests("Path with URL support")
                 try:
                     requests.head(abs_path).raise_for_status()
                 except requests.HTTPError as ex:
                     raise PathError(f"{abs_path} HEAD not accessible :: {ex}") from ex
-        elif not self._skip_check and is_fsspec:
+        elif is_fsspec:
             fsspec_mode = "".join(c for c in mode if c in {"r", "w"})
             if fsspec_mode:
                 fsspec = import_fsspec("Path")
@@ -192,7 +189,7 @@ class Path(PathDeprecations):
                     raise PathError(f"Path does not exist: {abs_path!r}") from ex
                 except PermissionError as ex:
                     raise PathError(f"Path exists but no permission to access: {abs_path!r}") from ex
-        elif not self._skip_check and not self._std_io:
+        elif not self._std_io:
             ptype = "Directory" if "d" in mode else "File"
             if "c" in mode:
                 pdir = os.path.realpath(os.path.join(abs_path, ".."))
@@ -257,6 +254,10 @@ class Path(PathDeprecations):
         return self._mode
 
     @property
+    def cwd(self) -> str:
+        return self._cwd
+
+    @property
     def is_url(self) -> bool:
         return self._is_url
 
@@ -269,7 +270,6 @@ class Path(PathDeprecations):
 
     def __repr__(self):
         name = "Path_" + self._mode
-        name = self._repr_skip_check(name)
         cwd = ""
         if self._relative != self._absolute:
             cwd = ", cwd=" + self._cwd

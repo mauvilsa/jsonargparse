@@ -142,11 +142,11 @@ def subsubparser() -> ArgumentParser:
 
 @pytest.fixture
 def clear_instantiators():
-    from jsonargparse._instantiation import _global_class_instantiators
+    from jsonargparse._instantiation import _class_instantiators
 
-    _global_class_instantiators.clear()
+    _class_instantiators.clear()
     yield
-    _global_class_instantiators.clear()
+    _class_instantiators.clear()
 
 
 @pytest.fixture

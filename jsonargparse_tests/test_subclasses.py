@@ -22,7 +22,7 @@ from jsonargparse import (
     add_instantiator,
     lazy_instance,
 )
-from jsonargparse._instantiation import _global_class_instantiators
+from jsonargparse._instantiation import _class_instantiators
 from jsonargparse._typehints import _cached_class_parsers, implements_protocol, is_instance_or_supports_protocol
 from jsonargparse.typing import final
 from jsonargparse_tests.conftest import (
@@ -493,7 +493,7 @@ def test_custom_instantiation_prepend(parser, clear_instantiators):
     parser.add_argument("--cls", type=CustomInstantiationBase)
     add_instantiator(instantiator("first"), CustomInstantiationSub)
     add_instantiator(instantiator("prepended"), CustomInstantiationBase, subclasses=True, prepend=True)
-    assert len(_global_class_instantiators) == 2
+    assert len(_class_instantiators) == 2
     cfg = parser.parse_args(["--cls=CustomInstantiationSub"])
     init = parser.instantiate(cfg)
     assert isinstance(init.cls, CustomInstantiationSub)
@@ -506,8 +506,8 @@ def test_custom_instantiation_replace(parser, clear_instantiators):
     parser.add_argument("--cls", type=CustomInstantiationBase)
     add_instantiator(first_instantiator, CustomInstantiationBase)
     add_instantiator(second_instantiator, CustomInstantiationBase)
-    assert len(_global_class_instantiators) == 1
-    assert list(_global_class_instantiators.values())[0] is second_instantiator
+    assert len(_class_instantiators) == 1
+    assert list(_class_instantiators.values())[0] is second_instantiator
 
 
 class CustomInstantiationNested:

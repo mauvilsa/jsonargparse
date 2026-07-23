@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import ArgumentError, ArgumentParser, set_parsing_settings
+from jsonargparse import ArgumentParser, set_parsing_settings
 from jsonargparse._completions import get_shtab_script, norm_name
 from jsonargparse._parameter_resolvers import get_signature_parameters
 from jsonargparse._typehints import type_to_str
@@ -474,7 +474,6 @@ def test_add_print_completion_argument_env_var_enables(parser, parsing_settings_
     with patch.dict("os.environ", {"JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT": "TRUE"}):
         help_str = get_parse_args_stdout(parser, ["--help"])
     assert "--print_completion" in help_str
-    assert "--print_shtab" not in parser._option_string_actions
 
 
 def test_add_print_completion_argument_env_var_takes_precedence(parser, parsing_settings_patch):
@@ -482,15 +481,6 @@ def test_add_print_completion_argument_env_var_takes_precedence(parser, parsing_
     with patch.dict("os.environ", {"JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT": "FALSE"}):
         help_str = get_parse_args_stdout(parser, ["--help"])
     assert "--print_completion" not in help_str
-
-
-def test_hidden_print_shtab_argument_shows_guidance(parser):
-    help_str = get_parse_args_stdout(parser, ["--help"])
-    assert "--print_shtab" not in help_str
-    with pytest.raises(ArgumentError, match=r"Use set_parsing_settings\(add_print_completion_argument=True\)"):
-        parser.parse_args(["--print_shtab=bash"])
-    with pytest.raises(ArgumentError, match="JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT=true"):
-        parser.parse_args(["--print_shtab=bash"])
 
 
 def test_get_completion_script_invalid_completion_type(parser):

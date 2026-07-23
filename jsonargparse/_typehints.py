@@ -59,7 +59,7 @@ from ._common import (
     parser_context,
     validating_defaults,
 )
-from ._instantiation import get_class_instantiator
+from ._instantiation import dynamic_class_instantiator
 from ._loaders_dumpers import (
     basic_json_or_yaml_load,
     get_loader_exceptions,
@@ -1580,15 +1580,13 @@ def adapt_class_type(
                 value["init_args"] = init_args
             return value
 
-        instantiator_fn = get_class_instantiator()
-
         if partial_skip_args:
             return partial(
-                instantiator_fn,
+                dynamic_class_instantiator,
                 val_class,
                 **{**init_args, **dict_kwargs},
             )
-        return instantiator_fn(val_class, **{**init_args, **dict_kwargs})
+        return dynamic_class_instantiator(val_class, **{**init_args, **dict_kwargs})
 
     prev_init_args = prev_val.get("init_args") if isinstance(prev_val, Namespace) else None
 

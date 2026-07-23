@@ -322,28 +322,33 @@ class UnsetListItem:
     value: Optional[int]
 
 
-def test_unset_sentinel_dump_list_of_dataclasses(parser):
+def test_unset_sentinel_list_of_dataclasses(parser):
     set_parsing_settings(unset_sentinel=True)
 
     parser.add_argument("--records", type=List[UnsetListItem])
 
-    cfg = parser.parse_args(['--records=[{"name":"a"},{"name":"b","value":2}]'])
-    assert cfg.records[0] == Namespace(name="a", value=Unset)
+    with pytest.raises(ArgumentError, match="the following arguments are required: value"):
+        parser.parse_args(['--records=[{"name":"a"},{"name":"b","value":2}]'])
+
+    cfg = parser.parse_args(['--records=[{"name":"a","value":null},{"name":"b","value":2}]'])
+    assert cfg.records[0] == Namespace(name="a", value=None)
     assert cfg.records[1] == Namespace(name="b", value=2)
 
-    dump_skip = parser.dump(cfg, skip_unset=True)
-    loaded_skip = json_or_yaml_load(dump_skip)
-    assert loaded_skip == {"records": [{"name": "a"}, {"name": "b", "value": 2}]}
+    defaults = parser.get_defaults()
+    assert defaults == Namespace(records=Unset)
 
-    dump_no_skip = parser.dump(cfg, skip_unset=False)
-    loaded_no_skip = json_or_yaml_load(dump_no_skip)
-    assert loaded_no_skip == {"records": [{"name": "a", "value": "==UNSET=="}, {"name": "b", "value": 2}]}
+    dump_skip = parser.dump(defaults, skip_unset=True)
+    assert json_or_yaml_load(dump_skip) == {}
+
+    dump_no_skip = parser.dump(defaults, skip_unset=False)
+    assert json_or_yaml_load(dump_no_skip) == {"records": "==UNSET=="}
 
 
 def test_unset_sentinel_validate_skip_unset(parser):
     set_parsing_settings(unset_sentinel=True)
 
     parser.add_argument("--num", type=int)
+
     cfg = parser.parse_args([])
     assert cfg.num is Unset
 
@@ -378,7 +383,7 @@ def test_unset_is_singleton():
 # add_function_arguments with unset_sentinel
 
 
-def test_unset_sentinel_function_arguments_no_default_is_unset(parser):
+def test_unset_sentinel_function_arguments_no_default_is_required(parser):
     """Optional param with no default in function signature should be Unset when unset_sentinel=True."""
     set_parsing_settings(unset_sentinel=True)
 
@@ -387,12 +392,12 @@ def test_unset_sentinel_function_arguments_no_default_is_unset(parser):
 
     parser.add_function_arguments(my_func)
 
-    cfg = parser.parse_args([])
-    assert cfg.num is Unset  # no default in signature → Unset
-    assert cfg.name == "hello"  # has default → kept
+    with pytest.raises(ArgumentError, match="the following arguments are required: num"):
+        parser.parse_args([])
 
     cfg = parser.parse_args(["--num=null"])
     assert cfg.num is None  # explicitly set to null → None
+    assert cfg.name == "hello"  # has default → kept
 
     cfg = parser.parse_args(["--num=5"])
     assert cfg.num == 5

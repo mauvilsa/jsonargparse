@@ -12,7 +12,7 @@ from importlib.util import find_spec
 from subprocess import PIPE, Popen
 from typing import Literal, Union
 
-from ._actions import ActionConfigFile, ActionFail, _ActionConfigLoad, _ActionHelpClassPath, remove_actions
+from ._actions import ActionConfigFile, _ActionConfigLoad, _ActionHelpClassPath, remove_actions
 from ._common import NonParsingAction, get_optionals_as_positionals_actions, get_parsing_setting
 from ._parameter_resolvers import get_signature_parameters
 from ._typehints import (
@@ -36,17 +36,7 @@ def add_print_completion_argument(parser):
     if getattr(parser, "parent_parser", None) or not find_spec("shtab"):
         return
     print_completion_argument = get_parsing_setting("add_print_completion_argument")
-    if not print_completion_argument and "--print_shtab" not in parser._option_string_actions:
-        parser.add_argument(
-            "--print_shtab",
-            action=ActionFail(
-                message="%(option)s is no longer supported. Use set_parsing_settings("
-                "add_print_completion_argument=True) or "
-                "JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT=true to add --print_completion."
-            ),
-            help=argparse.SUPPRESS,
-        )
-    elif print_completion_argument and "--print_completion" not in parser._option_string_actions:
+    if print_completion_argument and "--print_completion" not in parser._option_string_actions:
         parser.add_argument("--print_completion", action=PrintCompletionAction)
 
 
@@ -177,9 +167,6 @@ def norm_name(name: str) -> str:
 
 def shtab_prepare_actions(parser) -> None:
     remove_actions(parser, (PrintCompletionAction,))
-    legacy_action = parser._option_string_actions.get("--print_shtab")
-    if legacy_action and legacy_action in parser._actions:
-        parser._actions.remove(legacy_action)
     if parser._subcommands_action:
         for subparser in parser._subcommands_action._name_parser_map.values():
             shtab_prepare_actions(subparser)
