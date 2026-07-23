@@ -38,6 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 all = [
     "jsonargparse[signatures]",
+    "jsonargparse[yaml]",
     "jsonargparse[jsonschema]",
     "jsonargparse[jsonnet]",
     "jsonargparse[toml]",
@@ -52,14 +53,17 @@ signatures = [
     "docstring-parser>=0.17",
     "typeshed-client>=2.8.2",
 ]
-jsonschema = [
-    "jsonschema>=3.2.0",
+yaml = [
+    "PyYAML>=3.13",
+]
+toml = [
+    "toml>=0.10.2",
 ]
 jsonnet = [
     "jsonnet>=0.21.0",
 ]
-toml = [
-    "toml>=0.10.2",
+jsonschema = [
+    "jsonschema>=3.2.0",
 ]
 urls = [
     "requests>=2.18.4",
@@ -106,6 +110,7 @@ coverage = [
     "pytest-cov>=4.0.0",
 ]
 dev = [
+    "jsonargparse[all]",
     "jsonargparse[test]",
     "jsonargparse[coverage]",
     "jsonargparse[doc]",

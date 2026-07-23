@@ -32,6 +32,7 @@ jsonargparse.typing
 Index
 =====
 
+* :ref:`migrate-v5`
 * :ref:`talks-and-articles`
 * :ref:`changelog`
 * :ref:`license`
