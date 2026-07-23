@@ -53,7 +53,7 @@ The crucial step is installing the requirements which would be done by running:
 
 .. code-block:: bash
 
-    pip install -e ".[dev,all]"
+    pip install -e ".[dev]"
 
 pre-commit
 ----------
