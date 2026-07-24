@@ -1,5 +1,6 @@
 """Collection of useful actions to define arguments."""
 
+import os
 import re
 import sys
 from argparse import SUPPRESS, _HelpAction, _VersionAction
@@ -107,6 +108,21 @@ class ActionConfigFile(Action):
         if isinstance(action, ActionConfigFile) and getattr(container, "_print_config", None) is not None:
             if "%s" in container._print_config:
                 container._print_config = container._print_config % action.dest
+            elif (
+                container._print_config == "--print_config"
+                and action.dest != "config"
+                and os.getenv("JSONARGPARSE_DEPRECATION_WARNINGS", "").lower() == "all"
+            ):
+                from ._deprecated import deprecation_warning
+
+                deprecation_warning(
+                    "print_config_default_name",
+                    "From v5.0.0 the print config argument will by default reuse the name of the config "
+                    'argument as "--print_%s". The current default is always "--print_config", but in v5.0.0 '
+                    f'with a config argument named "{action.dest}" it will become "--print_{action.dest}". '
+                    'To keep the current name set print_config="--print_config" explicitly.',
+                    stacklevel=2,
+                )
             assert container._print_config.startswith("--")
             container.add_argument(container._print_config, action=_ActionPrintConfig)
 

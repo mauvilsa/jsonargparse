@@ -171,6 +171,8 @@ Fixed
   guidance message when there are zero completions, leaving the cursor on an
   empty line, observed since bash 5.3 (`#954
   <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
+- Missing deprecation warning for the ``--print_config`` to ``--print_%s``
+  change (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^
@@ -193,8 +195,6 @@ Changed
   Parameter and return types must still match exactly, except when the protocol
   has no annotation or ``Any`` (`#941
   <https://github.com/mauvilsa/jsonargparse/pull/941>`__).
-- The default print config argument name will remain as ``--print_config`` in
-  v5.0.0, no longer changing as described in the deprecated section of v4.35.0.
 - A signature parameter typed as ``jsonargparse.Namespace`` now raises a
   ``ValueError`` when adding the arguments, instead of the parameter being
   silently skipped. ``Namespace`` is only intended for parsing results (`#948

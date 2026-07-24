@@ -1200,6 +1200,46 @@ def test_deprecated_print_config_skip_null(parser):
     )
 
 
+def test_deprecated_print_config_default_name(monkeypatch):
+    monkeypatch.delenv("JSONARGPARSE_DEPRECATION_WARNINGS", raising=False)
+
+    # No warning when the config dest is "config".
+    parser = ArgumentParser(exit_on_error=False)
+    with catch_warnings(record=True) as w:
+        parser.add_argument("--config", action="config")
+    assert w == []
+
+    # No warning without JSONARGPARSE_DEPRECATION_WARNINGS=all, even with another dest.
+    parser = ArgumentParser(exit_on_error=False)
+    with catch_warnings(record=True) as w:
+        parser.add_argument("--cfg", action="config")
+    assert w == []
+
+    monkeypatch.setenv("JSONARGPARSE_DEPRECATION_WARNINGS", "all")
+
+    # No warning with all when the config dest is "config".
+    parser = ArgumentParser(exit_on_error=False)
+    with catch_warnings(record=True) as w:
+        parser.add_argument("--config", action="config")
+    assert w == []
+
+    # No warning when print_config already uses %s.
+    parser = ArgumentParser(exit_on_error=False, print_config="--print_%s")
+    with catch_warnings(record=True) as w:
+        parser.add_argument("--cfg", action="config")
+    assert w == []
+
+    # Warning with all when the config dest differs from "config".
+    parser = ArgumentParser(exit_on_error=False)
+    with catch_warnings(record=True) as w:
+        parser.add_argument("--cfg", action="config")
+    assert_deprecation_warn(
+        w,
+        message='become "--print_cfg"',
+        code='parser.add_argument("--cfg", action="config")',
+    )
+
+
 def test_subcommands_parse_string_first_implicit_subcommand(subcommands_parser):  # noqa: F811
     with catch_warnings(record=True) as w:
         cfg = subcommands_parser.parse_string('{"a": {"ap1": "ap1_cfg"}, "b": {"nums": {"val1": 2}}}')
