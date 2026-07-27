@@ -12,7 +12,7 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
-v4.50.1 (unreleased)
+v4.51.0 (unreleased)
 --------------------
 
 Fixed
@@ -20,6 +20,13 @@ Fixed
 - ``TypeError`` when adding arguments for a class that has a parameter that has
   a default and is annotated with a non-``@runtime_checkable`` ``Protocol`` type
   (`#935 <https://github.com/mauvilsa/jsonargparse/pull/935>`__).
+
+Changed
+^^^^^^^
+- ``Required`` and ``NotRequired`` given as the type of an argument are no
+  longer shown in the help. Now they must agree with whether the argument is
+  required, otherwise adding the argument fails (`#937
+  <https://github.com/mauvilsa/jsonargparse/pull/937>`__).
 
 
 v4.50.0 (2026-07-22)

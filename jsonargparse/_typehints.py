@@ -280,6 +280,27 @@ def cached_get_class_parser(*, val_class, sub_add_kwargs, skip_args, parent_pars
     return parser
 
 
+def strip_required_typehint(typehint, is_required: bool, source: str):
+    """Removes a top level Required/NotRequired wrapper, failing if it disagrees with the requiredness.
+
+    The requiredness of an argument is already given by the argument itself, thus the wrappers are
+    only accepted as a redundant specification and not included in the type shown in the help.
+    """
+    typehint_origin = get_typehint_origin(typehint)
+    if typehint_origin not in not_required_required_types:
+        return typehint
+    expect_required = typehint_origin in required_types
+    if is_required != expect_required:
+        wrapper = "Required" if expect_required else "NotRequired"
+        raise ValueError(
+            f"Type {type_to_str(typehint)} given for {source}, but the argument is "
+            f"{'required' if is_required else 'not required'}. {wrapper} is only accepted when the "
+            f"argument is {'required' if expect_required else 'not required'}."
+        )
+    assert len(typehint.__args__) == 1, "(Not)Required requires a single type argument"
+    return typehint.__args__[0]
+
+
 class ActionTypeHint(Action):
     """Action to parse a type hint."""
 

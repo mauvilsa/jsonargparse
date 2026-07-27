@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import pickle
 import random
@@ -10,6 +11,7 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from textwrap import dedent
 from types import MappingProxyType
 from typing import (
     Any,
@@ -36,7 +38,7 @@ from warnings import catch_warnings
 import pytest
 
 from jsonargparse import ArgumentError, Namespace, lazy_instance
-from jsonargparse._optionals import pyyaml_available
+from jsonargparse._optionals import pyyaml_available, typing_extensions_support
 from jsonargparse._typehints import (
     ActionTypeHint,
     NotRequired,
@@ -45,6 +47,7 @@ from jsonargparse._typehints import (
     get_all_subclass_paths,
     get_subclass_types,
     is_optional,
+    type_to_str,
 )
 from jsonargparse._util import get_import_path
 from jsonargparse.typing import (
@@ -752,6 +755,113 @@ def test_typeddict_with_required_arg(parser):
     ctx.match("Expected a <class 'int'>")
 
 
+# Required/NotRequired as the type of an argument. The wrapper must agree with the
+# requiredness of the argument and is removed so that it is not shown in the help.
+
+skip_if_no_required = pytest.mark.skipif(
+    not (Required and NotRequired), reason="Required/NotRequired introduced in python 3.11 or typing_extensions"
+)
+
+
+@skip_if_no_required
+def test_not_required_type_removed_from_help(parser):
+    parser.add_argument("--num", type=NotRequired[int])
+    help_str = get_parser_help(parser)
+    assert "NotRequired" not in help_str
+    assert "(type: int, default: null)" in help_str
+    assert parser.parse_args(["--num=1"]).num == 1
+
+
+@skip_if_no_required
+def test_required_type_removed_from_help(parser):
+    parser.add_argument("--num", type=Required[int], required=True)
+    help_str = get_parser_help(parser)
+    assert "Required" not in help_str
+    assert "(required, type: int)" in help_str
+    assert parser.parse_args(["--num=1"]).num == 1
+
+
+@skip_if_no_required
+def test_required_type_not_required_argument(parser):
+    with pytest.raises(ValueError, match="Required is only accepted when the argument is required"):
+        parser.add_argument("--num", type=Required[int])
+
+
+@skip_if_no_required
+def test_not_required_type_required_argument(parser):
+    with pytest.raises(ValueError, match="NotRequired is only accepted when the argument is not required"):
+        parser.add_argument("--num", type=NotRequired[int], required=True)
+
+
+@skip_if_no_required
+def test_required_type_positional_argument(parser):
+    parser.add_argument("num", type=Required[int])
+    help_str = get_parser_help(parser)
+    assert "Required" not in help_str
+    assert "(required, type: int)" in help_str
+    assert parser.parse_args(["1"]).num == 1
+
+
+@skip_if_no_required
+def test_not_required_type_positional_argument(parser):
+    with pytest.raises(ValueError, match="NotRequired is only accepted when the argument is not required"):
+        parser.add_argument("num", type=NotRequired[int])
+
+
+@skip_if_no_required
+def test_not_required_type_optional_positional_argument(parser):
+    parser.add_argument("num", type=NotRequired[int], nargs="?")
+    help_str = get_parser_help(parser)
+    assert "NotRequired" not in help_str
+    assert parser.parse_args(["1"]).num == 1
+
+
+@pytest.fixture
+def wrappers_module(tmp_path):
+    # get_type_hints removes the Required and NotRequired wrappers unless include_extras=True.
+    # Thus the wrappers only reach the signature parameters when the annotations of the module
+    # are not postponed, which is not the case for this test module.
+    module_path = tmp_path / "required_wrappers_module.py"
+    typing_module = "typing_extensions" if typing_extensions_support else "typing"
+    module_path.write_text(
+        dedent(f"""\
+            from {typing_module} import NotRequired, Required
+
+            class WrapperParams:
+                def __init__(self, p1: Required[int], p2: NotRequired[str], p3: NotRequired[int] = None):
+                    pass
+
+            class WrapperMandatoryWithDefault:
+                def __init__(self, p1: Required[int] = 1):
+                    pass
+            """)
+    )
+    spec = importlib.util.spec_from_file_location("required_wrappers_module", module_path)
+    module = importlib.util.module_from_spec(spec)
+    with mock.patch.dict(sys.modules, {"required_wrappers_module": module}):
+        spec.loader.exec_module(module)
+        yield module
+
+
+@skip_if_no_required
+def test_signature_params_wrappers_removed_from_help(parser, wrappers_module):
+    added = parser.add_class_arguments(wrappers_module.WrapperParams, "cls")
+    assert added == ["cls.p1", "cls.p2", "cls.p3"]
+    help_str = get_parser_help(parser)
+    assert "NotRequired" not in help_str
+    assert "--cls.p1 P1   (required, type: int)" in help_str
+    assert "--cls.p2 P2   (type: str)" in help_str
+    assert f"--cls.p3 P3   (type: {type_to_str(Optional[int])}, default: null)" in help_str
+    cfg = parser.parse_args(["--cls.p1=1"])
+    assert cfg.cls == Namespace(p1=1, p3=None)
+
+
+@skip_if_no_required
+def test_signature_required_param_with_default(parser, wrappers_module):
+    with pytest.raises(ValueError, match="Required is only accepted when the argument is required"):
+        parser.add_class_arguments(wrappers_module.WrapperMandatoryWithDefault, "cls")
+
+
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
 def test_unpack_support(parser):
     assert ActionTypeHint.is_supported_typehint(Unpack[Any])
@@ -795,6 +905,15 @@ def test_invalid_unpack_typeddict(parser, init_args):
     test_config = {"test": {"class_path": f"{__name__}.UnpackClass", "init_args": init_args}}
     with pytest.raises(ArgumentError):
         parser.parse_args([f"--testclass={json.dumps(test_config)}"])
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_unpack_typeddict_wrappers_removed_from_help(parser):
+    parser.add_class_arguments(UnpackClass, "cls")
+    help_str = get_parser_help(parser)
+    assert "NotRequired" not in help_str
+    assert "(required, type: int)" in help_str
+    assert "(type: int)" in help_str
 
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
@@ -844,6 +963,12 @@ def test_unpack_total_false_typeddict_optionality(parser):
     assert "cls.b" not in required
     # keys wrapped in Required stay required even when total=False
     assert "cls.c" in required
+    # the Required/NotRequired wrappers are not shown in the help
+    help_str = get_parser_help(parser)
+    assert "Required" not in help_str
+    assert "(type: int)" in help_str
+    assert "(type: str)" in help_str
+    assert "(required, type: float)" in help_str
 
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
@@ -960,6 +1085,11 @@ def test_typeddict_required_notrequired_totality_unpack(parser):
     assert set(added) == {"cls.a", "cls.b", "cls.c", "cls.x", "cls.y"}
     required = {action.dest for action in parser._actions if getattr(action, "required", False)}
     assert required == {"cls.a", "cls.c", "cls.y"}
+    # the Required/NotRequired wrappers are not shown in the help
+    help_str = get_parser_help(parser)
+    assert "Required" not in help_str
+    assert "(required, type: str)" in help_str
+    assert "(type: str)" in help_str
 
 
 def test_mapping_proxy_type(parser):

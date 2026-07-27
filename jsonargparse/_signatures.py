@@ -32,6 +32,7 @@ from ._typehints import (
     is_optional,
     not_required_types,
     sequence_origin_types,
+    strip_required_typehint,
 )
 from ._util import NoneType, get_import_path, get_private_kwargs, get_typehint_origin, iter_to_set_str
 from .typing import _LazyInitBaseClass, register_pydantic_type
@@ -368,6 +369,10 @@ class SignatureArguments(LoggerProperty):
             raise RuntimeError(f"The code should never reach here: kind={kind}")  # pragma: no cover
         src = get_parameter_origins(param.component, param.parent)
         skip_message = f'Skipping parameter "{name}" from "{src}" because of: '
+        if annotation != inspect_empty:
+            # Checked before linked_targets and fail_untyped adjust is_required, since the wrappers
+            # are meant to agree with the requiredness that the signature itself defines.
+            annotation = strip_required_typehint(annotation, is_required, f'parameter "{name}" from "{src}"')
         if not fail_untyped and annotation == inspect_empty:
             if is_required and os.environ.get("JSONARGPARSE_DEPRECATION_WARNINGS", "").lower() == "all":
                 deprecation_warning(

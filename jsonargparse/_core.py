@@ -92,7 +92,12 @@ from ._subcommands import (
     is_branch_key,
     parse_kwargs_context,
 )
-from ._typehints import ActionTypeHint, is_subclass_spec, subclasses_disabled_remove_class_path
+from ._typehints import (
+    ActionTypeHint,
+    is_subclass_spec,
+    strip_required_typehint,
+    subclasses_disabled_remove_class_path,
+)
 from ._util import (
     Path,
     argument_error,
@@ -143,6 +148,12 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
                 return ActionParser._move_parser_actions(parser, args, kwargs)
             ActionConfigFile._ensure_single_config_argument(self, kwargs["action"])
         if "type" in kwargs:
+            arg_name = args[0] if args else kwargs.get("dest", "")
+            if not arg_name.startswith("-"):
+                is_required = kwargs.get("nargs") not in {"?", "*"}
+            else:
+                is_required = bool(kwargs.get("required", False))
+            kwargs["type"] = strip_required_typehint(kwargs["type"], is_required, f'"{arg_name}"')
             if is_subclasses_disabled(kwargs["type"]):
                 nested_key = args[0].lstrip("-")
                 self.add_class_arguments(kwargs.pop("type"), nested_key, sub_configs=sub_configs, **kwargs)
