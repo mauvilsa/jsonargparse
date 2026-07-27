@@ -11,6 +11,10 @@ if TYPE_CHECKING:  # pragma: no cover
         pass
 
 
+class SameNameInBothModules:
+    defined_in = "base"
+
+
 class DifferentModuleTypeCheckingTypedDict(TypedDict, total=False):
     """Base for a TypedDict that is inherited in a different module.
 
@@ -22,3 +26,4 @@ class DifferentModuleTypeCheckingTypedDict(TypedDict, total=False):
     name: Required[str]
     amount: Decimal
     only_in_base: TypeCheckingOnlyInDifferentModule
+    same_name_in_base: SameNameInBothModules

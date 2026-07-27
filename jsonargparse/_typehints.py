@@ -839,40 +839,49 @@ def replace_unresolved_forward_refs(typehint):
         return Any
 
 
+def resolve_module_annotations(module: str, annotations: dict, global_vars: dict, logger=None) -> dict:
+    # A holder class is used so that only the given annotations are resolved, and with the
+    # names of a single module, which are given as localns to take precedence over the ones
+    # that get_type_hints takes from the module of each forward reference.
+    holder = type("holder", (), {"__annotations__": annotations, "__module__": module})
+    try:
+        # Resolves forward references (e.g. from "from __future__ import annotations"),
+        # while include_extras keeps the Required/NotRequired wrappers.
+        return get_type_hints(holder, None, global_vars, include_extras=True)
+    except Exception as ex:
+        if logger:
+            logger.debug(f"Failed to resolve the annotations {list(annotations)} from {module}", exc_info=ex)
+    # A single annotation failing (e.g. a missing import or a typo) makes the resolution
+    # of all of them fail. Thus, resolve one by one to keep the ones that do work.
+    return {k: resolve_forward_ref(v, global_vars) for k, v in annotations.items()}
+
+
 def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
     from ._postponed_annotations import get_global_vars, update_module_global_vars
 
-    # Includes the names from TYPE_CHECKING blocks, given as localns so that each base
-    # keeps resolving with the globals of the module in which it was defined.
-    global_vars = get_global_vars(typed_dict, logger)
-    # Keys inherited from a base defined in a different module also need the names of
-    # that module, including its TYPE_CHECKING blocks. The modules are taken from the
-    # forward references because a TypedDict does not keep its bases in __mro__, and
-    # __orig_bases__ is not available in all supported python versions. The names of the
-    # TypedDict's own module take precedence over the inherited ones.
-    inherited_modules = []
-    for annotation in typed_dict.__annotations__.values():
+    # Keys can be inherited from bases defined in other modules, and each key must resolve
+    # with the names of the module in which it was defined, including its TYPE_CHECKING
+    # blocks. Thus, the keys are grouped by module and resolved one group at a time, such
+    # that the names of one module never shadow the names of another. The modules are taken
+    # from the forward references because a TypedDict does not keep its bases in __mro__,
+    # and __orig_bases__ is not available in all supported python versions.
+    keys_per_module: dict[str, dict] = {}
+    for key, annotation in typed_dict.__annotations__.items():
         module = getattr(annotation, "__forward_module__", None)
         module = getattr(module, "__name__", module)
-        if isinstance(module, str) and module != typed_dict.__module__ and module not in inherited_modules:
-            inherited_modules.append(module)
-    if inherited_modules:
-        inherited_vars: dict = {}
-        for module in inherited_modules:
-            update_module_global_vars(module, inherited_vars, logger)
-        for key, value in inherited_vars.items():
-            if key not in global_vars:
-                global_vars[key] = value
-    try:
-        # Resolves forward references (e.g. from "from __future__ import annotations") and
-        # gathers inherited keys, while include_extras keeps the Required/NotRequired wrappers.
-        return get_type_hints(typed_dict, None, global_vars, include_extras=True)
-    except Exception as ex:
-        if logger:
-            logger.debug(f"Failed to resolve the annotations of {typed_dict}", exc_info=ex)
-    # A single key failing (e.g. a missing import or a typo) makes the resolution of the
-    # entire TypedDict fail. Thus, resolve one by one to keep the keys that do work.
-    return {k: resolve_forward_ref(v, global_vars) for k, v in typed_dict.__annotations__.items()}
+        if not isinstance(module, str):
+            module = typed_dict.__module__
+        keys_per_module.setdefault(module, {})[key] = annotation
+
+    annotations: dict = {}
+    for module, module_annotations in keys_per_module.items():
+        if module == typed_dict.__module__:
+            global_vars = get_global_vars(typed_dict, logger)
+        else:
+            global_vars = {}
+            update_module_global_vars(module, global_vars, logger)
+        annotations.update(resolve_module_annotations(module, module_annotations, global_vars, logger))
+    return {k: annotations[k] for k in typed_dict.__annotations__}
 
 
 def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
