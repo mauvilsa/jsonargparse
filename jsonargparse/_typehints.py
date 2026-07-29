@@ -933,7 +933,7 @@ def adapt_typehints(
         elif isinstance(val, str):
             with suppress(*get_loader_exceptions()):
                 val, _ = parse_value_or_config(val, enable_path=False, simple_types=True)
-        val = adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs)
+        val = adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs, logger)
 
     # Literal
     elif typehint_origin in literal_types:
@@ -1724,25 +1724,29 @@ def subclasses_disabled_remove_class_path(value):
     return value
 
 
-def adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs):
+def adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs, logger=None):
     if is_subclass_spec(val):
         orig_val = val
         val = subclass_spec_as_namespace(val)
         init_args = val.get("init_args")
         if init_args and not instantiate_classes:
             for subkey, subval in init_args.items(branches=True, nested=False):
-                init_args[subkey] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs)
+                init_args[subkey] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs, logger)
             val["init_args"] = init_args
         try:
             val = adapt_class_type(val, serialize, instantiate_classes, sub_add_kwargs)
-        except Exception:
+        except Exception as ex:
+            if get_parsing_setting("validate_subclass_spec_in_any"):
+                raise ValueError(f"Invalid subclass spec given as value for an Any type: {ex}") from ex
+            if logger:
+                logger.debug(f"Ignoring invalid subclass spec given as value for an Any type: {ex}", exc_info=ex)
             return orig_val
     elif isinstance(val, list):
         for num, subval in enumerate(val):
-            val[num] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs)
+            val[num] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs, logger)
     elif isinstance(val, dict):
         for key, subval in val.items():
-            val[key] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs)
+            val[key] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs, logger)
     return val
 
 

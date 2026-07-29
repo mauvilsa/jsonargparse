@@ -118,6 +118,7 @@ def parser_context(**kwargs):
 
 parsing_settings: dict = {
     "validate_defaults": False,
+    "validate_subclass_spec_in_any": False,
     "parse_optionals_as_positionals": False,
     "add_print_completion_argument": False,
     "stubs_resolver_allow_py_files": False,
@@ -137,6 +138,7 @@ def get_env_var_bool(name: str) -> bool:
 def set_parsing_settings(
     *,
     validate_defaults: bool | None = None,
+    validate_subclass_spec_in_any: bool | None = None,
     config_read_mode_urls_enabled: bool | None = None,
     config_read_mode_fsspec_enabled: bool | None = None,
     docstring_parse_style: "docstring_parser.DocstringStyle | None" = None,
@@ -156,6 +158,12 @@ def set_parsing_settings(
         validate_defaults: Whether default values must be valid according to the
             argument type. The default is ``False``, meaning no default
             validation, like in argparse.
+        validate_subclass_spec_in_any: If ``True``, when a value for an ``Any``
+            typed argument looks like a subclass spec (i.e. a dict with a
+            ``class_path`` key) it is required to be a valid one, otherwise the
+            parsing fails. By default, this is ``False``, meaning that an
+            invalid subclass spec is ignored (a debug log is emitted) and the
+            original value is kept.
         config_read_mode_urls_enabled: Whether to read config files from URLs
             using requests package. Default is ``False``.
         config_read_mode_fsspec_enabled: Whether to read config files from
@@ -201,6 +209,11 @@ def set_parsing_settings(
         parsing_settings["validate_defaults"] = validate_defaults
     elif validate_defaults is not None:
         raise ValueError(f"validate_defaults must be a boolean, but got {validate_defaults}.")
+    # validate_subclass_spec_in_any
+    if isinstance(validate_subclass_spec_in_any, bool):
+        parsing_settings["validate_subclass_spec_in_any"] = validate_subclass_spec_in_any
+    elif validate_subclass_spec_in_any is not None:
+        raise ValueError(f"validate_subclass_spec_in_any must be a boolean, but got {validate_subclass_spec_in_any}.")
     # config_read_mode
     if config_read_mode_urls_enabled is not None:
         _set_config_read_mode(urls_enabled=config_read_mode_urls_enabled)

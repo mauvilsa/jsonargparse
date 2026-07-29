@@ -15,6 +15,14 @@ paths are considered internals and can change in minor and patch releases.
 v4.51.0 (unreleased)
 --------------------
 
+Added
+^^^^^
+- ``validate_subclass_spec_in_any`` setting in ``set_parsing_settings`` so that
+  when a value for an ``Any`` typed argument looks like a subclass spec but is
+  not a valid one, the parsing fails instead of silently ignoring it. When
+  disabled (the default), a debug log now informs about the ignored invalid
+  subclass spec (`#938 <https://github.com/mauvilsa/jsonargparse/pull/938>`__).
+
 Fixed
 ^^^^^
 - ``TypeError`` when adding arguments for a class that has a parameter that has
@@ -31,9 +39,6 @@ Changed
   unresolved parts replaced by ``Any``, instead of the parameter being skipped
   or, when mandatory and ``fail_untyped=True``, raising a ``ValueError`` (`#936
   <https://github.com/mauvilsa/jsonargparse/pull/936>`__).
-
-Changed
-^^^^^^^
 - ``Required`` and ``NotRequired`` given as the type of an argument are no
   longer shown in the help. Now they must agree with whether the argument is
   required, otherwise adding the argument fails (`#937

@@ -1994,12 +1994,13 @@ Class type and subclasses
 When a class is used as a type hint, jsonargparse expects in config files a
 dictionary with a ``class_path`` entry indicating the dot notation expression to
 import the class, and optionally some ``init_args`` that would be used to
-instantiate it. When parsing, it will be checked that the class can be imported,
-that it is a subclass of the given type and that ``init_args`` values correspond
-to valid arguments to instantiate it. After parsing, the config object will
-include the ``class_path`` and ``init_args`` entries. To get a config object
-with all nested subclasses instantiated, the :meth:`instantiate
-<.ArgumentParser.instantiate>` method is used.
+instantiate it. This dictionary is referred to as a **subclass spec**. When
+parsing, it will be checked that the class can be imported, that it is a subclass
+of the given type and that ``init_args`` values correspond to valid arguments to
+instantiate it. After parsing, the config object will include the ``class_path``
+and ``init_args`` entries. To get a config object with all nested subclasses
+instantiated, the :meth:`instantiate <.ArgumentParser.instantiate>` method is
+used.
 
 In addition to using a class as type hint in signatures, for low level
 construction of parsers, there are also the methods :meth:`add_class_arguments
@@ -2085,6 +2086,12 @@ be accepted. In this case the config would be like:
     Classes will be parsed and instantiated when given as value a dict with
     ``class_path`` and ``init_args`` if the corresponding parameter has type
     ``Any``, or when ``fail_untyped=False`` which defaults to type ``Any``.
+
+    If such a value looks like a subclass spec (has a ``class_path``) but cannot
+    be parsed as one, e.g. because the class fails to import, by default it is
+    left unchanged and a debug message is logged. Set
+    ``validate_subclass_spec_in_any=True`` in :func:`.set_parsing_settings` to
+    make the parsing fail in this case instead.
 
 .. note::
 

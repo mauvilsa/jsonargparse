@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from unittest.mock import patch
 
 import pytest
@@ -463,3 +463,54 @@ def test_unset_parse_and_print_config(parser):
 
     out = get_parse_args_stdout(parser, ["--print_config"])
     assert json_or_yaml_load(out) == {"num": "==UNSET==", "name": "a"}
+
+
+# validate_subclass_spec_in_any
+
+
+class AnySubclass:
+    def __init__(self, p: int = 0):
+        self.p = p  # pragma: no cover
+
+
+def test_set_validate_subclass_spec_in_any_failure():
+    with pytest.raises(ValueError, match="validate_subclass_spec_in_any must be a boolean"):
+        set_parsing_settings(validate_subclass_spec_in_any="invalid")
+
+
+def test_validate_subclass_spec_in_any_default_is_false():
+    assert get_parsing_setting("validate_subclass_spec_in_any") is False
+
+
+def test_validate_subclass_spec_in_any_disabled_ignored_with_debug_log(parser, logger):
+    parser.logger = logger
+    parser.add_argument("--any", type=Any)
+
+    with capture_logs(logger) as logs:
+        cfg = parser.parse_args(['--any={"class_path": "nonexistent.Foo"}'])
+    assert cfg.any == {"class_path": "nonexistent.Foo"}
+    assert "Ignoring invalid subclass spec given as value for an Any type" in logs.getvalue()
+
+
+def test_validate_subclass_spec_in_any_enabled_fails(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--any", type=Any)
+
+    with pytest.raises(ArgumentError, match="Invalid subclass spec given as value for an Any type"):
+        parser.parse_args(['--any={"class_path": "nonexistent.Foo"}'])
+
+
+def test_validate_subclass_spec_in_any_enabled_valid_still_works(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--any", type=Any)
+
+    cfg = parser.parse_args([f'--any={{"class_path": "{__name__}.AnySubclass", "init_args": {{"p": 3}}}}'])
+    assert cfg.any == Namespace(class_path=f"{__name__}.AnySubclass", init_args=Namespace(p=3))
+
+
+def test_validate_subclass_spec_in_any_enabled_non_subclass_dict_kept(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--any", type=Any)
+
+    cfg = parser.parse_args(['--any={"a": 0, "b": 1}'])
+    assert cfg.any == {"a": 0, "b": 1}
