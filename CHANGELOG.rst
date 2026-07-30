@@ -31,6 +31,11 @@ Fixed
 - ``TypedDict`` keys inherited from a base defined in a different module not
   resolving the types only imported in the ``TYPE_CHECKING`` block of that
   module (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__).
+- ``dump`` with ``with_comments=True``, i.e. ``--print_config=comments``, not
+  adding any comment for the ``init_args`` of subclasses and for the fields of
+  dataclass-like types that are not added as a group, including when nested in
+  lists and dicts (`#939
+  <https://github.com/mauvilsa/jsonargparse/pull/939>`__).
 
 Changed
 ^^^^^^^

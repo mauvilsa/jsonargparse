@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jsonargparse import ArgumentParser, set_parsing_settings
+from jsonargparse import SUPPRESS, ActionParser, ArgumentParser, set_parsing_settings
 from jsonargparse._loaders_dumpers import json_compact_dump, json_load, yaml_dump, yaml_load
 from jsonargparse._optionals import (
     docstring_parser_support,
@@ -22,6 +22,7 @@ from jsonargparse._optionals import (
     jsonschema_support,
     omegaconf_support,
     pyyaml_available,
+    ruamel_support,
     toml_load_available,
     url_support,
 )
@@ -69,6 +70,11 @@ skip_if_fsspec_unavailable = pytest.mark.skipif(
 skip_if_docstring_parser_unavailable = pytest.mark.skipif(
     not docstring_parser_support,
     reason="docstring-parser package is required",
+)
+
+skip_if_yaml_comments_unavailable = pytest.mark.skipif(
+    not (ruamel_support and docstring_parser_support),
+    reason="ruamel.yaml and docstring-parser packages are required",
 )
 
 skip_if_requests_unavailable = pytest.mark.skipif(
@@ -157,6 +163,18 @@ def example_parser() -> ArgumentParser:
     group_2 = parser.add_argument_group("Group 2")
     group_2.add_argument("--nums.val1", type=int, default=1)
     group_2.add_argument("--nums.val2", type=float, default=2.0)
+    return parser
+
+
+@pytest.fixture
+def print_parser(parser, subparser) -> ArgumentParser:
+    parser.description = "cli tool"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--v0", help=SUPPRESS, default="0")
+    parser.add_argument("--v1", help="Option v1.", default=1)
+    parser.add_argument("--g1.v2", help="Option v2.", default="2")
+    subparser.add_argument("--v3")
+    parser.add_argument("--g2", action=ActionParser(parser=subparser))
     return parser
 
 

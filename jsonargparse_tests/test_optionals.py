@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from jsonargparse import set_parsing_settings
+from jsonargparse import ArgumentError, set_parsing_settings
 from jsonargparse._optionals import (
     _get_config_read_mode,
     docstring_parser_support,
@@ -24,6 +24,8 @@ from jsonargparse._optionals import (
 )
 from jsonargparse.typing import is_final_class
 from jsonargparse_tests.conftest import (
+    get_parse_args_stdout,
+    get_parser_help,
     skip_if_docstring_parser_unavailable,
     skip_if_fsspec_unavailable,
     skip_if_requests_unavailable,
@@ -139,6 +141,14 @@ def test_ruamel_support_false():
     with pytest.raises(ImportError) as ctx:
         import_ruamel("test_ruamel_support_false")
     ctx.match("test_ruamel_support_false")
+
+
+@pytest.mark.skipif(ruamel_support, reason="ruamel.yaml package should not be installed")
+def test_print_config_comments_unavailable(print_parser):
+    help_str = get_parser_help(print_parser)
+    assert "comments," not in help_str
+    with pytest.raises(ArgumentError, match='Invalid option "comments"'):
+        get_parse_args_stdout(print_parser, ["--print_config=comments"])
 
 
 # config read mode tests

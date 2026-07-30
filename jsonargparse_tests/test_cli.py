@@ -14,9 +14,14 @@ import pytest
 
 from jsonargparse import CLI, auto_cli, auto_parser, capture_parser, lazy_instance
 from jsonargparse._namespace import Namespace
-from jsonargparse._optionals import docstring_parser_support, ruamel_support
+from jsonargparse._optionals import docstring_parser_support
 from jsonargparse.typing import final
-from jsonargparse_tests.conftest import json_or_yaml_dump, json_or_yaml_load, skip_if_docstring_parser_unavailable
+from jsonargparse_tests.conftest import (
+    json_or_yaml_dump,
+    json_or_yaml_load,
+    skip_if_docstring_parser_unavailable,
+    skip_if_yaml_comments_unavailable,
+)
 
 
 def get_cli_stdout(*args, **kwargs) -> str:
@@ -399,8 +404,7 @@ def test_function_and_class_print_config_before_subcommands():
     assert {"Cmd2": {"i1": "d", "method2": {"m2": 0}}} == json_or_yaml_load(out)
 
 
-@skip_if_docstring_parser_unavailable
-@pytest.mark.skipif(not ruamel_support, reason="ruamel.yaml package is required")
+@skip_if_yaml_comments_unavailable
 def test_function_and_class_print_config_comments():
     out = get_cli_stdout([cmd1, Cmd2, cmd3], args=["--print_config=comments", "Cmd2", "method2"])
     assert "# Description of Cmd2" in out

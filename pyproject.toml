@@ -224,7 +224,8 @@ commands =
 
 [testenv:pydantic-v1]
 extras = coverage
-deps = ./jsonargparse_tests
+# editable, so that changes in the tests source are picked up without recreating the env
+deps = -e ./jsonargparse_tests
 commands =
     # Test with pydantic<2
     python -c "\
@@ -256,7 +257,8 @@ commands =
 
 [testenv:without-future-annotations]
 extras = test,coverage,all
-deps = ./jsonargparse_tests
+# editable, so that changes in the tests source are picked up without recreating the env
+deps = -e ./jsonargparse_tests
 allowlist_externals = sh
 commands =
     sh -c "\

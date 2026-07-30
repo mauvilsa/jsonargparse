@@ -26,7 +26,7 @@ from jsonargparse import (
 )
 from jsonargparse._formatters import get_env_var
 from jsonargparse._namespace import NSKeyError
-from jsonargparse._optionals import jsonnet_support, jsonschema_support, pyyaml_available, ruamel_support
+from jsonargparse._optionals import jsonnet_support, jsonschema_support, pyyaml_available
 from jsonargparse.typing import Path_fc, Path_fr, path_type
 from jsonargparse_tests.conftest import (
     capture_logs,
@@ -37,7 +37,6 @@ from jsonargparse_tests.conftest import (
     json_or_yaml_dump,
     json_or_yaml_load,
     responses_activate,
-    skip_if_docstring_parser_unavailable,
     skip_if_fsspec_unavailable,
     skip_if_no_pyyaml,
     skip_if_not_posix,
@@ -635,24 +634,6 @@ def test_dump_order(parser, subtests):
         assert dump == "\n".join(v + ": " + str(n) for n, v in args.items()) + "\n"
 
 
-def test_dump_comments_not_supported(parser):
-    parser.parser_mode = "json"
-    parser.add_argument("--op", type=int, default=1)
-    cfg = parser.get_defaults()
-    with pytest.raises(ValueError, match="Dumping with comments is not supported for format 'json'"):
-        parser.dump(cfg, with_comments=True)
-
-
-@skip_if_no_pyyaml
-def test_dump_comments_missing_ruamel(parser):
-    parser.add_argument("--op", type=int, default=1)
-    cfg = parser.get_defaults()
-    with patch.dict("jsonargparse._loaders_dumpers.dumpers") as dumpers:
-        dumpers.pop("yaml_comments", None)
-        with pytest.raises(ValueError, match="ruamel.yaml is required for dumping YAML with comments"):
-            parser.dump(cfg, with_comments=True)
-
-
 @pytest.fixture
 def parser_schema_jsonnet(parser, example_parser):
     parser.add_argument("--cfg", action="config")
@@ -884,18 +865,6 @@ def test_save_fsspec(example_parser):
     ctx.match("multifile=True not supported")
 
 
-@pytest.fixture
-def print_parser(parser, subparser):
-    parser.description = "cli tool"
-    parser.add_argument("--cfg", action="config")
-    parser.add_argument("--v0", help=SUPPRESS, default="0")
-    parser.add_argument("--v1", help="Option v1.", default=1)
-    parser.add_argument("--g1.v2", help="Option v2.", default="2")
-    subparser.add_argument("--v3")
-    parser.add_argument("--g2", action=ActionParser(parser=subparser))
-    return parser
-
-
 def test_print_config_normal(print_parser):
     out = get_parse_args_stdout(print_parser, ["--print_config"])
     assert json_or_yaml_load(out) == {"g1": {"v2": "2"}, "g2": {"v3": None}, "v1": 1}
@@ -904,25 +873,6 @@ def test_print_config_normal(print_parser):
 def test_print_config_skip_unset(print_parser):
     out = get_parse_args_stdout(print_parser, ["--print_config=skip_unset"])
     assert json_or_yaml_load(out) == {"g1": {"v2": "2"}, "g2": {}, "v1": 1}
-
-
-@pytest.mark.skipif(not ruamel_support, reason="ruamel.yaml package is required")
-@skip_if_docstring_parser_unavailable
-def test_print_config_comments(print_parser):
-    help_str = get_parser_help(print_parser)
-    assert "comments," in help_str
-    out = get_parse_args_stdout(print_parser, ["--print_config=comments"])
-    assert "# cli tool" in out
-    assert "# Option v1. (default: 1)" in out
-    assert "# Option v2. (default: 2)" in out
-
-
-@pytest.mark.skipif(ruamel_support, reason="ruamel.yaml package should not be installed")
-def test_print_config_comments_unavailable(print_parser):
-    help_str = get_parser_help(print_parser)
-    assert "comments," not in help_str
-    with pytest.raises(ArgumentError, match='Invalid option "comments"'):
-        get_parse_args_stdout(print_parser, ["--print_config=comments"])
 
 
 def test_print_config_invalid_flag(print_parser):

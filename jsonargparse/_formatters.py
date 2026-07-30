@@ -24,6 +24,7 @@ from ._actions import (
 from ._common import (
     defaults_cache,
     get_optionals_as_positionals_actions,
+    is_subclasses_disabled,
     parent_parser,
     supports_optionals_as_positionals,
 )
@@ -50,6 +51,96 @@ class PercentTemplate(Template):
     """  # type: ignore[assignment]
 
 
+def get_subparsers(parser: "ArgumentParser", prefix: str = "") -> dict[str | None, "ArgumentParser"]:
+    """Returns the given parser and all its subcommand parsers, keyed by subcommand key."""
+    parsers: dict[str | None, ArgumentParser] = {}
+    if parser._subparsers is not None:
+        for key, subparser in parser._subparsers._group_actions[0].choices.items():  # type: ignore[union-attr]
+            full_key = (prefix + "." if prefix else "") + key
+            parsers[full_key] = subparser
+            parsers.update(get_subparsers(subparser, prefix=full_key))
+    parsers[None] = parser
+    return parsers
+
+
+def get_group_titles(parser: "ArgumentParser") -> dict:
+    """Returns a map of parser keys to the title of the group they belong to."""
+    group_titles: dict = {}
+    for parser_key, subparser in get_subparsers(parser).items():
+        group_titles[parser_key] = subparser.description
+        prefix = "" if parser_key is None else parser_key + "."
+        for group in subparser._action_groups:
+            actions = filter_non_parsing_actions(group._group_actions)
+            skip_types = (_ActionConfigLoad, ActionConfigFile, ActionSubCommands)
+            actions = [a for a in actions if not isinstance(a, skip_types)]
+            keys = {re.sub(r"\.?[^.]+$", "", a.dest) for a in actions if "." in a.dest}
+            for key in keys:
+                group_titles[prefix + key] = group.title
+    return group_titles
+
+
+def get_class_group_title(class_parser: "ArgumentParser") -> str | None:
+    """Returns the title of the group that a class parser adds for the class itself.
+
+    The group for the class is the first one added, the rest correspond to nested keys.
+    """
+    groups = list((class_parser.groups or {}).values())
+    return groups[0].title if groups else None
+
+
+def get_class_parser(class_type, action: Action | None) -> "ArgumentParser | None":
+    """Returns a parser for the arguments of a class, or None if not possible."""
+    from ._typehints import ActionTypeHint
+
+    sub_add_kwargs = dict(getattr(action, "sub_add_kwargs", None) or {})
+    sub_add_kwargs.pop("linked_targets", None)
+    try:
+        return ActionTypeHint.get_class_parser(class_type, sub_add_kwargs=sub_add_kwargs)
+    except Exception:
+        return None
+
+
+def get_closed_type_parser(typehint, action: Action | None) -> "ArgumentParser | None":
+    """Returns a parser for the arguments of a closed type, e.g. a dataclass, given its type hint."""
+    from ._typehints import get_subclass_or_closed_types
+
+    if typehint is None:
+        return None
+    types = get_subclass_or_closed_types(typehint, also_lists=True, callable_return=True)
+    if not types or len(types) != 1 or not is_subclasses_disabled(types[0]):
+        return None
+    return get_class_parser(types[0], action)
+
+
+def get_mapping_value_typehint(typehint):
+    """Returns the type of the values of a mapping type hint, or None if not a mapping."""
+    from ._typehints import get_optional_arg, get_typehint_origin, mapping_origin_types
+
+    if typehint is None:
+        return None
+    typehint = get_optional_arg(typehint)
+    if get_typehint_origin(typehint) in mapping_origin_types:
+        args = getattr(typehint, "__args__", ())
+        if len(args) == 2:
+            return args[1]
+    return None
+
+
+def remove_leading_blank_line(cfg: ruamelCommentedMap) -> None:
+    """Removes the blank line that comments add before the first key, needed for items of a list."""
+    key = next(iter(cfg.keys()), None)
+    comments = cfg.ca.items.get(key, [None, None])[1] if key is not None else None
+    if comments and comments[0].value == "\n":
+        del comments[0]
+
+
+def is_subclass_spec_dict(value) -> bool:
+    """Tests whether a config object corresponds to a subclass spec."""
+    from ._typehints import _subclass_spec_keys
+
+    return isinstance(value.get("class_path"), str) and not (set(value.keys()) - _subclass_spec_keys)
+
+
 class YAMLCommentFormatter:
     """Formatter class for adding YAML comments to configuration files."""
 
@@ -64,55 +155,126 @@ class YAMLCommentFormatter:
         yaml = ruyaml.YAML()
         cfg = yaml.load(cfg)
 
-        def get_parsers(parser: ArgumentParser, prefix="") -> dict[str | None, ArgumentParser]:
-            parsers = {}
-            if parser._subparsers is not None:
-                for key, subparser in parser._subparsers._group_actions[0].choices.items():  # type: ignore[union-attr]
-                    full_key = (prefix + "." if prefix else "") + key
-                    parsers[full_key] = subparser
-                    parsers.update(get_parsers(subparser, prefix=full_key))
-            parsers[None] = parser
-            return parsers
-
         parser = parent_parser.get()
         assert isinstance(parser, ArgumentParser)
-        parsers = get_parsers(parser)
-
-        group_titles = {}
-        for parser_n_key, parser_n in parsers.items():
-            group_titles[parser_n_key] = parser_n.description
-            prefix = "" if parser_n_key is None else parser_n_key + "."
-            for group in parser_n._action_groups:
-                actions = filter_non_parsing_actions(group._group_actions)
-                actions = [
-                    a for a in actions if not isinstance(a, (_ActionConfigLoad, ActionConfigFile, ActionSubCommands))
-                ]
-                keys = {re.sub(r"\.?[^.]+$", "", a.dest) for a in actions if "." in a.dest}
-                for key in keys:
-                    group_titles[prefix + key] = group.title
-
-        def set_comments(cfg, prefix="", depth=0):
-            for key in cfg.keys():
-                full_key = (prefix + "." if prefix else "") + key
-                action = find_action(parser, full_key)
-                text = None
-                if full_key in group_titles and isinstance(cfg[key], dict):
-                    text = group_titles[full_key]
-                elif action is not None and action.help != SUPPRESS:
-                    text = self.help_formatter._expand_help(action)
-                if isinstance(cfg[key], dict):
-                    if text:
-                        self.set_yaml_group_comment(text, cfg, key, depth)
-                    set_comments(cfg[key], full_key, depth + 1)
-                elif text:
-                    self.set_yaml_argument_comment(text, cfg, key, depth)
-
-        if parser.description is not None:
-            self.set_yaml_start_comment(parser.description, cfg)
-        set_comments(cfg)
+        if isinstance(cfg, dict):
+            if parser.description is not None:
+                self.set_yaml_start_comment(parser.description, cfg)
+            self.set_comments(cfg, parser, get_group_titles(parser))
         out = StringIO()
         yaml.dump(cfg, out)
         return out.getvalue()
+
+    def set_comments(
+        self,
+        cfg: ruamelCommentedMap,
+        parser: "ArgumentParser",
+        group_titles: dict,
+        prefix: str = "",
+        depth: int = 0,
+    ) -> None:
+        """Sets the comments for all the keys of a config object.
+
+        Args:
+            cfg: The ruamel.yaml object.
+            parser: The parser from which help content is obtained.
+            group_titles: Map of parser keys to the title of the group they belong to.
+            prefix: The parser key that corresponds to the given config object.
+            depth: The nested level of the keys of the config object.
+        """
+        for key in cfg.keys():
+            full_key = (prefix + "." if prefix else "") + key
+            action = find_action(parser, full_key)
+            value = cfg[key]
+            text = None
+            if full_key in group_titles and isinstance(value, dict):
+                text = group_titles[full_key]
+            elif action is not None and action.help != SUPPRESS:
+                text = self.help_formatter._expand_help(action)
+            if isinstance(value, dict):
+                if text:
+                    self.set_yaml_group_comment(text, cfg, key, depth)
+                self.set_dict_comments(value, action, depth + 1, parser, group_titles, full_key)
+            else:
+                if text:
+                    self.set_yaml_argument_comment(text, cfg, key, depth)
+                if isinstance(value, list):
+                    self.set_list_comments(value, action, depth + 1)
+
+    def set_dict_comments(
+        self,
+        cfg: ruamelCommentedMap,
+        action: Action | None,
+        depth: int,
+        parser: "ArgumentParser | None" = None,
+        group_titles: dict | None = None,
+        prefix: str = "",
+        typehint=None,
+    ) -> None:
+        """Sets the comments for the keys of a config object nested in another one.
+
+        Args:
+            cfg: The ruamel.yaml object.
+            action: The action that corresponds to the given config object, if any.
+            depth: The nested level of the keys of the config object.
+            parser: The parser in which the keys are searched when not a class type.
+            group_titles: Map of parser keys to the title of the group they belong to.
+            prefix: The parser key that corresponds to the given config object.
+            typehint: The type of the config object, defaults to the type of the action.
+        """
+        if is_subclass_spec_dict(cfg):
+            self.set_subclass_comments(cfg, action, depth)
+            return
+        if typehint is None and isinstance(action, ActionTypeHint):
+            typehint = action._typehint
+        class_parser = get_closed_type_parser(typehint, action)
+        value_typehint = get_mapping_value_typehint(typehint)
+        if class_parser is not None:
+            self.set_comments(cfg, class_parser, get_group_titles(class_parser), depth=depth)
+        elif value_typehint is not None:
+            for value in cfg.values():
+                if isinstance(value, dict):
+                    self.set_dict_comments(value, action, depth + 1, typehint=value_typehint)
+                elif isinstance(value, list):
+                    self.set_list_comments(value, action, depth + 1, typehint=value_typehint)
+        elif parser is not None:
+            assert group_titles is not None
+            self.set_comments(cfg, parser, group_titles, prefix, depth)
+
+    def set_subclass_comments(self, cfg: ruamelCommentedMap, action: Action | None, depth: int) -> None:
+        """Sets the comments for the init args of a subclass spec.
+
+        Args:
+            cfg: The ruamel.yaml object that has the class_path key.
+            action: The action that corresponds to the given config object, if any.
+            depth: The nested level of the keys of the config object.
+        """
+        init_args = cfg.get("init_args")
+        if not isinstance(init_args, dict):
+            return
+        class_parser = get_class_parser(cfg["class_path"], action)
+        if class_parser is None:
+            return
+        title = get_class_group_title(class_parser)
+        if title:
+            self.set_yaml_group_comment(title, cfg, "init_args", depth)
+        self.set_comments(init_args, class_parser, get_group_titles(class_parser), depth=depth + 1)
+
+    def set_list_comments(self, cfg: list, action: Action | None, depth: int, typehint=None) -> None:
+        """Sets the comments for the class types that are items of a list.
+
+        Args:
+            cfg: The ruamel.yaml object.
+            action: The action that corresponds to the given list.
+            depth: The nested level of the keys of the items of the list.
+            typehint: The type of the list, defaults to the type of the action.
+        """
+        for item in cfg:
+            if isinstance(item, dict):
+                self.set_dict_comments(item, action, depth, typehint=typehint)
+                remove_leading_blank_line(item)
+            elif isinstance(item, list):
+                self.set_list_comments(item, action, depth + 1, typehint=typehint)
 
     def set_yaml_start_comment(
         self,

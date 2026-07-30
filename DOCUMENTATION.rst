@@ -1348,9 +1348,12 @@ Parsers that have an ``action="config"`` argument also include a
 with a large set of options to create an initial config file including all
 default values. If the `ruamel.yaml <https://pypi.org/project/ruamel.yaml>`__
 package is installed, the config can be printed having the help descriptions
-content as YAML comments by using ``--print_config=comments``. Another option is
-``--print_config=skip_unset`` which skips entries whose value is the configured
-unset value (see :ref:`unset-values`).
+content as YAML comments by using ``--print_config=comments``. The comments
+include the descriptions of the groups and arguments of the parser, and for
+values that correspond to a class, e.g. the ``init_args`` of a subclass or the
+fields of a dataclass, the descriptions from the respective class. Another
+option is ``--print_config=skip_unset`` which skips entries whose value is the
+configured unset value (see :ref:`unset-values`).
 
 From within Python it is also possible to serialize a config object by using
 either the :meth:`dump <.ArgumentParser.dump>` or :meth:`save
