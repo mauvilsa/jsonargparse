@@ -6,7 +6,7 @@ import pathlib
 import stat
 import zipfile
 from io import StringIO
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
 import pytest
@@ -576,6 +576,219 @@ def test_sub_configs_subclass(parser, tmp_cwd):
     cfg = parser.parse_args(["--cls=obj.yaml"])
     init = parser.instantiate(cfg)
     assert isinstance(init["cls"], Base)
+
+
+# sub_configs for items in a list of subclasses tests
+
+
+class ItemBase:
+    def __init__(self, x: int = 1):
+        self.x = x
+
+
+class ItemSub(ItemBase):
+    def __init__(self, y: str = "-", **kwargs):
+        super().__init__(**kwargs)
+        self.y = y
+
+
+class ItemNested(ItemBase):
+    def __init__(self, sub: Optional[ItemBase] = None, **kwargs):
+        super().__init__(**kwargs)
+        self.sub = sub
+
+
+class ItemPath(ItemBase):
+    def __init__(self, file: Optional[Path_fr] = None, **kwargs):
+        super().__init__(**kwargs)
+        self.file = file
+
+
+class ItemsMain:
+    def __init__(self, objects: List[ItemBase] = []):
+        self.objects = objects
+
+
+class ItemsDictMain:
+    def __init__(self, objects: Optional[Dict[str, ItemBase]] = None):
+        self.objects = objects
+
+
+item1_spec = {"class_path": f"{__name__}.ItemSub", "init_args": {"x": 2, "y": "a"}}
+item2_spec = {"class_path": f"{__name__}.ItemBase", "init_args": {"x": 3}}
+
+
+@pytest.fixture
+def item_subconfigs(tmp_cwd):
+    pathlib.Path("item1.yaml").write_text(json_or_yaml_dump(item1_spec))
+    pathlib.Path("item2.yaml").write_text(json_or_yaml_dump(item2_spec))
+    return tmp_cwd
+
+
+def assert_items(items):
+    assert len(items) == 2
+    assert items[0].class_path == f"{__name__}.ItemSub"
+    assert items[0].init_args == Namespace(x=2, y="a")
+    assert items[1].class_path == f"{__name__}.ItemBase"
+    assert items[1].init_args == Namespace(x=3)
+    assert [str(item["__path__"]) for item in items] == ["item1.yaml", "item2.yaml"]
+
+
+def test_sub_configs_list_subclass_in_config(parser, item_subconfigs):
+    pathlib.Path("config.yaml").write_text(json_or_yaml_dump({"objects": ["item1.yaml", "item2.yaml"]}))
+
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(["--cfg=config.yaml"])
+    assert_items(cfg.objects)
+    init = parser.instantiate(cfg)
+    assert isinstance(init.objects[0], ItemSub)
+    assert isinstance(init.objects[1], ItemBase)
+    assert (init.objects[0].x, init.objects[0].y) == (2, "a")
+    assert init.objects[1].x == 3
+
+
+def test_sub_configs_list_subclass_command_line(parser, item_subconfigs):
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(['--objects=["item1.yaml", "item2.yaml"]'])
+    assert_items(cfg.objects)
+
+
+def test_sub_configs_list_subclass_append(parser, item_subconfigs):
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(["--objects+=item1.yaml", "--objects+=item2.yaml"])
+    assert_items(cfg.objects)
+
+
+def test_sub_configs_list_subclass_mixed_with_specs(parser, item_subconfigs):
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args([f'--objects=["item1.yaml", {json.dumps(item2_spec)}]'])
+    assert len(cfg.objects) == 2
+    assert str(cfg.objects[0]["__path__"]) == "item1.yaml"
+    assert "__path__" not in cfg.objects[1]
+    assert cfg.objects[1].init_args == Namespace(x=3)
+
+
+def test_sub_configs_list_subclass_from_signature(parser, item_subconfigs):
+    parser.add_class_arguments(ItemsMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(['--main.objects=["item1.yaml", "item2.yaml"]'])
+    assert_items(cfg.main.objects)
+
+
+def test_sub_configs_list_subclass_paths_relative_to_subconfig(parser, tmp_cwd):
+    subdir = tmp_cwd / "subdir"
+    subdir.mkdir()
+    (subdir / "data.txt").touch()
+    item = {"class_path": f"{__name__}.ItemPath", "init_args": {"file": "data.txt"}}
+    (subdir / "item.yaml").write_text(json_or_yaml_dump(item))
+
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(['--objects=["subdir/item.yaml"]'])
+    assert str(cfg.objects[0]["__path__"]) == "subdir/item.yaml"
+    assert str(cfg.objects[0].init_args.file) == "data.txt"
+    init = parser.instantiate(cfg)
+    assert init.objects[0].file.absolute == str(subdir / "data.txt")
+
+
+def test_sub_configs_list_subclass_nested_subconfig(parser, tmp_cwd):
+    subdir = tmp_cwd / "subdir"
+    subdir.mkdir()
+    outer = {"class_path": f"{__name__}.ItemNested", "init_args": {"sub": "inner.yaml"}}
+    inner = {"class_path": f"{__name__}.ItemSub", "init_args": {"y": "n"}}
+    (subdir / "outer.yaml").write_text(json_or_yaml_dump(outer))
+    (subdir / "inner.yaml").write_text(json_or_yaml_dump(inner))
+
+    parser.add_class_arguments(ItemsMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(['--main.objects=["subdir/outer.yaml"]'])
+    assert str(cfg.main.objects[0]["__path__"]) == "subdir/outer.yaml"
+    assert cfg.main.objects[0].class_path == f"{__name__}.ItemNested"
+    assert cfg.main.objects[0].init_args.sub.class_path == f"{__name__}.ItemSub"
+    assert cfg.main.objects[0].init_args.sub.init_args.y == "n"
+    init = parser.instantiate(cfg)
+    assert isinstance(init.main.objects[0].sub, ItemSub)
+
+
+def test_sub_configs_list_subclass_loop_detected(parser, tmp_cwd):
+    pathlib.Path("objects.yaml").write_text(json_or_yaml_dump(["objects.yaml"]))
+
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--objects=objects.yaml"])
+    ctx.match("Config file loop detected")
+
+
+def test_sub_configs_dict_subclass_values(parser, item_subconfigs):
+    parser.add_argument("--objects", type=Dict[str, ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(['--objects={"a": "item1.yaml", "b": "item2.yaml"}'])
+    assert_items([cfg.objects["a"], cfg.objects["b"]])
+
+
+def test_sub_configs_dict_subclass_values_from_signature(parser, item_subconfigs):
+    parser.add_class_arguments(ItemsDictMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(['--main.objects={"a": "item1.yaml", "b": "item2.yaml"}'])
+    assert_items([cfg.main.objects["a"], cfg.main.objects["b"]])
+
+
+def test_sub_configs_list_subclass_path_not_exist(parser, item_subconfigs):
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--objects=["does-not-exist.yaml"]'])
+    ctx.match("Unexpected import path format: does-not-exist.yaml")
+
+
+def test_sub_configs_list_subclass_invalid_class_path(parser, tmp_cwd):
+    pathlib.Path("item.yaml").write_text('{"class_path": "not.a.class"}')
+
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--objects=["item.yaml"]'])
+    ctx.match("Problem with given class_path 'not.a.class'")
+
+
+def test_sub_configs_list_subclass_unparsable_content(parser, tmp_cwd):
+    pathlib.Path("item.yaml").write_text("class_path: [not: valid")
+
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--objects=["item.yaml"]'])
+    ctx.match("Invalid content in sub-config file item.yaml")
+
+
+def test_sub_configs_list_callable_return_subclass(parser, item_subconfigs):
+    parser.add_argument("--objects", type=List[Callable[[], ItemBase]], sub_configs=True)
+
+    cfg = parser.parse_args(['--objects=["item1.yaml", "item2.yaml"]'])
+    assert_items(cfg.objects)
+
+
+def test_sub_configs_list_subclass_save_multifile(parser, item_subconfigs):
+    main = {"objects": ["item1.yaml", "item2.yaml"]}
+    pathlib.Path("config.yaml").write_text(json_or_yaml_dump(main))
+    out_dir = item_subconfigs / "out"
+    out_dir.mkdir()
+
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(["--cfg=config.yaml"])
+    parser.save(cfg, out_dir / "config.yaml", multifile=True)
+
+    assert json_or_yaml_load((out_dir / "config.yaml").read_text()) == main
+    assert json_or_yaml_load((out_dir / "item1.yaml").read_text()) == item1_spec
+    assert json_or_yaml_load((out_dir / "item2.yaml").read_text()) == item2_spec
 
 
 def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):

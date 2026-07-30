@@ -645,6 +645,8 @@ class ActionTypeHint(Action):
                 except get_loader_exceptions():
                     config_path = None
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
+                # a single sub-config appended to a list becomes one more list item
+                appended_subconfig = append and config_path is not None and not isinstance(val, list)
 
                 unset_sentinel = get_parsing_setting("unset_sentinel")
                 prev_val = cfg.get(self.dest) if cfg else unset_sentinel
@@ -684,10 +686,13 @@ class ActionTypeHint(Action):
                     if ex:
                         raise ex
 
-                if path_meta is not None:
-                    val["__path__"] = path_meta
-                if isinstance(val, (Namespace, dict)) and config_path is not None:
-                    val["__path__"] = config_path
+                if isinstance(val, (Namespace, dict)):
+                    if path_meta is not None:
+                        val["__path__"] = path_meta
+                    if config_path is not None:
+                        val["__path__"] = config_path
+                elif appended_subconfig and isinstance(val, list) and isinstance(val[-1], (Namespace, dict)):
+                    val[-1]["__path__"] = config_path
                 value[num] = val
             except (TypeError, ValueError) as ex:
                 if self._is_valid_string(val):
@@ -785,6 +790,56 @@ def is_list_pathlike(typehint) -> bool:
         subtype = typehint.__args__[0]
         return is_pathlike(subtype)
     return False
+
+
+def is_subclass_container_typehint(typehint) -> bool:
+    """Whether a container type, e.g. list or dict, has classes as items."""
+    typehint = get_unaliased_type(typehint)
+    subtypehints = getattr(typehint, "__args__", None)
+    if not subtypehints:
+        return False
+    typehint_origin = get_typehint_origin(typehint)
+    if typehint_origin == Union:
+        return any(is_subclass_container_typehint(s) for s in subtypehints)
+    if typehint_origin in sequence_or_mapping_origin_types:
+        return any(
+            ActionTypeHint.is_subclass_typehint(s, all_subtypes=False)
+            or ActionTypeHint.is_return_subclass_typehint(s)
+            or is_subclass_container_typehint(s)
+            for s in subtypehints
+        )
+    return False
+
+
+# sentinel returned by adapt_subconfig_path when the value is not a path to a config file
+not_a_subconfig_path = object()
+
+
+def adapt_subconfig_path(val, typehint, adapt_kwargs):
+    """Loads and adapts a sub-config when val is a path to a config file.
+
+    Only relevant for types that expect a class, since for these a string is
+    otherwise interpreted as a class path. Makes it possible for items in a
+    list or dict of classes to be given as paths to sub-config files.
+    """
+    if not adapt_kwargs.get("enable_path") or not isinstance(val, str):
+        return not_a_subconfig_path
+    from ._optionals import _get_config_read_mode
+
+    try:
+        path = Path(val, mode=_get_config_read_mode())
+    except TypeError:
+        return not_a_subconfig_path
+    try:
+        with load_config_path_context(path), path.relative_path_context():
+            subconfig = load_value(path.read_text())
+    except get_loader_exceptions() as ex:
+        raise_unexpected_value(f"Invalid content in sub-config file {val}: {ex}", exception=ex)
+    with load_config_path_context(path), change_to_path_dir(path):
+        val = adapt_typehints(subconfig, typehint, **adapt_kwargs)
+    if isinstance(val, (Namespace, dict)):
+        val["__path__"] = path
+    return val
 
 
 def raise_unexpected_value(message: str, val: Any = inspect._empty, exception: Exception | None = None) -> NoReturn:
@@ -1147,6 +1202,9 @@ def adapt_typehints(
             else:
                 val = object_path_serializer(val)
         else:
+            adapted = adapt_subconfig_path(val, typehint, adapt_kwargs)
+            if adapted is not not_a_subconfig_path:
+                return adapted
             try:
                 val_input = val
                 if isinstance(val, str):
@@ -1200,6 +1258,10 @@ def adapt_typehints(
             return val
         if serialize and isinstance(val, str):
             return val
+
+        adapted = adapt_subconfig_path(val, typehint, adapt_kwargs)
+        if adapted is not not_a_subconfig_path:
+            return adapted
 
         prev_implicit_defaults = False
         if prev_val is unset_sentinel and not inspect.isabstract(typehint) and not is_protocol(typehint):

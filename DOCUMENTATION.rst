@@ -2102,6 +2102,115 @@ be accepted. In this case the config would be like:
     type a class. The accepted ``init_args`` would be the parameters of that
     function.
 
+
+.. _sub-config-files:
+
+Sub-config files
+----------------
+
+Instead of writing a subclass spec inline, a path to a config file that holds it
+can be given. This makes it possible to split a large config into smaller
+reusable files. It requires that the argument was added with
+``sub_configs=True``, which is the default in :func:`.auto_cli` and is accepted
+by :meth:`add_argument <.ArgumentParser.add_argument>` and the
+``add_*_arguments`` methods.
+
+This also works for the items of a list of classes and for the values of a dict
+of classes, which is useful when each component is defined in its own config
+file. For example, take the following classes:
+
+.. testcode:: sub_config_files
+
+    class Hook:
+        def __init__(self, verbose: bool = False):
+            self.verbose = verbose
+
+
+    class LogHook(Hook):
+        def __init__(self, log_file: str = "run.log", **kwargs):
+            super().__init__(**kwargs)
+            self.log_file = log_file
+
+
+    class CheckpointHook(Hook):
+        def __init__(self, every_n_steps: int = 100, **kwargs):
+            super().__init__(**kwargs)
+            self.every_n_steps = every_n_steps
+
+.. testcode:: sub_config_files
+    :hide:
+
+    doctest_mock_class_in_main(LogHook)
+    doctest_mock_class_in_main(CheckpointHook)
+
+And a config in which each hook is a separate file:
+
+.. code-block:: yaml
+
+    # File: hooks.yaml
+    hooks:
+    - log_hook.yaml
+    - checkpoint_hook.yaml
+
+.. code-block:: yaml
+
+    # File: log_hook.yaml
+    class_path: LogHook
+    init_args:
+      log_file: train.log
+
+.. code-block:: yaml
+
+    # File: checkpoint_hook.yaml
+    class_path: CheckpointHook
+    init_args:
+      every_n_steps: 500
+
+.. testsetup:: sub_config_files
+
+    cwd = os.getcwd()
+    tmpdir = tempfile.mkdtemp(prefix="_jsonargparse_doctest_")
+    os.chdir(tmpdir)
+    pathlib.Path("hooks.yaml").write_text("hooks:\n- log_hook.yaml\n- checkpoint_hook.yaml\n")
+    pathlib.Path("log_hook.yaml").write_text("class_path: LogHook\ninit_args:\n  log_file: train.log\n")
+    pathlib.Path("checkpoint_hook.yaml").write_text("class_path: CheckpointHook\ninit_args:\n  every_n_steps: 500\n")
+
+.. testcleanup:: sub_config_files
+
+    os.chdir(cwd)
+    shutil.rmtree(tmpdir)
+
+Then in Python:
+
+.. doctest:: sub_config_files
+
+    >>> parser = ArgumentParser()
+    >>> parser.add_argument("--hooks", type=list[Hook], sub_configs=True)  # doctest: +IGNORE_RESULT
+
+    >>> cfg = parser.parse_path("hooks.yaml")
+    >>> cfg.hooks[0].class_path
+    '__main__.LogHook'
+    >>> cfg.hooks[0].init_args.log_file
+    'train.log'
+    >>> cfg.hooks[1].init_args.every_n_steps
+    500
+
+    >>> init = parser.instantiate(cfg)
+    >>> isinstance(init.hooks[1], CheckpointHook)
+    True
+
+The same is accepted from command line, i.e. ``--hooks=[log_hook.yaml,
+checkpoint_hook.yaml]``, or appending one item at a time as explained in
+:ref:`list-append`, i.e. ``--hooks+=log_hook.yaml
+--hooks+=checkpoint_hook.yaml``.
+
+Relative paths inside a sub-config file are resolved with respect to the
+directory of that sub-config file, such that a group of config files can be
+moved around without needing to modify them. Furthermore, :meth:`save
+<.ArgumentParser.save>` with ``multifile=True`` writes back each sub-config to
+its own file, preserving the original structure.
+
+
 .. _instance-factories:
 
 Instance factories
