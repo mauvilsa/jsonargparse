@@ -30,6 +30,7 @@ from ._typehints import (
     get_subclass_names,
     is_list_pathlike,
     is_optional,
+    is_subclass_container_typehint,
     not_required_types,
     replace_unresolved_forward_refs,
     sequence_origin_types,
@@ -450,7 +451,10 @@ class SignatureArguments(LoggerProperty):
                 else:
                     register_pydantic_type(annotation)
                 enable_path = sub_configs and (
-                    is_subclass_typehint or is_return_subclass_typehint or is_list_pathlike(annotation)
+                    is_subclass_typehint
+                    or is_return_subclass_typehint
+                    or is_list_pathlike(annotation)
+                    or is_subclass_container_typehint(annotation)
                 )
                 args = ActionTypeHint.prepare_add_argument(
                     args=args,

@@ -22,6 +22,10 @@ Added
   not a valid one, the parsing fails instead of silently ignoring it. When
   disabled (the default), a debug log now informs about the ignored invalid
   subclass spec (`#938 <https://github.com/mauvilsa/jsonargparse/pull/938>`__).
+- Items of a list of classes and values of a dict of classes can now be given as
+  paths to sub-config files, instead of this only being supported for the value
+  of an entire argument (`#940
+  <https://github.com/mauvilsa/jsonargparse/pull/940>`__).
 
 Fixed
 ^^^^^
