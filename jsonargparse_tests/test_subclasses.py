@@ -1529,6 +1529,412 @@ def test_implements_protocol(expected, value):
     assert implements_protocol(value, Interface) is expected
 
 
+# protocol method signature matching tests
+
+
+class PositionalOnlyInterface(Protocol):
+    def run(self, a: int, b: str, /) -> None: ...
+
+
+class PositionalOnlyRenamed:
+    def run(self, x: int, y: str, /) -> None: ...
+
+
+class PositionalOnlyAsPositionalOrKeyword:
+    def run(self, x: int, y: str) -> None: ...
+
+
+class PositionalOnlyMissingOne:
+    def run(self, a: int, /) -> None: ...
+
+
+class PositionalOnlySwappedTypes:
+    def run(self, a: str, b: int, /) -> None: ...
+
+
+class PositionalOnlyExtraRequired:
+    def run(self, a: int, b: str, c: float, /) -> None: ...
+
+
+class PositionalOnlyExtraOptional:
+    def run(self, a: int, b: str, c: float = 0.0, /) -> None: ...
+
+
+class PositionalOnlyAsKeywordOnly:
+    def run(self, *, a: int, b: str) -> None: ...
+
+
+class PositionalOnlyAsVarPositional:
+    def run(self, *args) -> None: ...
+
+
+class PositionalOnlyAsVarKeyword:
+    def run(self, **kwargs) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, value",
+    [
+        (True, PositionalOnlyRenamed),
+        (True, PositionalOnlyAsPositionalOrKeyword),
+        (True, PositionalOnlyExtraOptional),
+        (True, PositionalOnlyAsVarPositional),
+        (False, PositionalOnlyMissingOne),
+        (False, PositionalOnlySwappedTypes),
+        (False, PositionalOnlyExtraRequired),
+        (False, PositionalOnlyAsKeywordOnly),
+        (False, PositionalOnlyAsVarKeyword),
+    ],
+)
+def test_implements_protocol_positional_only(expected, value):
+    assert implements_protocol(value, PositionalOnlyInterface) is expected
+
+
+class PositionalOrKeywordInterface(Protocol):
+    def run(self, a: int, b: str) -> None: ...
+
+
+class PositionalOrKeywordSameNames:
+    def run(self, a: int, b: str) -> None: ...
+
+
+class PositionalOrKeywordRenamed:
+    def run(self, a: int, x: str) -> None: ...
+
+
+class PositionalOrKeywordReordered:
+    def run(self, b: str, a: int) -> None: ...
+
+
+class PositionalOrKeywordAsPositionalOnly:
+    def run(self, a: int, b: str, /) -> None: ...
+
+
+class PositionalOrKeywordAsKeywordOnly:
+    def run(self, *, a: int, b: str) -> None: ...
+
+
+class PositionalOrKeywordAsVarPositionalAndKeyword:
+    def run(self, *args, **kwargs) -> None: ...
+
+
+class PositionalOrKeywordAsVarPositional:
+    def run(self, *args) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, value",
+    [
+        (True, PositionalOrKeywordSameNames),
+        (True, PositionalOrKeywordAsVarPositionalAndKeyword),
+        (False, PositionalOrKeywordRenamed),
+        (False, PositionalOrKeywordReordered),
+        (False, PositionalOrKeywordAsPositionalOnly),
+        (False, PositionalOrKeywordAsKeywordOnly),
+        (False, PositionalOrKeywordAsVarPositional),
+    ],
+)
+def test_implements_protocol_positional_or_keyword(expected, value):
+    assert implements_protocol(value, PositionalOrKeywordInterface) is expected
+
+
+class KeywordOnlyInterface(Protocol):
+    def run(self, *, a: int, b: str) -> None: ...
+
+
+class KeywordOnlySameNames:
+    def run(self, *, a: int, b: str) -> None: ...
+
+
+class KeywordOnlyAsPositionalOrKeyword:
+    def run(self, a: int, b: str) -> None: ...
+
+
+class KeywordOnlyRenamed:
+    def run(self, *, a: int, x: str) -> None: ...
+
+
+class KeywordOnlyWrongType:
+    def run(self, *, a: int, b: int) -> None: ...
+
+
+class KeywordOnlyAsPositionalOnly:
+    def run(self, a: int = 0, b: str = "-", /) -> None: ...
+
+
+class KeywordOnlyAsVarKeyword:
+    def run(self, **kwargs) -> None: ...
+
+
+class KeywordOnlyPartialVarKeyword:
+    def run(self, *, a: int, **kwargs) -> None: ...
+
+
+class KeywordOnlyTypedVarKeyword:
+    def run(self, **kwargs: int) -> None: ...
+
+
+class KeywordOnlyAnyVarKeyword:
+    def run(self, **kwargs: Any) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, value",
+    [
+        (True, KeywordOnlySameNames),
+        (True, KeywordOnlyAsPositionalOrKeyword),
+        (True, KeywordOnlyAsVarKeyword),
+        (True, KeywordOnlyPartialVarKeyword),
+        (True, KeywordOnlyAnyVarKeyword),
+        (False, KeywordOnlyRenamed),
+        (False, KeywordOnlyWrongType),
+        (False, KeywordOnlyAsPositionalOnly),
+        (False, KeywordOnlyTypedVarKeyword),
+    ],
+)
+def test_implements_protocol_keyword_only(expected, value):
+    assert implements_protocol(value, KeywordOnlyInterface) is expected
+
+
+class VarKeywordInterface(Protocol):
+    def run(self, a: int, **kwargs) -> None: ...
+
+
+class VarKeywordAccepted:
+    def run(self, a: int, **kwargs) -> None: ...
+
+
+class VarKeywordNotAccepted:
+    def run(self, a: int) -> None: ...
+
+
+class VarKeywordExtraOptional:
+    def run(self, a: int, *, b: str = "-", **kwargs) -> None: ...
+
+
+class VarPositionalInterface(Protocol):
+    def run(self, *args: int) -> None: ...
+
+
+class VarPositionalAccepted:
+    def run(self, *args: int) -> None: ...
+
+
+class VarPositionalNotAccepted:
+    def run(self, a: int = 0) -> None: ...
+
+
+class VarPositionalWrongType:
+    def run(self, *args: str) -> None: ...
+
+
+class VarPositionalExtraOptional:
+    def run(self, a: int = 0, *args: int) -> None: ...
+
+
+class VarPositionalExtraOptionalWrongType:
+    def run(self, a: str = "-", *args: int) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, VarKeywordInterface, VarKeywordAccepted),
+        (True, VarKeywordInterface, VarKeywordExtraOptional),
+        (False, VarKeywordInterface, VarKeywordNotAccepted),
+        (True, VarPositionalInterface, VarPositionalAccepted),
+        (True, VarPositionalInterface, VarPositionalExtraOptional),
+        (False, VarPositionalInterface, VarPositionalNotAccepted),
+        (False, VarPositionalInterface, VarPositionalWrongType),
+        (False, VarPositionalInterface, VarPositionalExtraOptionalWrongType),
+    ],
+)
+def test_implements_protocol_var_parameters(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+
+
+class ExtraParamsInterface(Protocol):
+    def run(self, a: int) -> None: ...
+
+
+class ExtraOptionalKeywordOnly:
+    def run(self, a: int, *, extra: bool = False) -> None: ...
+
+
+class ExtraRequiredKeywordOnly:
+    def run(self, a: int, *, extra: bool) -> None: ...
+
+
+class ExtraOptionalPositional:
+    def run(self, a: int, extra: bool = False) -> None: ...
+
+
+class ExtraRequiredPositional:
+    def run(self, a: int, extra: bool) -> None: ...
+
+
+class ExtraVarParams:
+    def run(self, a: int, *args, **kwargs) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, value",
+    [
+        (True, ExtraOptionalKeywordOnly),
+        (True, ExtraOptionalPositional),
+        (True, ExtraVarParams),
+        (False, ExtraRequiredKeywordOnly),
+        (False, ExtraRequiredPositional),
+    ],
+)
+def test_implements_protocol_extra_parameters(expected, value):
+    assert implements_protocol(value, ExtraParamsInterface) is expected
+
+
+class DefaultsInterface(Protocol):
+    def run(self, a: int = 0) -> None: ...
+
+
+class DefaultsSameValue:
+    def run(self, a: int = 0) -> None: ...
+
+
+class DefaultsOtherValue:
+    def run(self, a: int = 3) -> None: ...
+
+
+class DefaultsRequired:
+    def run(self, a: int) -> None: ...
+
+
+class KeywordOnlyDefaultsInterface(Protocol):
+    def run(self, *, a: int = 0) -> None: ...
+
+
+class KeywordOnlyDefaultsOptional:
+    def run(self, *, a: int = 3) -> None: ...
+
+
+class KeywordOnlyDefaultsRequired:
+    def run(self, *, a: int) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, DefaultsInterface, DefaultsSameValue),
+        (True, DefaultsInterface, DefaultsOtherValue),
+        (False, DefaultsInterface, DefaultsRequired),
+        (True, KeywordOnlyDefaultsInterface, KeywordOnlyDefaultsOptional),
+        (False, KeywordOnlyDefaultsInterface, KeywordOnlyDefaultsRequired),
+    ],
+)
+def test_implements_protocol_defaults(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+
+
+class AnyTypesInterface(Protocol):
+    def run(self, a: Any, b):
+        """No annotation for b nor for the return."""
+
+
+class AnyTypesAnnotated:
+    def run(self, a: int, b: str) -> float:
+        return 0.0  # pragma: no cover
+
+
+class AnyTypesUnannotated:
+    def run(self, a, b): ...
+
+
+class ExactTypesInterface(Protocol):
+    def run(self, a: List[float]) -> List[float]: ...
+
+
+class ExactTypesUnannotatedParam:
+    def run(self, a) -> List[float]:
+        return []  # pragma: no cover
+
+
+class ExactTypesSupertypeParam:
+    def run(self, a: Iterable[float]) -> List[float]:
+        return []  # pragma: no cover
+
+
+class ExactTypesUnannotatedReturn:
+    def run(self, a: List[float]):
+        return []  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, AnyTypesInterface, AnyTypesAnnotated),
+        (True, AnyTypesInterface, AnyTypesUnannotated),
+        (False, ExactTypesInterface, ExactTypesUnannotatedParam),
+        (False, ExactTypesInterface, ExactTypesSupertypeParam),
+        (False, ExactTypesInterface, ExactTypesUnannotatedReturn),
+    ],
+)
+def test_implements_protocol_type_hints(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+
+
+class MultipleMethodsInterface(Protocol):
+    def one(self, a: int) -> None: ...
+
+    def two(self, b: str) -> None: ...
+
+
+class MultipleMethodsImplemented:
+    def one(self, a: int) -> None: ...
+
+    def two(self, b: str) -> None: ...
+
+
+class MultipleMethodsOneMismatch:
+    def one(self, a: int) -> None: ...
+
+    def two(self, b: int) -> None: ...
+
+
+class MultipleMethodsOneMissing:
+    def one(self, a: int) -> None: ...
+
+
+class StaticAndClassMethodsInterface(Protocol):
+    def make(self, a: int) -> None: ...
+
+
+class StaticMethodImplements:
+    @staticmethod
+    def make(a: int) -> None: ...
+
+
+class ClassMethodImplements:
+    @classmethod
+    def make(cls, a: int) -> None: ...
+
+
+class NotAMethodImplements:
+    make = "not a method"
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, MultipleMethodsInterface, MultipleMethodsImplemented),
+        (False, MultipleMethodsInterface, MultipleMethodsOneMismatch),
+        (False, MultipleMethodsInterface, MultipleMethodsOneMissing),
+        (True, StaticAndClassMethodsInterface, StaticMethodImplements),
+        (True, StaticAndClassMethodsInterface, ClassMethodImplements),
+        (False, StaticAndClassMethodsInterface, NotAMethodImplements),
+    ],
+)
+def test_implements_protocol_methods(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+
+
 @pytest.mark.parametrize(
     "expected, value",
     [

@@ -554,7 +554,11 @@ Some notes about this support are:
 
 - ``Protocol`` types are also supported the same as subclasses. The protocols
   are not required to be ``runtime_checkable``. But the accepted classes must
-  match exactly the signature of the protocol's public methods.
+  implement all of the protocol's public methods with a compatible signature,
+  i.e. the methods must be callable in all the ways that the protocol's methods
+  can be called, similar to what static type checkers verify. Parameter and
+  return types must match exactly, subtypes are not accepted, except when the
+  protocol has no annotation or ``Any``, which accept any type.
 
 - ``dataclasses``, final classes, attrs' ``define``, pydantic's ``dataclass``
   and pydantic's ``BaseModel`` are supported even when nested. By default they
