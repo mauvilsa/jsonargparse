@@ -1765,6 +1765,16 @@ def dump_kwargs_context(kwargs):
     yield
 
 
+def get_class_defaults(class_path, parser_or_action) -> Namespace:
+    if not class_path:
+        return Namespace()
+    sub_add_kwargs = getattr(parser_or_action, "sub_add_kwargs", {})
+    try:
+        return ActionTypeHint.get_class_parser(class_path, sub_add_kwargs).get_defaults()
+    except Exception:
+        return Namespace()
+
+
 def discard_init_args_on_class_path_change(parser_or_action, prev_val, value):
     if prev_val and "init_args" in prev_val and prev_val["class_path"] != value["class_path"]:
         parser = parser_or_action
@@ -1772,8 +1782,15 @@ def discard_init_args_on_class_path_change(parser_or_action, prev_val, value):
             sub_add_kwargs = getattr(parser_or_action, "sub_add_kwargs", {})
             parser = ActionTypeHint.get_class_parser(value["class_path"], sub_add_kwargs)
         del_args = {}
+        del_defaults = {}
         prev_val = subclass_spec_as_namespace(prev_val)
+        prev_defaults = get_class_defaults(prev_val["class_path"], parser_or_action)
+        new_defaults = get_class_defaults(value["class_path"], parser_or_action)
         for key, val in list(prev_val.init_args.items(branches=True, nested=False)):
+            if key in prev_defaults and key in new_defaults and prev_defaults[key] == val and new_defaults[key] != val:
+                # value is only the previous class default, so the new class default must prevail
+                del_defaults[key] = prev_val.init_args.pop(key)
+                continue
             action = find_action(parser, key)
             if action:
                 with parser_context(lenient_check=False, load_value_mode=parser.parser_mode):
@@ -1787,6 +1804,11 @@ def discard_init_args_on_class_path_change(parser_or_action, prev_val, value):
             parser_or_action.logger.debug(
                 f"Due to class_path change from {prev_val['class_path']!r} to {value['class_path']!r}, "
                 f"discarding init_args: {del_args}."
+            )
+        if del_defaults:
+            parser_or_action.logger.debug(
+                f"Due to class_path change from {prev_val['class_path']!r} to {value['class_path']!r}, "
+                f"discarding previous class defaults: {del_defaults}."
             )
 
 

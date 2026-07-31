@@ -1059,6 +1059,27 @@ def test_subclass_discard_init_args_mixed_type(parser, logger):
     assert "discarding init_args: {'param': 1}" in logs.getvalue()
 
 
+class DefaultInstanceBase:
+    pass
+
+
+class DefaultInstanceSub1(DefaultInstanceBase):
+    def __init__(self, foo: str = "foo", bar: str = "bar"):
+        pass  # pragma: no cover
+
+
+class DefaultInstanceSub2(DefaultInstanceBase):
+    def __init__(self, foo: str = "foo", bar: str = "baaaaar"):
+        pass  # pragma: no cover
+
+
+def test_subclass_discard_default_instance_defaults_on_class_path_change(parser):
+    parser.add_argument("--data", type=DefaultInstanceBase, default=lazy_instance(DefaultInstanceSub1))
+    cfg = parser.parse_args([f"--data={__name__}.DefaultInstanceSub2", "--data.foo=test"])
+    assert cfg.data.class_path == f"{__name__}.DefaultInstanceSub2"
+    assert cfg.data.init_args == Namespace(foo="test", bar="baaaaar")
+
+
 class OverrideBase:
     def __init__(self, b: int = 1):
         pass  # pragma: no cover

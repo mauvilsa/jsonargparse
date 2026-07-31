@@ -35,6 +35,10 @@ Fixed
 - ``TypedDict`` keys inherited from a base defined in a different module not
   resolving the types only imported in the ``TYPE_CHECKING`` block of that
   module (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__).
+- Init args of a default subclass instance not being discarded on class path
+  change when they are only the previous class defaults, thereby shadowing the
+  defaults of the newly selected class (`#460
+  <https://github.com/mauvilsa/jsonargparse/issues/460>`__).
 
 Changed
 ^^^^^^^
