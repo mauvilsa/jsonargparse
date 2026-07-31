@@ -47,6 +47,15 @@ Changed
   longer shown in the help. Now they must agree with whether the argument is
   required, otherwise adding the argument fails (`#937
   <https://github.com/mauvilsa/jsonargparse/pull/937>`__).
+- Whether a class implements a ``Protocol`` is now decided by checking that its
+  methods can be called in all the ways that the protocol methods can be called,
+  similar to what static type checkers do, instead of requiring the parameter
+  lists to be identical. Among others, this means that names of positional-only
+  parameters are ignored, ``*args``/``**kwargs`` in the implementation can stand
+  in for protocol parameters, and extra optional parameters in the
+  implementation are accepted. Parameter and return types must still match
+  exactly, except when the protocol has no annotation or ``Any`` (`#941
+  <https://github.com/mauvilsa/jsonargparse/pull/941>`__).
 
 
 v4.50.0 (2026-07-22)

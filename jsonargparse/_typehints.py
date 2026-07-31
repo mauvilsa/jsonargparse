@@ -56,6 +56,7 @@ from ._common import (
     lenient_check,
     nested_links,
     parent_parser,
+    parse_logger,
     parser_context,
     validating_defaults,
 )
@@ -1364,12 +1365,134 @@ protocol_irrelevant_dunder_methods = {
 }
 
 
-def implements_protocol(value, protocol) -> bool:
-    from jsonargparse._parameter_resolvers import get_signature_parameters
-    from jsonargparse._postponed_annotations import get_return_type
+def get_protocol_method_signature(class_type, name, logger):
+    """Returns the parameters (excluding self) and return type of a method, with annotations resolved.
 
+    In contrast to get_signature_parameters, the signature is taken as declared, i.e. ``*args`` and
+    ``**kwargs`` are not resolved into the parameters that they might accept, since for protocols
+    what matters is how the method can be called.
+    """
+    from jsonargparse._parameter_resolvers import ParamData, parameter_attributes
+    from jsonargparse._postponed_annotations import evaluate_postponed_annotations, get_return_type
+
+    method = inspect.getattr_static(class_type, name)
+    skip_self = not isinstance(method, staticmethod)
+    if isinstance(method, (staticmethod, classmethod)):
+        method = method.__func__
+    if not inspect.isfunction(method):
+        raise ValueError(f"Expected {class_type.__name__}.{name} to be a function, but got {method}.")
+
+    signature = inspect.signature(method)
+    params = [ParamData(**{a: getattr(p, a) for a in parameter_attributes}) for p in signature.parameters.values()]
+    evaluate_postponed_annotations(params, method, None, logger)
+    return (params[1:] if skip_self else params), get_return_type(method, logger)
+
+
+def protocol_type_matches(proto_annotation, value_annotation, value_any_accepted: bool = False) -> bool:
+    """Whether a type in an implementation is accepted for the corresponding type in a protocol."""
+    if proto_annotation is inspect.Parameter.empty or proto_annotation == Any:
+        return True
+    if value_any_accepted and (value_annotation is inspect.Parameter.empty or value_annotation == Any):
+        return True
+    return proto_annotation == value_annotation
+
+
+def protocol_var_param_matches(proto_param, value_var_param) -> bool:
+    """Whether an implementation *args/**kwargs can stand in for a protocol parameter."""
+    return value_var_param is not None and protocol_type_matches(
+        proto_param.annotation, value_var_param.annotation, value_any_accepted=True
+    )
+
+
+def split_signature_params(params):
+    kinds = inspect.Parameter
+    positional = [p for p in params if p.kind in (kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD)]
+    keyword_only = {p.name: p for p in params if p.kind is kinds.KEYWORD_ONLY}
+    var_positional = next((p for p in params if p.kind is kinds.VAR_POSITIONAL), None)
+    var_keyword = next((p for p in params if p.kind is kinds.VAR_KEYWORD), None)
+    return positional, keyword_only, var_positional, var_keyword
+
+
+def protocol_params_match(proto_params, value_params) -> bool:
+    """Whether a method can be called in all the ways that a protocol method can be called.
+
+    Types are required to match exactly, except when the protocol has no annotation or ``Any``, in
+    which case any type in the implementation is accepted.
+    """
+    proto_pos, proto_kw, proto_args, proto_kwargs = split_signature_params(proto_params)
+    value_pos, value_kw, value_args, value_kwargs = split_signature_params(value_params)
+    empty = inspect.Parameter.empty
+
+    # arbitrary extra arguments accepted by the protocol must also be accepted by the implementation
+    if proto_args and not protocol_var_param_matches(proto_args, value_args):
+        return False
+    if proto_kwargs and not protocol_var_param_matches(proto_kwargs, value_kwargs):
+        return False
+
+    matched: set = set()  # indexes of value_pos already accounted for
+
+    # parameters that the protocol accepts positionally
+    for num, proto_param in enumerate(proto_pos):
+        if num >= len(value_pos):
+            # only *args, or *args and **kwargs when also accepted by keyword, can stand in
+            if not protocol_var_param_matches(proto_param, value_args):
+                return False
+            if proto_param.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD and not protocol_var_param_matches(
+                proto_param, value_kwargs
+            ):
+                return False
+            continue
+        value_param = value_pos[num]
+        if proto_param.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD and (
+            value_param.kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD or value_param.name != proto_param.name
+        ):
+            return False  # names only irrelevant when the protocol accepts the parameter positionally only
+        if not protocol_type_matches(proto_param.annotation, value_param.annotation):
+            return False
+        if proto_param.default is not empty and value_param.default is empty:
+            return False
+        matched.add(num)
+
+    # parameters that the protocol only accepts by keyword
+    for name, proto_param in proto_kw.items():
+        value_param = value_kw.get(name)
+        if value_param is None:
+            # a parameter accepted both positionally and by keyword also works
+            num = next(
+                (
+                    n
+                    for n, p in enumerate(value_pos)
+                    if p.name == name and n not in matched and p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+                ),
+                None,
+            )
+            if num is None:
+                if not protocol_var_param_matches(proto_param, value_kwargs):
+                    return False
+                continue
+            value_param = value_pos[num]
+            matched.add(num)
+        if not protocol_type_matches(proto_param.annotation, value_param.annotation):
+            return False
+        if proto_param.default is not empty and value_param.default is empty:
+            return False
+
+    # parameters only in the implementation must be optional and accept what the protocol might give
+    for num, value_param in enumerate(value_pos):
+        if num in matched:
+            continue
+        if value_param.default is empty:
+            return False
+        if proto_args and not protocol_type_matches(proto_args.annotation, value_param.annotation):
+            return False
+    return all(p.default is not empty for n, p in value_kw.items() if n not in proto_kw)
+
+
+def implements_protocol(value, protocol) -> bool:
     if not inspect.isclass(value) or value is object or not is_protocol(protocol):
         return False
+
+    logger = parse_logger(True, "implements_protocol")
     members = 0
     for name, _ in inspect.getmembers(protocol, predicate=inspect.isfunction):
         is_dunder = name.startswith("__") and name.endswith("__")
@@ -1379,15 +1502,13 @@ def implements_protocol(value, protocol) -> bool:
             return False
         members += 1
         try:
-            value_params = get_signature_parameters(value, name)
-        except ValueError:
+            value_params, value_return = get_protocol_method_signature(value, name, logger)
+        except (ValueError, TypeError):
             return False
-        proto_params = get_signature_parameters(protocol, name)
-        if [(p.name, p.annotation) for p in proto_params] != [(p.name, p.annotation) for p in value_params]:
+        proto_params, proto_return = get_protocol_method_signature(protocol, name, logger)
+        if not protocol_params_match(proto_params, value_params):
             return False
-        proto_return = get_return_type(inspect.getattr_static(protocol, name))
-        value_return = get_return_type(inspect.getattr_static(value, name))
-        if proto_return != value_return:
+        if not protocol_type_matches(proto_return, value_return):
             return False
     return True if members else False
 
