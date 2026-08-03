@@ -24,6 +24,7 @@ from ._actions import (
 from ._common import (
     defaults_cache,
     get_optionals_as_positionals_actions,
+    get_unaliased_type,
     is_subclasses_disabled,
     parent_parser,
     supports_optionals_as_positionals,
@@ -34,7 +35,13 @@ from ._namespace import Namespace
 from ._optionals import import_ruamel
 from ._subcommands import ActionSubCommands, find_action
 from ._type_checking import ArgumentParser, ruamelCommentedMap
-from ._typehints import ActionTypeHint, type_to_str
+from ._typehints import (
+    ActionTypeHint,
+    get_optional_arg,
+    get_subclass_or_closed_types,
+    is_subclass_spec,
+    type_to_str,
+)
 
 __all__ = ["DefaultHelpFormatter"]
 
@@ -54,8 +61,8 @@ class PercentTemplate(Template):
 def get_subparsers(parser: "ArgumentParser", prefix: str = "") -> dict[str | None, "ArgumentParser"]:
     """Returns the given parser and all its subcommand parsers, keyed by subcommand key."""
     parsers: dict[str | None, ArgumentParser] = {}
-    if parser._subparsers is not None:
-        for key, subparser in parser._subparsers._group_actions[0].choices.items():  # type: ignore[union-attr]
+    if parser._subcommands_action is not None:
+        for key, subparser in parser._subcommands_action._name_parser_map.items():
             full_key = (prefix + "." if prefix else "") + key
             parsers[full_key] = subparser
             parsers.update(get_subparsers(subparser, prefix=full_key))
@@ -90,8 +97,6 @@ def get_class_group_title(class_parser: "ArgumentParser") -> str | None:
 
 def get_class_parser(class_type, action: Action | None) -> "ArgumentParser | None":
     """Returns a parser for the arguments of a class, or None if not possible."""
-    from ._typehints import ActionTypeHint
-
     sub_add_kwargs = dict(getattr(action, "sub_add_kwargs", None) or {})
     sub_add_kwargs.pop("linked_targets", None)
     try:
@@ -102,28 +107,18 @@ def get_class_parser(class_type, action: Action | None) -> "ArgumentParser | Non
 
 def get_closed_type_parser(typehint, action: Action | None) -> "ArgumentParser | None":
     """Returns a parser for the arguments of a closed type, e.g. a dataclass, given its type hint."""
-    from ._typehints import get_subclass_or_closed_types
-
-    if typehint is None:
-        return None
     types = get_subclass_or_closed_types(typehint, also_lists=True, callable_return=True)
-    if not types or len(types) != 1 or not is_subclasses_disabled(types[0]):
-        return None
-    return get_class_parser(types[0], action)
+    if types and len(types) == 1 and is_subclasses_disabled(types[0]):
+        return get_class_parser(types[0], action)
+    return None
 
 
 def get_mapping_value_typehint(typehint):
     """Returns the type of the values of a mapping type hint, or None if not a mapping."""
-    from ._typehints import get_optional_arg, get_typehint_origin, mapping_origin_types
-
-    if typehint is None:
+    if not ActionTypeHint.is_mapping_typehint(typehint):
         return None
-    typehint = get_optional_arg(typehint)
-    if get_typehint_origin(typehint) in mapping_origin_types:
-        args = getattr(typehint, "__args__", ())
-        if len(args) == 2:
-            return args[1]
-    return None
+    args = getattr(get_optional_arg(get_unaliased_type(typehint)), "__args__", ())
+    return args[1] if len(args) == 2 else None
 
 
 def remove_leading_blank_line(cfg: ruamelCommentedMap) -> None:
@@ -132,13 +127,6 @@ def remove_leading_blank_line(cfg: ruamelCommentedMap) -> None:
     comments = cfg.ca.items.get(key, [None, None])[1] if key is not None else None
     if comments and comments[0].value == "\n":
         del comments[0]
-
-
-def is_subclass_spec_dict(value) -> bool:
-    """Tests whether a config object corresponds to a subclass spec."""
-    from ._typehints import _subclass_spec_keys
-
-    return isinstance(value.get("class_path"), str) and not (set(value.keys()) - _subclass_spec_keys)
 
 
 class YAMLCommentFormatter:
@@ -222,7 +210,7 @@ class YAMLCommentFormatter:
             prefix: The parser key that corresponds to the given config object.
             typehint: The type of the config object, defaults to the type of the action.
         """
-        if is_subclass_spec_dict(cfg):
+        if is_subclass_spec(cfg):
             self.set_subclass_comments(cfg, action, depth)
             return
         if typehint is None and isinstance(action, ActionTypeHint):

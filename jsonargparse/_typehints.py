@@ -1542,11 +1542,13 @@ _subclass_spec_keys = {"class_path", "init_args", "dict_kwargs", "__path__", sub
 
 
 def is_subclass_spec(val):
-    is_class = isinstance(val, (dict, Namespace)) and "class_path" in val
-    if is_class:
-        keys = getattr(val, "__dict__", val).keys()
-        is_class = len(set(keys) - _subclass_spec_keys) == 0
-    return is_class
+    if isinstance(val, Namespace):
+        keys = val.__dict__.keys()  # only the top level keys of the namespace
+    elif isinstance(val, dict):
+        keys = val.keys()
+    else:
+        return False
+    return "class_path" in keys and len(set(keys) - _subclass_spec_keys) == 0
 
 
 def subclass_spec_as_namespace(val, prev_val=None):
