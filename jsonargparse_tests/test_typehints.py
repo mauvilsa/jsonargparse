@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from textwrap import dedent
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import (
     Any,
     Callable,
@@ -830,6 +830,124 @@ def test_type_typeddict_help(parser):
     assert "--cls CLS" in help_str
     assert "StateDict" in help_str
     assert "default: null" in help_str
+
+
+# ModuleType tests. The value is the import path of a module, which is only
+# imported when instantiate_classes is run.
+
+
+@pytest.fixture
+def unimported_module(tmp_path, monkeypatch):
+    name = "jsonargparse_tests_unimported_module"
+    (tmp_path / f"{name}.py").write_text("value = 3\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    assert name not in sys.modules
+    yield name
+    sys.modules.pop(name, None)
+
+
+def test_module_type_parse_keeps_import_path(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args(["--mod=json"])
+    assert cfg.mod == "json"
+
+
+def test_module_type_parse_submodule(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args(["--mod=json.decoder"])
+    assert cfg.mod == "json.decoder"
+    init = parser.instantiate(cfg)
+    assert init.mod is json.decoder
+
+
+def test_module_type_not_imported_on_parse(parser, unimported_module):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args([f"--mod={unimported_module}"])
+    assert cfg.mod == unimported_module
+    assert unimported_module not in sys.modules
+
+
+def test_module_type_instantiate_imports_module(parser, unimported_module):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args([f"--mod={unimported_module}"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.mod, ModuleType)
+    assert init.mod.value == 3
+    assert unimported_module in sys.modules
+
+
+@pytest.mark.parametrize("value", ["not_a_module", "uuid.UUID", "json.not_a_submodule", "not.a.module", "", "1json"])
+def test_module_type_invalid_import_path(parser, value):
+    parser.add_argument("--mod", type=ModuleType)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--mod={value}"])
+    ctx.match("Expected an import path corresponding to a module")
+
+
+def test_module_type_optional(parser):
+    parser.add_argument("--mod", type=Optional[ModuleType], default=None)
+    assert parser.parse_args([]).mod is None
+    assert parser.parse_args(["--mod=null"]).mod is None
+    cfg = parser.parse_args(["--mod=json"])
+    assert cfg.mod == "json"
+    assert parser.instantiate(cfg).mod is json
+
+
+def test_module_type_default_module_object(parser):
+    parser.add_argument("--mod", type=ModuleType, default=json)
+    cfg = parser.parse_args([])
+    assert cfg.mod == "json"
+    assert parser.instantiate(cfg).mod is json
+
+
+def test_module_type_list(parser):
+    parser.add_argument("--mods", type=List[ModuleType], default=[])
+    cfg = parser.parse_args(['--mods=["json", "uuid"]'])
+    assert cfg.mods == ["json", "uuid"]
+    assert parser.instantiate(cfg).mods == [json, uuid]
+
+
+def test_module_type_dump(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args(["--mod=json"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"mod": "json"}
+
+
+def test_module_type_dump_module_object(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args(["--mod=json"])
+    cfg.mod = json
+    assert json_or_yaml_load(parser.dump(cfg)) == {"mod": "json"}
+
+
+def test_module_type_help(parser):
+    parser.add_argument("--mod", type=ModuleType, help="Module to use.")
+    help_str = get_parser_help(parser)
+    assert "--mod MOD" in help_str
+    assert "Module to use. (type: ModuleType, default: null)" in help_str
+
+
+class WithModule:
+    def __init__(self, mod: ModuleType, num: int = 1):
+        self.mod = mod
+        self.num = num
+
+
+def test_module_type_class_group_instantiate(parser):
+    parser.add_class_arguments(WithModule, "cls")
+    cfg = parser.parse_args(["--cls.mod=json"])
+    assert cfg.cls.mod == "json"
+    init = parser.instantiate(cfg)
+    assert init.cls.mod is json
+
+
+def test_module_type_subclass_init_arg_instantiate(parser):
+    parser.add_argument("--cls", type=WithModule)
+    cfg = parser.parse_args([f"--cls={__name__}.WithModule", "--cls.mod=json"])
+    assert cfg.cls.init_args.mod == "json"
+    init = parser.instantiate(cfg)
+    assert init.cls.mod is json
 
 
 # Required/NotRequired as the type of an argument. The wrapper must agree with the

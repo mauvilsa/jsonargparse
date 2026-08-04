@@ -597,6 +597,9 @@ Some notes about this support are:
   see :ref:`callable-type`. Currently the callable's argument and return types
   are not validated.
 
+- ``types.ModuleType`` is supported by giving the dot import path of a module,
+  and on ``instantiate`` is replaced by the imported module object.
+
 - ``TypeAliasType`` is supported with values parsed as the aliased type and the
   alias shown as the argument type in help.
 

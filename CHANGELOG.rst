@@ -33,6 +33,10 @@ Added
   is structurally compatible, i.e. it has all the keys of the expected
   ``TypedDict``, with the same types and requiredness (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Support ``types.ModuleType`` as a type. The value is the import path of a
+  module, which on parse is validated to be importable, and on ``instantiate``
+  is replaced by the imported module object (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Fixed
 ^^^^^

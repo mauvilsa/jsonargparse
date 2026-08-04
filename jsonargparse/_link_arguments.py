@@ -56,7 +56,7 @@ def find_subclass_action_or_class_group(
     from ._typehints import ActionTypeHint
 
     action = find_parent_action(parser, key, exclude=exclude)
-    if ActionTypeHint.is_subclass_typehint(action):
+    if ActionTypeHint.is_subclass_typehint(action) or ActionTypeHint.is_module_typehint(action):
         return action
     key_set = {key, split_key_leaf(key)[0]}
     for group in parser._action_groups:

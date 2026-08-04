@@ -12,7 +12,8 @@ from copy import deepcopy
 from enum import Enum
 from functools import partial
 from importlib import import_module
-from types import FunctionType, MappingProxyType
+from importlib.util import find_spec
+from types import FunctionType, MappingProxyType, ModuleType
 from typing import (
     Any,
     Callable,
@@ -151,6 +152,7 @@ root_types = {
     OrderedDict,
     Callable,
     abc.Callable,
+    ModuleType,
     NotRequired,
     Required,
     Unpack,
@@ -357,6 +359,8 @@ class ActionTypeHint(Action):
             default.class_path = normalize_import_path(default.class_path, self._typehint)
         elif is_enum_type(self._typehint) and isinstance(default, Enum):
             default = default.name
+        elif is_module_type(self._typehint) and isinstance(default, ModuleType):
+            default = default.__name__
         elif is_callable_type(self._typehint) and callable(default) and not inspect.isclass(default):
             default = get_import_path(default)
         elif ActionTypeHint.is_return_subclass_typehint(self._typehint) and inspect.isclass(default):
@@ -460,6 +464,11 @@ class ActionTypeHint(Action):
         ):
             return True
         return False
+
+    @staticmethod
+    def is_module_typehint(typehint):
+        typehint = typehint_from_action(typehint)
+        return typehint is not None and is_module_type(typehint)
 
     @staticmethod
     def is_callable_typehint(typehint):
@@ -1018,6 +1027,22 @@ def is_typed_dict_subtype(subtype, typed_dict, logger=None) -> bool:
     return required_keys == sub_required_keys & annotations.keys()
 
 
+def is_importable_module_path(val) -> bool:
+    """Whether a value is the import path of a module, checked without importing it.
+
+    Only the parent packages of the module get imported, which is unavoidable
+    since they are the ones that know how to find their submodules.
+    """
+    if not isinstance(val, str) or not all(p.isidentifier() for p in val.split(".")):
+        return False
+    if val in sys.modules:
+        return True
+    try:
+        return find_spec(val) is not None
+    except (ImportError, AttributeError, TypeError, ValueError):
+        return False
+
+
 def adapt_typehints(
     val,
     typehint,
@@ -1031,7 +1056,8 @@ def adapt_typehints(
     default=None,
     logger=None,
 ):
-    if type(val) in {str, bool, int, float} and val == default:
+    # A module import path equal to the default still needs to be imported on instantiation
+    if type(val) in {str, bool, int, float} and val == default and not (instantiate_classes and typehint is ModuleType):
         return val
 
     adapt_kwargs = {
@@ -1123,6 +1149,17 @@ def adapt_typehints(
                 valid = is_subclass(val, subtypehints[0])
             if not valid:
                 raise_unexpected_value(f"Expected an import path corresponding to a {typehint}", path)
+
+    # Module
+    elif typehint is ModuleType:
+        if serialize:
+            if isinstance(val, ModuleType):
+                val = val.__name__
+        elif not isinstance(val, ModuleType):
+            if not is_importable_module_path(val):
+                raise_unexpected_value("Expected an import path corresponding to a module", val)
+            if instantiate_classes:
+                val = import_module(val)
 
     # Union
     elif typehint_origin == Union:
@@ -2051,6 +2088,13 @@ def is_enum_type(annotation):
     )
 
 
+def is_module_type(annotation):
+    annotation = get_unaliased_type(annotation)
+    return annotation is ModuleType or (
+        get_typehint_origin(annotation) == Union and any(a is ModuleType for a in annotation.__args__)
+    )
+
+
 def is_callable_type(annotation):
     def is_callable(a):
         return (get_typehint_origin(a) or a) in callable_origin_types or a in callable_origin_types
@@ -2071,6 +2115,8 @@ def strip_module_names(string: str) -> str:
 
 
 def type_to_str(obj):
+    if obj is ModuleType:
+        return "ModuleType"
     if obj in {bool, tuple} or is_subclass(obj, (int, float, str, Path, Enum)):
         return obj.__name__
     return strip_module_names(str(obj)).replace("NoneType", "null")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any, Callable, List, Mapping, Optional, Union
 
 import pytest
@@ -1016,6 +1017,45 @@ def test_on_instantiate_target_entire_dataclass(parser, tmp_cwd):
     help_str = get_parser_help(parser)
     assert "data --> container.dep [applied on instantiate]" in help_str
     assert "--container.dep" not in help_str
+
+
+class ModuleUser:
+    def __init__(self, mod: ModuleType, num: int = 1):
+        self.mod = mod
+        self.num = num
+
+
+def test_on_instantiate_source_module_type(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    parser.add_class_arguments(ModuleUser, "user")
+    parser.link_arguments("mod", "user.mod", apply_on="instantiate")
+
+    cfg = parser.parse_args(["--mod=json"])
+    assert cfg.mod == "json"
+    init = parser.instantiate(cfg)
+    assert init.user.mod is json
+
+
+def test_on_instantiate_source_module_type_compute_fn(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    parser.add_class_arguments(ModuleUser, "user")
+    parser.link_arguments("mod", "user.mod", compute_fn=lambda m: m.decoder, apply_on="instantiate")
+
+    init = parser.instantiate(parser.parse_args(["--mod=json"]))
+    assert init.user.mod is json.decoder
+
+
+def test_on_instantiate_source_module_type_target_subclass(parser):
+    # the module argument is added after the target, so only the instantiation
+    # order given by the link makes the module be imported before it is used
+    parser.add_subclass_arguments(ModuleUser, "user")
+    parser.add_argument("--mod", type=ModuleType)
+    parser.link_arguments("mod", "user.init_args.mod", apply_on="instantiate")
+
+    cfg = parser.parse_args([f"--user={__name__}.ModuleUser", "--mod=json"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.user, ModuleUser)
+    assert init.user.mod is json
 
 
 # link creation failures
