@@ -12,10 +12,14 @@ import pytest
 
 from jsonargparse import ArgumentError, ArgumentParser, set_parsing_settings
 from jsonargparse._completions import get_shtab_script, norm_name
+from jsonargparse._optionals import pydantic_support
 from jsonargparse._parameter_resolvers import get_signature_parameters
 from jsonargparse._typehints import type_to_str
 from jsonargparse.typing import Path_drw, Path_fr
 from jsonargparse_tests.conftest import capture_logs, get_parse_args_stdout
+
+if pydantic_support:
+    import pydantic
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -287,6 +291,46 @@ def test_bash_optional_file(parser, path_type):
     parser.add_argument("--path", type=Optional[path_type])
     shtab_script = get_shtab_script(parser, "bash")
     assert "_path_COMPGEN=_shtab_compgen_files" in shtab_script
+
+
+@pytest.mark.skipif(pydantic_support < 2, reason="pydantic>=2 is required")
+def test_bash_pydantic_file_path(parser):
+    parser.add_argument("--path", type=pydantic.FilePath)
+    shtab_script = get_shtab_script(parser, "bash")
+    assert "_path_COMPGEN=_shtab_compgen_files" in shtab_script
+
+
+@pytest.mark.skipif(pydantic_support < 2, reason="pydantic>=2 is required")
+def test_bash_pydantic_directory_path(parser):
+    parser.add_argument("--path", type=pydantic.DirectoryPath)
+    shtab_script = get_shtab_script(parser, "bash")
+    assert "_path_COMPGEN=_shtab_compgen_dirs" in shtab_script
+
+
+@pytest.mark.skipif(pydantic_support < 2, reason="pydantic>=2 is required")
+def test_bash_optional_pydantic_directory_path(parser):
+    parser.add_argument("--path", type=Optional[pydantic.DirectoryPath])
+    shtab_script = get_shtab_script(parser, "bash")
+    assert "_path_COMPGEN=_shtab_compgen_dirs" in shtab_script
+
+
+@pytest.mark.skipif(pydantic_support < 2, reason="pydantic>=2 is required")
+def test_bash_pydantic_new_path(parser):
+    parser.add_argument("--path", type=pydantic.NewPath)
+    shtab_script = get_shtab_script(parser, "bash")
+    assert "_path_COMPGEN=_shtab_compgen_files" in shtab_script
+
+
+@pytest.mark.skipif(pydantic_support < 2, reason="pydantic>=2 is required")
+def test_bash_pydantic_model_path_fields(parser):
+    class Model(pydantic.BaseModel):
+        file: pydantic.FilePath
+        dir: pydantic.DirectoryPath
+
+    parser.add_argument("--model", type=Model)
+    shtab_script = get_shtab_script(parser, "bash")
+    assert "_model_file_COMPGEN=_shtab_compgen_files" in shtab_script
+    assert "_model_dir_COMPGEN=_shtab_compgen_dirs" in shtab_script
 
 
 class Base:

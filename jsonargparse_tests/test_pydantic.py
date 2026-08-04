@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import pathlib
 from copy import deepcopy
 from typing import Dict, List, Literal, Optional, Union
 
@@ -10,6 +11,7 @@ import pytest
 from jsonargparse import ArgumentError, ArgumentParser, Namespace, set_parsing_settings
 from jsonargparse._optionals import (
     docstring_parser_support,
+    get_pydantic_path_type,
     pydantic_support,
     pydantic_supports_field_init,
     typing_extensions_import,
@@ -29,6 +31,11 @@ annotated = typing_extensions_import("Annotated")
 skip_if_pydantic_v1_on_v2 = pytest.mark.skipif(
     pydantic_support and pydantic is getattr(__import__("pydantic"), "v1", None),
     reason="Not supported for pydantic.v1",
+)
+
+skip_if_pydantic_v1 = pytest.mark.skipif(
+    pydantic_support < 2 or pydantic is getattr(__import__("pydantic"), "v1", None),
+    reason="Not supported for pydantic v1",
 )
 
 
@@ -192,6 +199,10 @@ if pydantic_support:
     class PydanticNestedDict(pydantic.BaseModel):
         nested: Optional[Dict[str, NestedModel]] = None
 
+    class PydanticPaths(pydantic.BaseModel):
+        file: pydantic.FilePath
+        dir: pydantic.DirectoryPath
+
 
 def none(x):
     return x
@@ -331,6 +342,67 @@ class TestPydanticBasics:
         init = parser.instantiate(cfg)
         assert isinstance(init.model, PydanticNestedDict)
         assert isinstance(init.model.nested["key"], NestedModel)
+
+
+@skip_if_pydantic_v1
+class TestPydanticPathTypes:
+    def test_get_pydantic_path_type(self):
+        assert get_pydantic_path_type(pydantic.FilePath) == "file"
+        assert get_pydantic_path_type(pydantic.DirectoryPath) == "dir"
+        assert get_pydantic_path_type(pathlib.Path) is None
+        assert get_pydantic_path_type(str) is None
+
+    def test_file_path(self, parser, file_r):
+        parser.add_argument("--path", type=pydantic.FilePath)
+        cfg = parser.parse_args([f"--path={file_r}"])
+        assert cfg.path == pathlib.Path(file_r)
+        assert json_or_yaml_load(parser.dump(cfg)) == {"path": file_r}
+
+    def test_file_path_not_exists(self, parser, tmp_cwd):
+        parser.add_argument("--path", type=pydantic.FilePath)
+        with pytest.raises(ArgumentError, match='Parser key "path"'):
+            parser.parse_args(["--path=not_exist"])
+
+    def test_file_path_is_directory(self, parser, tmp_cwd):
+        parser.add_argument("--path", type=pydantic.FilePath)
+        pathlib.Path("sub_dir").mkdir()
+        with pytest.raises(ArgumentError, match='Parser key "path"'):
+            parser.parse_args(["--path=sub_dir"])
+
+    def test_directory_path(self, parser, tmp_cwd):
+        parser.add_argument("--path", type=pydantic.DirectoryPath)
+        pathlib.Path("sub_dir").mkdir()
+        cfg = parser.parse_args(["--path=sub_dir"])
+        assert cfg.path == pathlib.Path("sub_dir")
+        assert json_or_yaml_load(parser.dump(cfg)) == {"path": "sub_dir"}
+
+    def test_directory_path_not_exists(self, parser, tmp_cwd):
+        parser.add_argument("--path", type=pydantic.DirectoryPath)
+        with pytest.raises(ArgumentError, match='Parser key "path"'):
+            parser.parse_args(["--path=not_exist"])
+
+    def test_directory_path_is_file(self, parser, file_r):
+        parser.add_argument("--path", type=pydantic.DirectoryPath)
+        with pytest.raises(ArgumentError, match='Parser key "path"'):
+            parser.parse_args([f"--path={file_r}"])
+
+    def test_optional_file_path(self, parser, file_r):
+        parser.add_argument("--path", type=Optional[pydantic.FilePath])
+        assert parser.parse_args([f"--path={file_r}"]).path == pathlib.Path(file_r)
+        assert parser.parse_args(["--path=null"]).path is None
+        with pytest.raises(ArgumentError, match='Parser key "path"'):
+            parser.parse_args(["--path=not_exist"])
+
+
+@skip_if_pydantic_v1_on_v2
+def test_pydantic_model_path_fields(parser, file_r):
+    parser.add_argument("--model", type=PydanticPaths)
+    cfg = parser.parse_args([f"--model.file={file_r}", "--model.dir=."])
+    assert cfg.model == Namespace(file=pathlib.Path(file_r), dir=pathlib.Path("."))
+    with pytest.raises(ArgumentError, match='Parser key "model.file"'):
+        parser.parse_args(["--model.file=not_exist", "--model.dir=."])
+    with pytest.raises(ArgumentError, match='Parser key "model.dir"'):
+        parser.parse_args([f"--model.file={file_r}", "--model.dir=not_exist"])
 
 
 if pydantic_support:

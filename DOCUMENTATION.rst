@@ -577,6 +577,11 @@ Some notes about this support are:
   serializing the actual value. There is also ``jsonargparse.typing.SecretStr``
   to support the same behavior without the need of a dependency.
 
+- ``pydantic.FilePath`` and ``pydantic.DirectoryPath`` types are supported,
+  running the corresponding pydantic validation when parsing. Arguments with
+  these types also get file and directory tab completions, see
+  :ref:`tab-completion`.
+
 - ``Callable`` is supported by either giving a dot import path to a callable
   object or by giving a dict with a ``class_path`` and optionally ``init_args``
   entries. The specified class must either instantiate into a callable or be a

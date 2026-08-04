@@ -453,3 +453,14 @@ def validate_annotated(value, typehint: type):
     from pydantic import TypeAdapter
 
     return TypeAdapter(typehint).validate_python(value)
+
+
+def get_pydantic_path_type(typehint) -> Union[str, None]:
+    """Returns the path type of pydantic's ``FilePath`` ("file"), ``DirectoryPath`` ("dir") and
+    ``NewPath`` ("new") types, or None if the typehint is not one of them."""
+    if is_annotated_validator(typehint):
+        for metadata in typehint.__metadata__:
+            metadata_class = type(metadata)
+            if metadata_class.__module__ == "pydantic.types" and metadata_class.__name__ == "PathType":
+                return metadata.path_type
+    return None

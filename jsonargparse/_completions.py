@@ -14,6 +14,7 @@ from typing import Literal, Union
 
 from ._actions import ActionConfigFile, ActionFail, _ActionConfigLoad, _ActionHelpClassPath, remove_actions
 from ._common import NonParsingAction, get_optionals_as_positionals_actions, get_parsing_setting
+from ._optionals import get_pydantic_path_type
 from ._parameter_resolvers import get_signature_parameters
 from ._typehints import (
     ActionTypeHint,
@@ -209,7 +210,10 @@ def shtab_prepare_action(action, parser) -> None:
             subtypes = [s for s in typehint.__args__ if s not in {NoneType, str, dict, list, tuple, bytes}]
             if len(subtypes) == 1:
                 typehint = subtypes[0]
-        if is_subclass(typehint, Path):
+        pydantic_path_type = get_pydantic_path_type(typehint)
+        if pydantic_path_type:
+            complete = shtab.DIRECTORY if pydantic_path_type == "dir" else shtab.FILE
+        elif is_subclass(typehint, Path):
             assert hasattr(typehint, "_mode")
             if "f" in typehint._mode:
                 complete = shtab.FILE

@@ -26,6 +26,9 @@ Added
   paths to sub-config files, instead of this only being supported for the value
   of an entire argument (`#940
   <https://github.com/mauvilsa/jsonargparse/pull/940>`__).
+- ``shtab`` completion scripts now include file and directory completions for
+  arguments typed as pydantic's ``FilePath`` and ``DirectoryPath`` (`#943
+  <https://github.com/mauvilsa/jsonargparse/pull/943>`__).
 
 Fixed
 ^^^^^
