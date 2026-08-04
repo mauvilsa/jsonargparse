@@ -35,6 +35,7 @@ from typing import (
     TypedDict,
     TypeVar,
     Union,
+    get_args,
 )
 
 from ._actions import (
@@ -397,6 +398,7 @@ class ActionTypeHint(Action):
 
         supported = (
             typehint in root_types
+            or isinstance(typehint, UnresolvedType)
             or get_typehint_origin(typehint) in root_types
             or get_registered_type(typehint) is not None
             or is_subclass(typehint, Enum)
@@ -870,15 +872,48 @@ def resolve_forward_ref(ref, global_vars=None):
     return aliases.get(ref.__forward_arg__, ref)
 
 
+class UnresolvedType:
+    """Type hint that stands in for one that failed to resolve, accepting any value.
+
+    Instances are used as the type hint, keeping what the source code has, such that the
+    help shows it as Unresolved<...> instead of the Any that makes the value accepted.
+    """
+
+    def __init__(self, typehint):
+        if isinstance(typehint, ForwardRef):
+            self.name = typehint.__forward_arg__
+        elif isinstance(typehint, str):
+            self.name = typehint
+        else:
+            # unresolved subtypes are kept as ForwardRef or str, named here as in the source code
+            name = re.sub(r"ForwardRef\('([^']*)'\)", r"\1", str(typehint))
+            self.name = re.sub(r"'([^']*)'", r"\1", name)
+
+    def __call__(self):
+        """Not called, only needed because python<3.11 requires the args of e.g. Optional to be callable."""
+
+    def __repr__(self):
+        # module names stripped as done by type_to_str, which otherwise would mangle this repr
+        return f"Unresolved<{strip_module_names(self.name)}>"
+
+    def __eq__(self, other):
+        return isinstance(other, UnresolvedType) and other.name == self.name
+
+    def __hash__(self):
+        return hash((UnresolvedType, self.name))
+
+
 def replace_unresolved_forward_refs(typehint):
-    """Replaces the unresolved forward references of a type hint with Any.
+    """Replaces the unresolved forward references of a type hint with UnresolvedType.
 
     Postponed annotations that fail to resolve, e.g. because of a missing import or a
-    typo, remain as a string or a ForwardRef. Replacing only the unresolved parts with
-    Any keeps the parameter usable, though without validation, instead of discarding it.
+    typo, remain as a string or a ForwardRef. Replacing only the unresolved parts with a
+    type hint that accepts any value keeps the parameter usable, though without
+    validation, instead of discarding it. What failed to resolve is kept so that the help
+    shows it, making it evident that the value is not validated as the type in the code.
     """
     if isinstance(typehint, (str, ForwardRef)):
-        return Any
+        return UnresolvedType(typehint)
     if get_typehint_origin(typehint) in literal_types:
         return typehint  # the args of a Literal are values, not types
     args = getattr(typehint, "__args__", None)
@@ -890,9 +925,14 @@ def replace_unresolved_forward_refs(typehint):
     try:
         if hasattr(typehint, "copy_with"):
             return typehint.copy_with(new_args)
+        subscript_args = get_args(typehint)
+        if subscript_args and isinstance(subscript_args[0], list):
+            # a Callable that has its parameters flattened in __args__, e.g. the __args__ of
+            # Callable[[int], str] are (int, str), while subscripting needs them as a list
+            return get_typehint_origin(typehint)[[*new_args[:-1]], new_args[-1]]
         return get_typehint_origin(typehint)[new_args]
     except Exception:
-        return Any
+        return UnresolvedType(typehint)
 
 
 def resolve_module_annotations(module: str, annotations: dict, global_vars: dict, logger=None) -> dict:
@@ -981,8 +1021,8 @@ def adapt_typehints(
     typehint_origin = get_typehint_origin(typehint) or typehint
     unset_sentinel = get_parsing_setting("unset_sentinel")
 
-    # Any
-    if typehint == Any:
+    # Any and unresolved, i.e. no validation
+    if typehint == Any or isinstance(typehint, UnresolvedType):
         type_val = type(val)
         if get_registered_type(type_val) or is_subclass(type_val, Enum):
             val = adapt_typehints(val, type_val, **adapt_kwargs)
@@ -1995,10 +2035,14 @@ def typehint_from_action(action_or_typehint):
     return action_or_typehint
 
 
+def strip_module_names(string: str) -> str:
+    return re.sub(r"[A-Za-z0-9_<>.]+\.", "", string)
+
+
 def type_to_str(obj):
     if obj in {bool, tuple} or is_subclass(obj, (int, float, str, Path, Enum)):
         return obj.__name__
-    return re.sub(r"[A-Za-z0-9_<>.]+\.", "", str(obj)).replace("NoneType", "null")
+    return strip_module_names(str(obj)).replace("NoneType", "null")
 
 
 def literal_to_str(val):

@@ -346,8 +346,8 @@ class SignatureArguments(LoggerProperty):
             self.logger.debug(
                 f'Unable to resolve the type of parameter "{name}" from '
                 f'"{get_parameter_origins(param.component, param.parent)}": {annotation}. '
-                "The unresolved parts are replaced with Any, so the parameter is accepted "
-                "but its value is not validated."
+                "The unresolved parts are shown in the help as Unresolved<...> and accept "
+                "any value, so the parameter is accepted but its value is not validated."
             )
             annotation = unresolved_replaced
         if default == inspect_empty:

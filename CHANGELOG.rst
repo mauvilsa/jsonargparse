@@ -47,10 +47,12 @@ Fixed
 Changed
 ^^^^^^^
 - Signature parameters with a type hint that fails to resolve, e.g. a missing
-  import or a typo in a postponed annotation, are now accepted with the
-  unresolved parts replaced by ``Any``, instead of the parameter being skipped
-  or, when mandatory and ``fail_untyped=True``, raising a ``ValueError`` (`#936
-  <https://github.com/mauvilsa/jsonargparse/pull/936>`__).
+  import or a typo in a postponed annotation, are now accepted instead of the
+  parameter being skipped or, when mandatory and ``fail_untyped=True``, raising
+  a ``ValueError``. The unresolved parts accept any value without validation and
+  are shown in the help as ``Unresolved<...>``, making evident which type failed
+  to resolve (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__,
+  `#944 <https://github.com/mauvilsa/jsonargparse/pull/944>`__).
 - ``Required`` and ``NotRequired`` given as the type of an argument are no
   longer shown in the help. Now they must agree with whether the argument is
   required, otherwise adding the argument fails (`#937

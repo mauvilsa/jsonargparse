@@ -5,10 +5,11 @@ import decimal
 import importlib.util
 import os
 import sys
+import typing
 from collections.abc import Callable
 from textwrap import dedent
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Dict, ForwardRef, List, Optional, Tuple, Type, TypedDict, Union
+from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Tuple, Type, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
@@ -31,12 +32,14 @@ from jsonargparse._postponed_annotations import (
 from jsonargparse._typehints import (
     Required,
     Unpack,
+    UnresolvedType,
     get_typed_dict_annotations,
     get_typed_dict_required_keys,
     replace_unresolved_forward_refs,
+    type_to_str,
 )
 from jsonargparse.typing import Path_drw
-from jsonargparse_tests.conftest import capture_logs, source_unavailable
+from jsonargparse_tests.conftest import capture_logs, get_parser_help, source_unavailable
 from jsonargparse_tests.different_module_type_checking import DifferentModuleTypeCheckingTypedDict
 from jsonargparse_tests.test_dataclasses import DifferentModuleBaseData
 
@@ -336,23 +339,25 @@ class UnresolvableTypedDictClass:
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
 def test_typed_dict_unresolvable_key_unpack(parser):
     added = parser.add_class_arguments(UnresolvableTypedDictClass, "cls")
-    assert added == ["cls.num", "cls.typo"]  # the unresolvable key falls back to Any
+    assert added == ["cls.num", "cls.typo"]  # the unresolvable key becomes unresolved
     cfg = parser.parse_args(["--cls.num=1", "--cls.typo=abc"])
     assert cfg.cls == Namespace(num=1, typo="abc")
-    # being Any, the unresolvable key accepts any value without validation
+    # being unresolved, the key accepts any value without validation
     cfg = parser.parse_args(["--cls.num=1", '--cls.typo={"x": [1, 2]}'])
     assert cfg.cls.typo == {"x": [1, 2]}
     # and it remains not required, since the key is not required
     assert parser.parse_args(["--cls.num=1"]).cls == Namespace(num=1)
+    help_str = get_parser_help(parser, strip=True)
+    assert "--cls.typo TYPO (type: Unresolved<MisspelledType>" in help_str
 
 
 def function_unresolvable_annotation(num: int = 1, typo: "MisspelledType" = None):  # type: ignore[name-defined]  # noqa: F821
     return num  # pragma: no cover
 
 
-def test_function_unresolvable_annotation_falls_back_to_any(parser):
+def test_function_unresolvable_annotation_accepts_any_value(parser):
     added = parser.add_function_arguments(function_unresolvable_annotation, "fn")
-    assert added == ["fn.num", "fn.typo"]  # the unresolvable annotation falls back to Any
+    assert added == ["fn.num", "fn.typo"]  # the unresolvable annotation accepts any value
     cfg = parser.parse_args(["--fn.typo=abc"])
     assert cfg.fn == Namespace(num=1, typo="abc")
 
@@ -365,10 +370,22 @@ def test_unresolvable_annotation_debug_log(parser, logger):
     assert "typo" in logs.getvalue()
 
 
+def test_unresolvable_annotation_help(parser):
+    parser.add_function_arguments(function_unresolvable_annotation, "fn")
+    help_str = get_parser_help(parser, strip=True)
+    # the help shows the type that failed to resolve, making evident that it is not validated
+    if sys.version_info < (3, 14):
+        optional = "Optional[Unresolved<MisspelledType>]"
+    else:
+        optional = "Unresolved<MisspelledType> | None"
+    assert f"--fn.typo TYPO (type: {optional}, default: null)" in help_str
+
+
 # When only a subtype fails to resolve, the rest of the type hint is kept so that what is
 # resolvable is still validated. How the type hint is rebuilt depends on its kind, i.e.
-# typing generic aliases have copy_with, the builtin ones are subscripted again, and
-# collections.abc.Callable does not accept an Any argument, so it falls back entirely to Any.
+# typing generic aliases have copy_with, and the others are subscripted again with the
+# replaced args. A Callable needs its parameters given back as a list, since in __args__
+# they are flattened, i.e. Callable[[int], str].__args__ is (int, str).
 
 
 def function_unresolvable_subtype(
@@ -379,21 +396,51 @@ def function_unresolvable_subtype(
     return p1, p2, p3  # pragma: no cover
 
 
-def test_unresolvable_subtype_replaced_with_any():
+def test_unresolvable_subtype_replaced_with_unresolved():
+    unresolved = UnresolvedType("MisspelledType")
     annotations = {p.name: p.annotation for p in get_params(function_unresolvable_subtype)}
-    assert replace_unresolved_forward_refs(annotations["p1"]) == List[Any]
-    assert replace_unresolved_forward_refs(annotations["p2"]) == list[Any]
-    assert replace_unresolved_forward_refs(annotations["p3"]) is Any
+    assert replace_unresolved_forward_refs(annotations["p1"]) == List[unresolved]
+    assert replace_unresolved_forward_refs(annotations["p2"]) == list[unresolved]
+    assert replace_unresolved_forward_refs(annotations["p3"]) == Callable[[unresolved], int]
+    # both spellings of Callable give the same, even though only the typing one has copy_with
+    typing_callable = typing.Callable[[ForwardRef("MisspelledType")], int]
+    assert replace_unresolved_forward_refs(typing_callable) == typing.Callable[[unresolved], int]
 
 
 def test_unresolvable_subtype_parse(parser):
     added = parser.add_function_arguments(function_unresolvable_subtype, "fn")
     assert added == ["fn.p1", "fn.p2", "fn.p3"]
-    cfg = parser.parse_args(["--fn.p1=[1]", '--fn.p2=["a"]', "--fn.p3=anything"])
-    assert cfg.fn == Namespace(p1=[1], p2=["a"], p3="anything")
-    # the resolvable part of the type hint is still validated
+    cfg = parser.parse_args(["--fn.p1=[1]", '--fn.p2=["a"]', f"--fn.p3={__name__}.function_unresolvable_subtype"])
+    assert cfg.fn == Namespace(p1=[1], p2=["a"], p3=function_unresolvable_subtype)
+    # the resolvable parts of the type hints are still validated
     with pytest.raises(ArgumentError, match="Expected a <class 'list'>"):
-        parser.parse_args(["--fn.p1=1", "--fn.p2=[]", "--fn.p3=x"])
+        parser.parse_args(["--fn.p1=1", "--fn.p2=[]", f"--fn.p3={__name__}.function_unresolvable_subtype"])
+    with pytest.raises(ArgumentError, match="Expected a dot import path string"):
+        parser.parse_args(["--fn.p1=[]", "--fn.p2=[]", "--fn.p3=not_a_callable"])
+
+
+class UnrebuildableTypehint:
+    """Stands in for an exotic type hint that can't be subscripted with the replaced args."""
+
+    __args__ = (ForwardRef("MisspelledType"),)
+
+    def __repr__(self):
+        return "Unrebuildable[MisspelledType]"
+
+
+def test_unresolvable_subtype_not_rebuildable():
+    # failing to be rebuilt, the entire type hint becomes unresolved instead of an error
+    unresolved = replace_unresolved_forward_refs(UnrebuildableTypehint())
+    assert type_to_str(unresolved) == "Unresolved<Unrebuildable[MisspelledType]>"
+
+
+def test_unresolvable_subtype_help(parser):
+    parser.add_function_arguments(function_unresolvable_subtype, "fn")
+    help_str = get_parser_help(parser, strip=True)
+    # only the part that failed to resolve is shown as unresolved
+    assert "type: List[Unresolved<MisspelledType>])" in help_str
+    assert "type: list[Unresolved<MisspelledType>])" in help_str
+    assert "type: Callable[[Unresolved<MisspelledType>], int])" in help_str
 
 
 # A TypedDict that inherits from a TypedDict in a different module must resolve the
