@@ -991,6 +991,33 @@ def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
     return required_keys
 
 
+def get_typed_dict_key_type(annotation):
+    # Required and NotRequired only change the requiredness of a key, not its type
+    if get_typehint_origin(annotation) in not_required_required_types:
+        return annotation.__args__[0]
+    return annotation
+
+
+def is_typed_dict_subtype(subtype, typed_dict, logger=None) -> bool:
+    # TypedDicts don't support issubclass, so as specified in PEP 589 the check is done
+    # structurally, i.e. the subtype must have all keys of the typed dict, with the same
+    # types and requiredness.
+    if type(subtype) not in typed_dict_meta_types:
+        return False
+    if subtype is typed_dict:
+        return True
+    annotations = get_typed_dict_annotations(typed_dict, logger)
+    sub_annotations = get_typed_dict_annotations(subtype, logger)
+    for key, annotation in annotations.items():
+        if key not in sub_annotations:
+            return False
+        if get_typed_dict_key_type(sub_annotations[key]) != get_typed_dict_key_type(annotation):
+            return False
+    required_keys = get_typed_dict_required_keys(typed_dict, annotations)
+    sub_required_keys = get_typed_dict_required_keys(subtype, sub_annotations)
+    return required_keys == sub_required_keys & annotations.keys()
+
+
 def adapt_typehints(
     val,
     typehint,
@@ -1088,9 +1115,13 @@ def adapt_typehints(
         elif not serialize and not isinstance(val, type):
             path = val
             val = import_object(val)
-            if (typehint in {Type, type} and not isinstance(val, type)) or (
-                typehint not in {Type, type} and not is_subclass(val, subtypehints[0])
-            ):
+            if typehint in {Type, type}:
+                valid = isinstance(val, type)
+            elif type(subtypehints[0]) in typed_dict_meta_types:
+                valid = is_typed_dict_subtype(val, subtypehints[0], logger)
+            else:
+                valid = is_subclass(val, subtypehints[0])
+            if not valid:
                 raise_unexpected_value(f"Expected an import path corresponding to a {typehint}", path)
 
     # Union

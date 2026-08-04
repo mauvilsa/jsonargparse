@@ -29,6 +29,10 @@ Added
 - ``shtab`` completion scripts now include file and directory completions for
   arguments typed as pydantic's ``FilePath`` and ``DirectoryPath`` (`#943
   <https://github.com/mauvilsa/jsonargparse/pull/943>`__).
+- Support ``type[SomeTypedDict]`` such that the given class is accepted when it
+  is structurally compatible, i.e. it has all the keys of the expected
+  ``TypedDict``, with the same types and requiredness (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Fixed
 ^^^^^

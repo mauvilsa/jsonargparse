@@ -47,6 +47,7 @@ from jsonargparse._typehints import (
     get_all_subclass_paths,
     get_subclass_types,
     is_optional,
+    is_typed_dict_subtype,
     type_to_str,
 )
 from jsonargparse._util import get_import_path
@@ -753,6 +754,82 @@ def test_typeddict_with_required_arg(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--typeddict={"a":1, "b":"x"}'])
     ctx.match("Expected a <class 'int'>")
+
+
+# type[TypedDict] tests. TypedDicts don't support issubclass, so the check is structural.
+
+
+class StateDict(TypedDict):
+    messages: list
+
+
+class SubStateDict(StateDict):
+    extra: int
+
+
+class SameKeysDict(TypedDict):
+    messages: list
+
+
+class DifferentTypeDict(TypedDict):
+    messages: dict
+
+
+class MissingKeyDict(TypedDict):
+    extra: int
+
+
+class NotTotalStateDict(TypedDict, total=False):
+    messages: list
+
+
+def test_type_typeddict_accepts_self_and_subclass(parser):
+    parser.add_argument("--cls", type=Type[StateDict])
+    assert parser.parse_args([f"--cls={__name__}.StateDict"]).cls is StateDict
+    assert parser.parse_args([f"--cls={__name__}.SubStateDict"]).cls is SubStateDict
+    assert json_or_yaml_load(parser.dump(parser.parse_args([f"--cls={__name__}.SubStateDict"]))) == {
+        "cls": f"{__name__}.SubStateDict"
+    }
+
+
+def test_type_typeddict_accepts_structurally_equivalent(parser):
+    parser.add_argument("--cls", type=Type[StateDict])
+    assert parser.parse_args([f"--cls={__name__}.SameKeysDict"]).cls is SameKeysDict
+
+
+def test_type_typeddict_rejects_incompatible(parser):
+    parser.add_argument("--cls", type=Type[StateDict])
+    for name in ["DifferentTypeDict", "MissingKeyDict", "NotTotalStateDict"]:
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args([f"--cls={__name__}.{name}"])
+        ctx.match("Expected an import path corresponding to a")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cls=uuid.UUID"])
+    ctx.match("Expected an import path corresponding to a")
+
+
+def test_type_typeddict_optional(parser):
+    parser.add_argument("--cls", type=Optional[Type[StateDict]], default=None)
+    assert parser.parse_args([]).cls is None
+    assert parser.parse_args(["--cls=null"]).cls is None
+    assert parser.parse_args([f"--cls={__name__}.SubStateDict"]).cls is SubStateDict
+
+
+@pytest.mark.skipif(not NotRequired, reason="NotRequired introduced in python 3.11 or backported in typing_extensions")
+def test_is_typed_dict_subtype_not_required_key():
+    base = TypedDict("BaseNotRequiredDict", {"a": NotRequired[int]})
+    not_total = TypedDict("NotTotalDict", {"a": int}, total=False)
+    total = TypedDict("TotalDict", {"a": int})
+    assert is_typed_dict_subtype(not_total, base)
+    assert not is_typed_dict_subtype(total, base)
+
+
+def test_type_typeddict_help(parser):
+    parser.add_argument("--cls", type=Optional[Type[StateDict]], default=None)
+    help_str = get_parser_help(parser)
+    assert "--cls CLS" in help_str
+    assert "StateDict" in help_str
+    assert "default: null" in help_str
 
 
 # Required/NotRequired as the type of an argument. The wrapper must agree with the
