@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import importlib.util
 import json
 import pickle
@@ -7,12 +8,12 @@ import random
 import sys
 import time
 import uuid
-from collections import OrderedDict, deque
+from collections import OrderedDict, abc, deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from textwrap import dedent
-from types import MappingProxyType, ModuleType
+from types import GenericAlias, MappingProxyType, ModuleType, UnionType
 from typing import (
     Any,
     Callable,
@@ -948,6 +949,106 @@ def test_module_type_subclass_init_arg_instantiate(parser):
     assert cfg.cls.init_args.mod == "json"
     init = parser.instantiate(cfg)
     assert init.cls.mod is json
+
+
+# types.UnionType and types.GenericAlias tests. The value is a string with a type
+# expression, e.g. "int | str" and "list[int]".
+
+
+def test_union_type_parse(parser):
+    parser.add_argument("--type", type=UnionType)
+    assert parser.parse_args(["--type=int | str"]).type == int | str
+    assert parser.parse_args(["--type=int|None"]).type == Optional[int]
+    assert parser.parse_args(["--type=calendar.Calendar | uuid.UUID"]).type == calendar.Calendar | uuid.UUID
+
+
+def test_union_type_parse_subscripted_subtype(parser):
+    parser.add_argument("--type", type=UnionType)
+    assert parser.parse_args(["--type=list[int] | str"]).type == list[int] | str
+
+
+@pytest.mark.parametrize("value", ["int", "list[int]", "not_a_type | int", "int |", "1 + 2", "print('x')", ""])
+def test_union_type_invalid(parser, value):
+    parser.add_argument("--type", type=UnionType)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--type={value}"])
+    ctx.match("Expected a string with a UnionType type expression")
+
+
+def test_union_type_dump(parser):
+    parser.add_argument("--type", type=UnionType)
+    cfg = parser.parse_args(["--type=int | str"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"type": "int | str"}
+
+
+def test_union_type_default(parser):
+    parser.add_argument("--type", type=UnionType, default=int | str)
+    cfg = parser.parse_args([])
+    assert cfg.type == int | str
+    assert json_or_yaml_load(parser.dump(cfg)) == {"type": "int | str"}
+
+
+def test_union_type_optional(parser):
+    parser.add_argument("--type", type=Optional[UnionType], default=None)
+    assert parser.parse_args([]).type is None
+    assert parser.parse_args(["--type=null"]).type is None
+    assert parser.parse_args(["--type=int | str"]).type == int | str
+
+
+def test_union_type_help(parser):
+    parser.add_argument("--type", type=UnionType, help="Type to use.")
+    help_str = get_parser_help(parser)
+    assert "--type TYPE" in help_str
+    assert "Type to use. (type: UnionType, default: null)" in help_str
+
+
+def test_generic_alias_parse(parser):
+    parser.add_argument("--type", type=GenericAlias)
+    assert parser.parse_args(["--type=list[int]"]).type == list[int]
+    assert parser.parse_args(["--type=dict[str, Any]"]).type == dict[str, Any]
+    assert parser.parse_args(["--type=tuple[int, ...]"]).type == tuple[int, ...]
+    assert parser.parse_args(["--type=list[calendar.Calendar]"]).type == list[calendar.Calendar]
+    assert parser.parse_args(["--type=collections.abc.Callable[[int], str]"]).type == abc.Callable[[int], str]
+
+
+@pytest.mark.parametrize("value", ["int", "int | str", "List[int]", "list[not_a_type]", "list[", ""])
+def test_generic_alias_invalid(parser, value):
+    parser.add_argument("--type", type=GenericAlias)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--type={value}"])
+    ctx.match("Expected a string with a GenericAlias type expression")
+
+
+def test_generic_alias_dump(parser):
+    parser.add_argument("--type", type=GenericAlias)
+    cfg = parser.parse_args(["--type=dict[str, int]"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"type": "dict[str, int]"}
+
+
+def test_generic_alias_help(parser):
+    parser.add_argument("--type", type=GenericAlias, help="Type to use.")
+    help_str = get_parser_help(parser)
+    assert "Type to use. (type: GenericAlias, default: null)" in help_str
+
+
+def function_schema(schema: Union[type, UnionType, Dict[str, Any]] = int):
+    return schema  # pragma: no cover
+
+
+def test_type_or_union_type_or_dict_function(parser):
+    added = parser.add_function_arguments(function_schema, "fn")
+    assert added == ["fn.schema"]
+    assert parser.parse_args([]).fn.schema is int
+    assert parser.parse_args(["--fn.schema=calendar.Calendar"]).fn.schema is calendar.Calendar
+    assert parser.parse_args(["--fn.schema=int | str"]).fn.schema == int | str
+    assert parser.parse_args(['--fn.schema={"key": 1}']).fn.schema == {"key": 1}
+
+
+def test_union_type_list(parser):
+    parser.add_argument("--types", type=List[UnionType], default=[])
+    cfg = parser.parse_args(['--types=["int | str", "float | None"]'])
+    assert cfg.types == [int | str, Optional[float]]
+    assert json_or_yaml_load(parser.dump(cfg)) == {"types": ["int | str", "float | None"]}
 
 
 # Required/NotRequired as the type of an argument. The wrapper must agree with the

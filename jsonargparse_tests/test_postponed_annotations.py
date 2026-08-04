@@ -8,7 +8,7 @@ import sys
 import typing
 from collections.abc import Callable
 from textwrap import dedent
-from types import SimpleNamespace
+from types import GenericAlias, SimpleNamespace, UnionType
 from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Tuple, Type, TypedDict, Union
 from unittest.mock import patch
 
@@ -426,6 +426,14 @@ class UnrebuildableTypehint:
 
     def __repr__(self):
         return "Unrebuildable[MisspelledType]"
+
+
+def test_types_with_args_slot_descriptor_unchanged():
+    # types.UnionType and types.GenericAlias have __args__ as a class level slot
+    # descriptor, which is truthy but not the tuple of subtypes of an instance
+    assert replace_unresolved_forward_refs(UnionType) is UnionType
+    assert replace_unresolved_forward_refs(GenericAlias) is GenericAlias
+    assert replace_unresolved_forward_refs(Union[type, UnionType]) == Union[type, UnionType]
 
 
 def test_unresolvable_subtype_not_rebuildable():

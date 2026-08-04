@@ -600,6 +600,12 @@ Some notes about this support are:
 - ``types.ModuleType`` is supported by giving the dot import path of a module,
   and on ``instantiate`` is replaced by the imported module object.
 
+- ``types.UnionType`` and ``types.GenericAlias``, commonly found in third party
+  libraries in unions such as ``type | UnionType | dict``, are supported by
+  giving a string with a type expression, e.g. ``"int | str"`` and
+  ``"list[int]"``. The expression is resolved without evaluating code, so its
+  names must be builtins, ``typing`` names or dot import paths.
+
 - ``TypeAliasType`` is supported with values parsed as the aliased type and the
   alias shown as the argument type in help.
 

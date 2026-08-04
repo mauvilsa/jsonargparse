@@ -31,12 +31,18 @@ Added
   <https://github.com/mauvilsa/jsonargparse/pull/943>`__).
 - Support ``type[SomeTypedDict]`` such that the given class is accepted when it
   is structurally compatible, i.e. it has all the keys of the expected
-  ``TypedDict``, with the same types and requiredness (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  ``TypedDict``, with the same types and requiredness (`#945
+  <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
 - Support ``types.ModuleType`` as a type. The value is the import path of a
   module, which on parse is validated to be importable, and on ``instantiate``
-  is replaced by the imported module object (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  is replaced by the imported module object (`#945
+  <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
+- Support ``types.UnionType`` and ``types.GenericAlias`` as types, often seen in
+  third party libraries in unions such as ``type | UnionType | dict``. The value
+  is a string with a type expression, e.g. ``"int | str"`` and ``"list[int]"``.
+  Previously adding an argument with these types failed with ``TypeError:
+  'member_descriptor' object is not iterable`` (`#945
+  <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
 
 Fixed
 ^^^^^

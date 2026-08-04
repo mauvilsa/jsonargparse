@@ -1,9 +1,12 @@
 """Action to support type hints."""
 
+import ast
+import builtins
 import inspect
 import os
 import re
 import sys
+import typing
 from argparse import ArgumentError
 from collections import OrderedDict, abc, defaultdict, deque
 from contextlib import contextmanager, suppress
@@ -13,7 +16,7 @@ from enum import Enum
 from functools import partial
 from importlib import import_module
 from importlib.util import find_spec
-from types import FunctionType, MappingProxyType, ModuleType
+from types import FunctionType, GenericAlias, MappingProxyType, ModuleType, UnionType
 from typing import (
     Any,
     Callable,
@@ -153,6 +156,8 @@ root_types = {
     Callable,
     abc.Callable,
     ModuleType,
+    UnionType,
+    GenericAlias,
     NotRequired,
     Required,
     Unpack,
@@ -926,7 +931,9 @@ def replace_unresolved_forward_refs(typehint):
     if get_typehint_origin(typehint) in literal_types:
         return typehint  # the args of a Literal are values, not types
     args = getattr(typehint, "__args__", None)
-    if not args:
+    # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
+    # class level slot descriptor, which is truthy but not the subtypes of an instance
+    if not isinstance(args, tuple) or not args:
         return typehint
     new_args = tuple(replace_unresolved_forward_refs(a) for a in args)
     if new_args == args:
@@ -1041,6 +1048,42 @@ def is_importable_module_path(val) -> bool:
         return find_spec(val) is not None
     except (ImportError, AttributeError, TypeError, ValueError):
         return False
+
+
+type_expression_types = {UnionType: "UnionType", GenericAlias: "GenericAlias"}
+
+
+def resolve_type_expression_node(node):
+    """Returns the type that an ast node of a type expression represents."""
+    if isinstance(node, ast.Constant):
+        return NoneType if node.value is None else node.value
+    if isinstance(node, ast.Name):
+        for namespace in (builtins, typing):
+            if hasattr(namespace, node.id):
+                return getattr(namespace, node.id)
+        raise ValueError(f"Not a builtin or typing name: {node.id}")
+    if isinstance(node, ast.Attribute):
+        return import_object(ast.unparse(node))
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return resolve_type_expression_node(node.left) | resolve_type_expression_node(node.right)
+    if isinstance(node, ast.Subscript):
+        return resolve_type_expression_node(node.value)[resolve_type_expression_node(node.slice)]
+    if isinstance(node, ast.Tuple):
+        return tuple(resolve_type_expression_node(e) for e in node.elts)
+    if isinstance(node, ast.List):
+        return [resolve_type_expression_node(e) for e in node.elts]
+    raise ValueError(f"Unsupported type expression: {ast.unparse(node)}")
+
+
+def str_to_type_expression(val: str):
+    """Returns the type that a string type expression represents, e.g. ``"int | str"``.
+
+    The expression is resolved from its ast instead of being evaluated, such that only
+    names, dot import paths, unions and subscripts are accepted, i.e. no arbitrary code.
+    """
+    if not isinstance(val, str):
+        raise ValueError(f"Expected a string, got {type(val)}")
+    return resolve_type_expression_node(ast.parse(val, mode="eval").body)
 
 
 def adapt_typehints(
@@ -1160,6 +1203,21 @@ def adapt_typehints(
                 raise_unexpected_value("Expected an import path corresponding to a module", val)
             if instantiate_classes:
                 val = import_module(val)
+
+    # UnionType and GenericAlias
+    elif typehint in type_expression_types:
+        if serialize:
+            if isinstance(val, typehint):
+                val = str(val)
+        elif not isinstance(val, typehint):
+            expected = f"Expected a string with a {type_expression_types[typehint]} type expression"
+            try:
+                type_expression = str_to_type_expression(val)
+            except Exception as ex:
+                raise_unexpected_value(expected, val, ex)
+            if not isinstance(type_expression, typehint):
+                raise_unexpected_value(expected, val)
+            val = type_expression
 
     # Union
     elif typehint_origin == Union:
@@ -2117,6 +2175,8 @@ def strip_module_names(string: str) -> str:
 def type_to_str(obj):
     if obj is ModuleType:
         return "ModuleType"
+    if obj in type_expression_types:
+        return type_expression_types[obj]
     if obj in {bool, tuple} or is_subclass(obj, (int, float, str, Path, Enum)):
         return obj.__name__
     return strip_module_names(str(obj)).replace("NoneType", "null")
