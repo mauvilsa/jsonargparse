@@ -1,3 +1,5 @@
+.. _contributing:
+
 Contributing
 ============
 
@@ -10,7 +12,8 @@ people to help and contribute, among them:
 - Spread the word in your community about the features you like from
   jsonargparse.
 - Help others to learn how to use jsonargparse by creating tutorials, such as
-  blog posts and videos.
+  blog posts and videos. If you do, let us know so that it can be added to
+  :ref:`talks-and-articles`.
 - Become active in existing GitHub issues and pull requests.
 - Create `issues <https://github.com/mauvilsa/jsonargparse/issues>`__ for
   reporting bugs and proposing improvements.

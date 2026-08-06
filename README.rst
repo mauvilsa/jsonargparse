@@ -27,6 +27,12 @@ a `substantial user base
 it serves as the framework behind pytorch-lightning's `LightningCLI
 <https://lightning.ai/docs/pytorch/stable/cli/lightning_cli.html>`__.
 
+The documentation is a reference that describes each feature in isolation, which
+is not always the best way to learn. If you would rather see the *why* behind
+the features and complete use cases built end to end, have a look at the `talks
+and articles <https://jsonargparse.readthedocs.io/en/latest/talks-and-articles.html>`__
+page, which collects presentations, blog posts and example projects.
+
 Teaser examples
 ---------------
 

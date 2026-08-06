@@ -206,32 +206,6 @@ tool supports with their default values. Users can follow these steps:
     # Run the tool using the adapted config
     python example.py --config config.yaml
 
-Comparison to Fire
-------------------
-
-The :func:`.auto_cli` feature is similar to and inspired by `Fire
-<https://pypi.org/project/fire/>`__. However, there are fundamental differences.
-First, the purpose is not to allow calling any Python object from the command
-line. It is only intended for running functions and classes specifically written
-for this purpose. Second, the arguments are expected to have type hints, and the
-given values will be validated according to these. Third, the return values of
-the functions are not automatically printed. :func:`.auto_cli` returns the value
-and it is up to the developer to decide what to do with it.
-
-
-.. _tutorials:
-
-Tutorials
-=========
-
-- `"jsonargparse - Say goodbye to configuration hassles"
-  <https://2022.pycon.de/program/XK73C3/>`__  by Marianne Stecklina at PyCon DE
-  & PyData Berlin 2022
-
-    - Presentation video: https://youtu.be/2gDf2S0nHKg
-    - GitHub repository: https://github.com/stecklin/pycon22-jsonargparse
-
-
 .. _parsers:
 
 Parsers

@@ -43,6 +43,11 @@ def auto_cli(
     arguments and runs one of the functions or class methods depending on what
     was parsed.
 
+    Inspired by `Fire <https://pypi.org/project/fire/>`__, though with
+    fundamental differences: arguments are derived from type hints and
+    validated against them, instead of being guessed from the given values; and
+    return values are not printed, they are given back to the caller.
+
     Args:
         components: One or more functions/classes to include in the command line interface.
         args: List of arguments to parse or ``None`` to use ``sys.argv``.

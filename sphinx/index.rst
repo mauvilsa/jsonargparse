@@ -32,6 +32,7 @@ jsonargparse.typing
 Index
 =====
 
+* :ref:`talks-and-articles`
 * :ref:`changelog`
 * :ref:`license`
 * :ref:`genindex`
