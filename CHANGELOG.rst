@@ -80,6 +80,8 @@ Changed
   implementation are accepted. Parameter and return types must still match
   exactly, except when the protocol has no annotation or ``Any`` (`#941
   <https://github.com/mauvilsa/jsonargparse/pull/941>`__).
+- The default print config argument name will remain as ``--print_config`` in
+  v5.0.0, no longer changing as described in the deprecated section of v4.35.0.
 
 
 v4.50.0 (2026-07-22)

@@ -1037,7 +1037,7 @@ class _ConcreteImpl:
     """Implements _NonRTCheckableProtocol structurally."""
 
     def execute(self) -> None:
-        pass
+        pass  # pragma: no cover
 
 
 class _DoesNotImpl:

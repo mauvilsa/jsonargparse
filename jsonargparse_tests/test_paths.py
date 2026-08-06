@@ -611,7 +611,7 @@ class ItemsMain:
 
 class ItemsDictMain:
     def __init__(self, objects: Optional[Dict[str, ItemBase]] = None):
-        self.objects = objects
+        self.objects = objects  # pragma: no cover
 
 
 item1_spec = {"class_path": f"{__name__}.ItemSub", "init_args": {"x": 2, "y": "a"}}

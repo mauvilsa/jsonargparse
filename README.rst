@@ -4,7 +4,7 @@
     :target: https://github.com/mauvilsa/jsonargparse/actions/workflows/tests.yaml
 .. image:: https://codecov.io/gh/mauvilsa/jsonargparse/branch/main/graph/badge.svg
     :target: https://codecov.io/gh/mauvilsa/jsonargparse
-.. image:: https://sonarcloud.io/api/project_badges/measure?project=mauvilsa_jsonargparse&metric=alert_status
+.. image:: https://sonarcloud.io/api/project_badges/measure?project=mauvilsa_jsonargparse&metric=alert_status&token=74f3ff0af709f6caa0544dfbcf823c49fb68cb46
     :target: https://sonarcloud.io/dashboard?id=mauvilsa_jsonargparse
 .. image:: https://badge.fury.io/py/jsonargparse.svg
     :target: https://badge.fury.io/py/jsonargparse

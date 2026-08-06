@@ -1195,21 +1195,20 @@ def adapt_typehints(
 
     # Module
     elif typehint is ModuleType:
-        if serialize:
-            if isinstance(val, ModuleType):
+        if isinstance(val, ModuleType):
+            if serialize:
                 val = val.__name__
-        elif not isinstance(val, ModuleType):
-            if not is_importable_module_path(val):
-                raise_unexpected_value("Expected an import path corresponding to a module", val)
-            if instantiate_classes:
-                val = import_module(val)
+        elif not is_importable_module_path(val):
+            raise_unexpected_value("Expected an import path corresponding to a module", val)
+        elif instantiate_classes:
+            val = import_module(val)
 
     # UnionType and GenericAlias
     elif typehint in type_expression_types:
-        if serialize:
-            if isinstance(val, typehint):
+        if isinstance(val, typehint):
+            if serialize:
                 val = str(val)
-        elif not isinstance(val, typehint):
+        else:
             expected = f"Expected a string with a {type_expression_types[typehint]} type expression"
             try:
                 type_expression = str_to_type_expression(val)
@@ -1217,7 +1216,8 @@ def adapt_typehints(
                 raise_unexpected_value(expected, val, ex)
             if not isinstance(type_expression, typehint):
                 raise_unexpected_value(expected, val)
-            val = type_expression
+            if not serialize:
+                val = type_expression
 
     # Union
     elif typehint_origin == Union:

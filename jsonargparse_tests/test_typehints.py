@@ -922,6 +922,24 @@ def test_module_type_dump_module_object(parser):
     assert json_or_yaml_load(parser.dump(cfg)) == {"mod": "json"}
 
 
+def test_module_type_union_with_callable_dump(parser):
+    parser.add_argument("--val", type=Union[ModuleType, Callable])
+    cfg = parser.parse_args(["--val=uuid.uuid4"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"val": "uuid.uuid4"}
+
+
+class WithCallableDefault:
+    def __init__(self, cb: Callable = uuid.uuid4):
+        self.cb = cb
+
+
+def test_module_type_union_with_class_dump(parser):
+    parser.add_argument("--val", type=Union[ModuleType, WithCallableDefault])
+    cfg = parser.parse_args([f"--val={__name__}.WithCallableDefault"])
+    expected = {"class_path": f"{__name__}.WithCallableDefault", "init_args": {"cb": "uuid.uuid4"}}
+    assert json_or_yaml_load(parser.dump(cfg)) == {"val": expected}
+
+
 def test_module_type_help(parser):
     parser.add_argument("--mod", type=ModuleType, help="Module to use.")
     help_str = get_parser_help(parser)
@@ -995,6 +1013,19 @@ def test_union_type_optional(parser):
     assert parser.parse_args(["--type=int | str"]).type == int | str
 
 
+def test_union_type_dump_type_expression_string(parser):
+    parser.add_argument("--type", type=UnionType)
+    cfg = parser.parse_args(["--type=int | str"])
+    cfg.type = "int | str"
+    assert json_or_yaml_load(parser.dump(cfg)) == {"type": "int | str"}
+
+
+def test_union_type_union_with_callable_dump(parser):
+    parser.add_argument("--val", type=Union[UnionType, Callable])
+    cfg = parser.parse_args(["--val=uuid.uuid4"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"val": "uuid.uuid4"}
+
+
 def test_union_type_help(parser):
     parser.add_argument("--type", type=UnionType, help="Type to use.")
     help_str = get_parser_help(parser)
@@ -1023,6 +1054,12 @@ def test_generic_alias_dump(parser):
     parser.add_argument("--type", type=GenericAlias)
     cfg = parser.parse_args(["--type=dict[str, int]"])
     assert json_or_yaml_load(parser.dump(cfg)) == {"type": "dict[str, int]"}
+
+
+def test_generic_alias_union_with_callable_dump(parser):
+    parser.add_argument("--val", type=Union[GenericAlias, Callable])
+    cfg = parser.parse_args(["--val=uuid.uuid4"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"val": "uuid.uuid4"}
 
 
 def test_generic_alias_help(parser):

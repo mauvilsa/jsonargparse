@@ -607,7 +607,9 @@ Some notes about this support are:
   names must be builtins, ``typing`` names or dot import paths.
 
 - ``TypeAliasType`` is supported with values parsed as the aliased type and the
-  alias shown as the argument type in help.
+  alias shown as the argument type in help. This includes aliases defined with
+  the `PEP 695 <https://peps.python.org/pep-0695/>`__ ``type X = ...`` statement
+  (python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``.
 
 
 .. _restricted-numbers:
