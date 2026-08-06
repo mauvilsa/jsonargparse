@@ -68,7 +68,8 @@ fsspec = [
     "fsspec>=0.8.4",
 ]
 shtab = [
-    "shtab>=1.7.1",
+    # 1.8.2 and 1.9.0 generate corrupted *_COMPGEN values, fixed in 1.9.1
+    "shtab>=1.7.1,!=1.8.2,!=1.9.0",
 ]
 argcomplete = [
     "argcomplete>=3.5.1",

@@ -3,6 +3,7 @@ import inspect
 import locale
 import os
 import re
+import shlex
 from collections import defaultdict
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
@@ -153,7 +154,7 @@ def get_shtab_script(parser, shell: str, preambles: list[str] | None = None) -> 
     if not preambles:
         preambles = []
     if shell == "bash":
-        preambles += [bash_compgen_typehint.strip().replace("%s", prog)]
+        preambles += [bash_compgen_typehint.strip().replace("{prog}", prog)]
     with prepare_actions_context(shell, prog, preambles):
         shtab_prepare_actions(parser)
     return shtab.complete(parser, shell, preamble="\n".join(preambles))
@@ -248,27 +249,25 @@ def shtab_prepare_action(action, parser) -> None:
         action.choices = choices
 
 
-bash_compgen_typehint_name = "_jsonargparse_%s_compgen_typehint"
+# "{prog}" is a placeholder replaced with the normalized prog name, see get_shtab_script.
+bash_compgen_typehint_name = "_jsonargparse_{prog}_compgen_typehint"
 bash_compgen_typehint = """
-_jsonargparse_%%s_matched_choices() {
-  local TOTAL=$(echo "$1" | wc -w | tr -d " ")
-  if [ "$TOTAL" != 0 ]; then
-    local MATCH=$(echo "$2" | wc -w | tr -d " ")
-    printf "; $MATCH/$TOTAL matched choices"
-  fi
-}
 %(name)s() {
-  local REQUIRE_PREFIX="$4"
+  local CHOICES="$1" WORD="$2" MESSAGE="$3" REQUIRE_PREFIX="$4" TOTAL="$5"
+  local IFS=$'\\n'  # choices may contain spaces, so split matches on newline only
   local MATCH=()
-  if [ "$REQUIRE_PREFIX" = 1 ] && [ -z "$2" ]; then
+  if [ "$REQUIRE_PREFIX" = 1 ] && [ -z "$WORD" ]; then
     MATCH=()
   else
-    MATCH=( $(IFS=" " compgen -W "$1" "$2") )
+    MATCH=( $(IFS=" " compgen -W "$CHOICES" "$WORD") )
+  fi
+  local MATCHED=""
+  if [ "$TOTAL" != 0 ]; then
+    MATCHED="; ${#MATCH[@]}/$TOTAL matched choices"
   fi
   if [ ${#MATCH[@]} = 0 ]; then
     if [ "$COMP_TYPE" = 63 ]; then
-      MATCHED=$(_jsonargparse_%%s_matched_choices "$1" "${MATCH[*]}")
-      printf "%(b)s\\n$3$MATCHED\\n%(n)s" >&2
+      printf "%(b)s\\n%%s%%s\\n%(n)s" "$MESSAGE" "$MATCHED" >&2
       kill -WINCH $$
     fi
   else
@@ -276,8 +275,7 @@ _jsonargparse_%%s_matched_choices() {
       echo "$match"
     done
     if [ "$COMP_TYPE" = 63 ]; then
-      MATCHED=$(_jsonargparse_%%s_matched_choices "$1" "${MATCH[*]}")
-      printf "%(b)s\\n$3$MATCHED%(n)s" >&2
+      printf "%(b)s\\n%%s%%s%(n)s" "$MESSAGE" "$MATCHED" >&2
     fi
   fi
 }
@@ -289,15 +287,19 @@ _jsonargparse_%%s_matched_choices() {
 
 
 def add_bash_typehint_completion(parser, action, message, choices, require_prefix=False) -> None:
-    fn_typehint = norm_name(bash_compgen_typehint_name % shtab_prog.get())
+    fn_typehint = norm_name(bash_compgen_typehint_name.replace("{prog}", shtab_prog.get()))
     fn_name = parser.prog.replace(" [options] ", "_")
     fn_name = norm_name(f"_jsonargparse_{fn_name}_{action.dest}_typehint")
-    fn = '{fn_name}(){{ {fn_typehint} "{choices}" "$1" "{message}" {require_prefix}; }}'.format(
+    # choices are quoted twice: once so that compgen -W splits them into the intended words,
+    # and once so that the whole word list reaches the function as a single argument.
+    wordlist = shlex.quote(" ".join(shlex.quote(c) for c in choices))
+    fn = '{fn_name}(){{ {fn_typehint} {choices} "$1" {message} {require_prefix} {total}; }}'.format(
         fn_name=fn_name,
         fn_typehint=fn_typehint,
-        choices=" ".join(choices),
-        message=message,
+        choices=wordlist,
+        message=shlex.quote(message),
         require_prefix=1 if require_prefix else 0,
+        total=len(choices),
     )
     shtab_preambles.get().append(fn)
     action.complete = {"bash": fn_name}

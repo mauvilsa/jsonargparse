@@ -1,4 +1,5 @@
 import re
+import shlex
 import subprocess
 import tempfile
 from enum import Enum
@@ -47,6 +48,13 @@ def parser() -> ArgumentParser:
     return ArgumentParser(exit_on_error=False, prog="tool")
 
 
+def get_bash_array(shtab_script, name):
+    """Elements of a bash array assignment, independent of how shtab quotes them."""
+    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", shtab_script, re.MULTILINE)
+    assert match, f"{name} array not found in shtab script"
+    return shlex.split(match.group(1))
+
+
 def is_positional(dest, parser):
     if parser is not None:
         action = next(a for a in parser._actions if a.dest == dest)
@@ -69,7 +77,7 @@ def assert_bash_typehint_completions(subtests, shtab_script, completions):
                 sh = f'source {shtab_script_path}; COMP_TYPE=63 _jsonargparse_tool_{norm_name(dest)}_typehint "{word}"'
                 popen = subprocess.Popen(["bash", "-c", sh], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 out, err = popen.communicate()
-                assert list(out.decode().split()) == choices
+                assert out.decode().splitlines() == choices
                 if extra is None:
                     assert f"Expected type: {typehint}" in err.decode()
                 elif re.match(r"^\d/\d$", extra):
@@ -178,6 +186,23 @@ def test_bash_literal(parser, subtests):
         [
             ("literal", typehint, "", ["one", "two", "null"], "3/3"),
             ("literal", typehint, "t", ["two"], "1/3"),
+        ],
+    )
+
+
+def test_bash_literal_special_characters(parser, subtests):
+    typehint = Literal["one two", "three", "it's"]
+    parser.add_argument("--literal", type=typehint)
+    shtab_script = get_shtab_script(parser, "bash")
+    syntax_check = subprocess.run(["bash", "-n"], input=shtab_script.encode(), capture_output=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr.decode()
+    assert_bash_typehint_completions(
+        subtests,
+        shtab_script,
+        [
+            ("literal", typehint, "", ["one two", "three", "it's"], "3/3"),
+            ("literal", typehint, "o", ["one two"], "1/3"),
+            ("literal", typehint, "i", ["it's"], "1/3"),
         ],
     )
 
@@ -364,18 +389,20 @@ def test_bash_subclasses_fail_get_perams(parser, logger):
     parser.add_argument("--cls", type=Base)
     with capture_logs(logger) as logs, patch("jsonargparse._completions.get_signature_parameters", get_params_patch):
         shtab_script = get_shtab_script(parser, "bash")
-    assert "'--cls' '--cls.p1' '--cls.p2'" in shtab_script
-    assert f"'{__name__}.SubB'" in shtab_script
-    assert "'--cls.p3'" not in shtab_script
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert options == ["-h", "--help", "--cls.help", "--cls", "--cls.p1", "--cls.p2"]
+    assert f"{__name__}.SubB" in get_bash_array(shtab_script, "_shtab_tool___cls_help_choices")
+    assert "--cls.p3" not in shtab_script
     assert "test_shtab.SubB': test get params failure" in logs.getvalue()
 
 
 def test_bash_subclasses_help(parser):
     parser.add_argument("--cls", type=Base)
     shtab_script = get_shtab_script(parser, "bash")
-    assert "'--cls.help' '--cls' '--cls.p1' '--cls.p2' '--cls.p3'" in shtab_script
-    classes = f"'{__name__}.Base' '{__name__}.SubA' '{__name__}.SubB'"
-    assert f"_cls_help_choices=({classes})" in shtab_script
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert options == ["-h", "--help", "--cls.help", "--cls", "--cls.p1", "--cls.p2", "--cls.p3"]
+    classes = [f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+    assert get_bash_array(shtab_script, "_shtab_tool___cls_help_choices") == classes
 
 
 def test_bash_subclasses(parser, subtests):
@@ -402,9 +429,10 @@ class Other:
 def test_bash_union_subclasses(parser, subtests):
     parser.add_argument("--cls", type=Union[Base, Other])
     shtab_script = get_shtab_script(parser, "bash")
-    assert "'--cls.help' '--cls' '--cls.p1' '--cls.p2' '--cls.p3' '--cls.o1'" in shtab_script
-    classes = f"'{__name__}.Base' '{__name__}.SubA' '{__name__}.SubB' '{__name__}.Other'"
-    assert f"_cls_help_choices=({classes})" in shtab_script
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert options == ["-h", "--help", "--cls.help", "--cls", "--cls.p1", "--cls.p2", "--cls.p3", "--cls.o1"]
+    classes = [f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB", f"{__name__}.Other"]
+    assert get_bash_array(shtab_script, "_shtab_tool___cls_help_choices") == classes
     assert_bash_typehint_completions(
         subtests,
         shtab_script,
@@ -427,7 +455,8 @@ class SupA(SupBase):
 def test_bash_nested_subclasses(parser, subtests):
     parser.add_argument("--cls", type=SupBase)
     shtab_script = get_shtab_script(parser, "bash")
-    assert "'--cls.help' '--cls' '--cls.s1' '--cls.s1.p1' '--cls.s1.p2' '--cls.s1.p3'" in shtab_script
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert options == ["-h", "--help", "--cls.help", "--cls", "--cls.s1", "--cls.s1.p1", "--cls.s1.p2", "--cls.s1.p3"]
     assert_bash_typehint_completions(
         subtests,
         shtab_script,
@@ -440,7 +469,8 @@ def test_bash_nested_subclasses(parser, subtests):
 def test_bash_callable_return_class(parser, subtests):
     parser.add_argument("--cls", type=Callable[[int], Base])
     shtab_script = get_shtab_script(parser, "bash")
-    assert "_option_strings=('-h' '--help' '--cls.help' '--cls' '--cls.p2' '--cls.p3')" in shtab_script
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert options == ["-h", "--help", "--cls.help", "--cls", "--cls.p2", "--cls.p3"]
     assert "--cls.p1" not in shtab_script
     classes = f"{__name__}.Base {__name__}.SubA {__name__}.SubB".split()
     assert_bash_typehint_completions(
@@ -480,12 +510,13 @@ def test_bash_subcommands(parser, subparser, subtests):
     assert "--print_completion" not in help_str
 
     shtab_script = get_shtab_script(parser, "bash")
-    assert "_subparsers=('s1' 's2')" in shtab_script
+    assert get_bash_array(shtab_script, "_shtab_tool_subparsers") == ["s1", "s2"]
 
-    assert "_s1_option_strings=('-h' '--help' '--enum')" in shtab_script
-    assert "_s2_option_strings=('-h' '--help' '--cls.help' '--cls' '--cls.p1' '--cls.p2' '--cls.p3')" in shtab_script
-    classes = f"'{__name__}.Base' '{__name__}.SubA' '{__name__}.SubB'"
-    assert f"_s2___cls_help_choices=({classes})" in shtab_script
+    assert get_bash_array(shtab_script, "_shtab_tool_s1_option_strings") == ["-h", "--help", "--enum"]
+    options = get_bash_array(shtab_script, "_shtab_tool_s2_option_strings")
+    assert options == ["-h", "--help", "--cls.help", "--cls", "--cls.p1", "--cls.p2", "--cls.p3"]
+    classes = [f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+    assert get_bash_array(shtab_script, "_shtab_tool_s2___cls_help_choices") == classes
 
     assert_bash_typehint_completions(
         subtests,

@@ -57,6 +57,14 @@ Fixed
   dataclass-like types that are not added as a group, including when nested in
   lists and dicts (`#939
   <https://github.com/mauvilsa/jsonargparse/pull/939>`__).
+- ``shtab`` bash completion scripts not escaping choices and type messages, such
+  that a value containing a single quote, e.g. a ``Literal`` type, produced a
+  script with invalid syntax (`#497
+  <https://github.com/mauvilsa/jsonargparse/pull/497>`__).
+- Tests for ``shtab`` completions failing with ``shtab>=1.9.1`` due to a change
+  in how it quotes the elements of the generated bash arrays. The completion
+  scripts themselves were not affected (`#497
+  <https://github.com/mauvilsa/jsonargparse/pull/497>`__).
 
 Changed
 ^^^^^^^
