@@ -14,9 +14,10 @@ from contextvars import ContextVar
 from copy import deepcopy
 from datetime import date, datetime
 from enum import Enum
-from functools import partial
+from functools import partial, reduce
 from importlib import import_module
 from importlib.util import find_spec
+from operator import or_
 from types import FunctionType, GenericAlias, MappingProxyType, ModuleType, UnionType
 from typing import (
     Any,
@@ -338,7 +339,7 @@ class ActionTypeHint(Action):
                     kwargs["logger"].debug(f"Discarding unsupported subtypes {discard} from {typehint}")
                     subtypes = tuple(t for t, s in zip(typehint.__args__, subtype_supported) if s)
                     typehint = Union[subtypes]
-            self._typehint = typehint
+            self._typehint = sort_unions_in_typehint(typehint)
             self._enable_path = False if is_pathlike(typehint) else enable_path
         elif "_typehint" not in kwargs:
             raise ValueError("Expected typehint keyword argument.")
@@ -978,17 +979,10 @@ def replace_unvalidatable_typehints(typehint, unvalidated: list | None = None, r
             for a in args
         )
         if new_args != args:
-            try:
-                if hasattr(typehint, "copy_with"):
-                    return typehint.copy_with(new_args)
-                subscript_args = get_args(typehint)
-                if subscript_args and isinstance(subscript_args[0], list):
-                    # a Callable that has its parameters flattened in __args__, e.g. the __args__ of
-                    # Callable[[int], str] are (int, str), while subscripting needs them as a list
-                    return get_typehint_origin(typehint)[[*new_args[:-1]], new_args[-1]]
-                return get_typehint_origin(typehint)[new_args]
-            except Exception:
+            rebuilt = rebuild_typehint_args(typehint, new_args)
+            if rebuilt is typehint:
                 return replaced(typehint, unrebuildable_reason)
+            return rebuilt
     if replace_unsupported and not ActionTypeHint.is_supported_typehint(typehint, full=True):
         return replaced(typehint, unsupported_reason)
     return typehint
@@ -2146,22 +2140,86 @@ def adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs, logge
     return val
 
 
+def union_subtype_sort_key(subtype) -> int:
+    """Rank of a union subtype, sorted by which is attempted first when parsing.
+
+    The subtypes that accept the most values get a higher rank, so that sorting
+    moves them to the end and the ones that validate more strictly get a chance
+    of being used. Sorting is stable, thus subtypes with the same rank keep the
+    relative order in which they are given.
+    """
+    if subtype == Any or isinstance(subtype, UnvalidatedType):
+        return 3  # accept any value, so nothing after them would ever be attempted
+    if subtype is NoneType:
+        return 2  # only accepts null, second to last so that Optional[<type>] reads as in the source code
+    if subtype is object:
+        return 1  # accepts the import path of any class, so no class subtype after it would be attempted
+    return 0
+
+
+def sort_unions_in_typehint(typehint):
+    """Returns the type hint with the subtypes of all its unions sorted, including nested ones.
+
+    Done when an argument is added, such that the help shows the type hint with
+    the subtypes of unions in the order in which they are attempted when
+    parsing, see union_subtype_sort_key.
+    """
+    if get_typehint_origin(typehint) in literal_types:
+        return typehint  # the args of a Literal are values, not types
+    args = getattr(typehint, "__args__", None)
+    # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
+    # class level slot descriptor, which is truthy but not the subtypes of an instance
+    if not isinstance(args, tuple) or not args:
+        return typehint
+    new_args = tuple(sort_unions_in_typehint(a) for a in args)
+    if get_typehint_origin(typehint) == Union:
+        new_args = tuple(sorted(new_args, key=union_subtype_sort_key))
+    # compared by identity, since typing considers Union[int, str] and Union[str, int] equal
+    if all(new is old for new, old in zip(new_args, args)):
+        return typehint
+    return rebuild_typehint_args(typehint, new_args)
+
+
+def rebuild_typehint_args(typehint, new_args):
+    """Returns the given type hint with its subtypes replaced, or unchanged if not possible."""
+    try:
+        if isinstance(typehint, UnionType):
+            try:
+                return reduce(or_, new_args)
+            except TypeError:
+                return Union[new_args]  # e.g. an UnvalidatedType subtype doesn't support |
+        if get_typehint_origin(typehint) == Union:
+            # neither Union[...] nor its copy_with are used because typing caches unions and
+            # considers two of them equal independent of the order of the subtypes, thus a
+            # previously created union with the same subtypes in a different order would be
+            # returned, silently undoing the sorting
+            return type(typehint)(Union, tuple(new_args), name=getattr(typehint, "_name", None))
+        if hasattr(typehint, "copy_with"):
+            return typehint.copy_with(new_args)
+        subscript_args = get_args(typehint)
+        if subscript_args and isinstance(subscript_args[0], list):
+            # a Callable that has its parameters flattened in __args__, e.g. the __args__ of
+            # Callable[[int], str] are (int, str), while subscripting needs them as a list
+            return get_typehint_origin(typehint)[[*new_args[:-1]], new_args[-1]]
+        return get_typehint_origin(typehint)[new_args]
+    except Exception:
+        return typehint
+
+
 def sort_subtypes_for_union(subtypes, val, prev_val, append):
+    """Sorts the subtypes of a union for the parsing of a given value.
+
+    The sort that does not depend on the value is applied first, which is a
+    no-op for the type hint of an added argument, since it is already sorted,
+    see sort_unions_in_typehint. It is still needed for type hints resolved
+    while parsing, e.g. the types of the keys of a TypedDict. Then, only when
+    appending to a list, the sequence subtypes are moved to the front, since
+    the value must extend the previous list instead of replacing it.
+    """
     if len(subtypes) > 1:
-        if isinstance(val, str):
-            key_fn = lambda x: (
-                x != NoneType,
-                get_typehint_origin(x) not in sequence_or_mapping_origin_types,
-            )
-        else:
-            key_fn = lambda x: x != NoneType
-        subtypes = sorted(subtypes, key=key_fn)
+        subtypes = sorted(subtypes, key=union_subtype_sort_key)
         if append or (isinstance(prev_val, list) and isinstance(val, NestedArg)):
-            key_fn = lambda x: (
-                x != NoneType,
-                get_typehint_origin(x) not in sequence_origin_types,
-            )
-            subtypes = sorted(subtypes, key=key_fn)
+            subtypes = sorted(subtypes, key=lambda x: get_typehint_origin(x) not in sequence_origin_types)
     return subtypes
 
 

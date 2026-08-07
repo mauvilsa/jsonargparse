@@ -521,10 +521,11 @@ Some notes about this support are:
   :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
   ``bytes``/``bytearray`` (Base64 encoding), ``range``, ``list`` (more details
   in :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``, ``Any``,
-  ``Union``, ``Optional``, ``Type``, ``Enum``, ``PathLike``, ``UUID``,
-  ``timedelta``, restricted types as explained in sections
-  :ref:`restricted-numbers` and :ref:`restricted-strings` and path and URL types
-  as explained in sections :ref:`parsing-paths` and :ref:`parsing-urls`.
+  ``Union``/``Optional`` (more details in :ref:`union-types`), ``Type``,
+  ``Enum``, ``PathLike``, ``UUID``, ``timedelta``, restricted types as explained
+  in sections :ref:`restricted-numbers` and :ref:`restricted-strings` and path
+  and URL types as explained in sections :ref:`parsing-paths` and
+  :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
   ``OrderedDict``, and ``TypedDict`` are supported but only with ``str`` or
@@ -610,6 +611,77 @@ Some notes about this support are:
   alias shown as the argument type in help. This includes aliases defined with
   the `PEP 695 <https://peps.python.org/pep-0695/>`__ ``type X = ...`` statement
   (python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``.
+
+
+.. _union-types:
+
+Union types
+-----------
+
+A value given for an argument that has a ``Union`` type is validated against
+each of the subtypes, one at a time, and the first subtype that accepts it
+decides the parsed value. This means that the order of the subtypes matters. For
+example, for ``Union[str, int]`` the command line value ``2`` is parsed as the
+``str`` ``"2"``, since any command line value is a valid ``str``, whereas for
+``Union[int, str]`` it is parsed as the ``int`` ``2``.
+
+The subtypes are mostly attempted in the order in which they are written. The
+exception are the ones that accept anything, which are sorted to the end when
+the argument is added, so that the subtypes that validate get a chance of being
+used. From first to last attempted, the groups are:
+
+1. All types not mentioned below, in the order in which they are written.
+2. ``object``, which accepts the import path of any class, making any class
+   subtype after it unreachable.
+3. ``None``, which only accepts ``null``. It is placed second to last so that
+   ``Optional[<type>]`` reads in the help as it does in the source code.
+4. ``Any`` and the types that can't be validated, see :ref:`unvalidated-types`.
+   These accept any value, so a subtype after them would never be attempted.
+
+The sorting is stable, meaning that subtypes in the same group keep the relative
+order in which they are given. Unions nested inside other types are sorted as
+well, e.g. the ``Union`` in ``list[Union[int, Any]]``.
+
+Be aware that ``typing`` considers two unions equal independent of the order of
+the subtypes, and caches the types that it creates. This means that for a union
+nested in a ``typing`` type, e.g. ``typing.List[Union[int, str]]``, the order
+can end up being the one of an equal union created before somewhere else. The
+`PEP 585 <https://peps.python.org/pep-0585/>`__ types are not cached, so writing
+``list[Union[int, str]]`` always gives the order as written.
+
+Since the sorting is done when the argument is added, the type shown in the
+``--help`` is the sorted one. That is, the help always tells the order in which
+the subtypes are attempted. For example, an argument added as:
+
+.. testsetup:: union
+
+    from typing import Any, Union
+
+    parser = ArgumentParser(exit_on_error=False)
+
+.. testcode:: union
+
+    parser.add_argument("--val", type=Union[Any, int, None])
+
+is shown in the help as ``(type: Union[int, null, Any], default: null)`` and
+parses values as:
+
+.. doctest:: union
+
+    >>> parser.parse_args(["--val=2"])
+    Namespace(val=2)
+    >>> parser.parse_args(["--val=null"])
+    Namespace(val=None)
+    >>> parser.parse_args(["--val=abc"])
+    Namespace(val='abc')
+
+There is a single case in which the order is changed while parsing, instead of
+when the argument is added. When appending to a list, see :ref:`list-append`,
+the subtypes that are a list are moved to the front. This can only be decided
+when parsing, since it depends on the value being appended to a previous list
+instead of replacing it. For instance, for an argument with type ``Union[int,
+list[int]]``, ``--val=1`` is parsed as ``1``, while ``--val+=1`` is parsed as
+``[1]``.
 
 
 .. _unvalidated-types:
@@ -1016,11 +1088,13 @@ files would first assign a list and then append to this list:
     - 2
     - 3
 
-Appending works for any type for the list elements. Lists with class type
-elements (see :ref:`sub-classes`) are also supported. To append to the list,
-first append a new class by using the ``+`` suffix. Then ``init_args`` for this
-class are specified like if the type wasn't a list, since the arguments are
-applied to the last class in the list. Take for example that an argument is
+Appending works for any type for the list elements. When the type is a union
+that has a list among its subtypes, appending changes the order in which the
+subtypes are attempted, see :ref:`union-types`. Lists with class type elements
+(see :ref:`sub-classes`) are also supported. To append to the list, first append
+a new class by using the ``+`` suffix. Then ``init_args`` for this class are
+specified like if the type wasn't a list, since the arguments are applied to the
+last class in the list. Take for example that an argument is
 added to a parser as:
 
 .. testcode:: append

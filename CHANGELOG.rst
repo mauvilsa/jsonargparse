@@ -115,6 +115,15 @@ Changed
   ``ValueError`` when adding the arguments, instead of the parameter being
   silently skipped. ``Namespace`` is only intended for parsing results (`#948
   <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+- The subtypes of a ``Union`` are now sorted when the argument is added, instead
+  of only while parsing. This means that the type shown in the help tells the
+  order in which the subtypes are attempted. The subtypes that accept any value,
+  i.e. ``Any`` and the ones that can't be validated, are now moved to the end,
+  so that they no longer prevent the remaining subtypes from being attempted.
+  The same is done for ``object``, which accepts the import path of any class.
+  The only sorting that still happens while parsing is for list append, since it
+  depends on the value. See the new documentation section :ref:`union-types`
+  (`#949 <https://github.com/mauvilsa/jsonargparse/pull/949>`__).
 
 
 v4.50.0 (2026-07-22)

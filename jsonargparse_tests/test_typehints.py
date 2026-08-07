@@ -103,6 +103,15 @@ def test_str_no_strip(parser):
         assert " " == parser.parse_args(['--cfg={"op":" "}']).op
 
 
+@parser_modes
+@pytest.mark.parametrize("value", ["", "  "])
+def test_empty_str_not_loaded_as_null(parser, value):
+    # an empty string must not be loaded as null, otherwise it would be accepted by the None subtype
+    parser.add_argument("--op", type=Optional[int])
+    with pytest.raises(ArgumentError, match="Does not validate against any of the Union subtypes"):
+        parser.parse_args([f"--op={value}"])
+
+
 @pytest.mark.parametrize("value", ["2022-04-12", "2022-04-32"])
 def test_str_not_timestamp(parser, value):
     parser.add_argument("foo", type=str)
@@ -1529,6 +1538,8 @@ def test_dict_default_ordered_dict(parser):
         ((str, int), "=2", "2"),
         ((float, int), "=3", 3.0),
         ((int, float), "=4", 4),
+        ((complex, float), "=5.5", complex(5.5)),
+        ((float, complex), "=6.5", 6.5),
         ((int, List[int]), "=5", 5),
         ((List[int], int), "=6", 6),
         ((int, List[int]), "+=7", [7]),
@@ -1541,6 +1552,98 @@ def test_union_subtypes_order(parser, subtypes, arg, expected):
     val = parser.parse_args([f"--val{arg}"]).val
     assert isinstance(val, type(expected))
     assert val == expected
+
+
+unvalidated_type = UnvalidatedType("some.SomeType")
+
+
+@pytest.mark.parametrize(
+    # in python 3.14+ typing.Union is types.UnionType, thus shown with the "|" syntax
+    ["typehint", "expected", "expected_py314"],
+    [
+        # non-validating types last
+        (Union[Any, int], "Union[int, Any]", "int | Any"),
+        (Union[unvalidated_type, int], "Union[int, Unvalidated<SomeType>]", "int | Unvalidated<SomeType>"),
+        (
+            Union[Any, unvalidated_type, int],
+            "Union[int, Any, Unvalidated<SomeType>]",
+            "int | Any | Unvalidated<SomeType>",
+        ),
+        (Union[str, Any], "Union[str, Any]", "str | Any"),
+        # object last, since it accepts the import path of any class
+        (Union[object, int], "Union[int, object]", "int | object"),
+        # None second to last, so that Optional keeps its form
+        (Optional[str], "Optional[str]", "str | None"),
+        (Optional[int], "Optional[int]", "int | None"),
+        (Union[Any, None], "Optional[Any]", "None | Any"),
+        # relative order otherwise kept
+        (Union[str, int], "Union[str, int]", "str | int"),
+        (Union[float, int], "Union[float, int]", "float | int"),
+        (Union[int, bool, EnumABC], "Union[int, bool, EnumABC]", "int | bool | EnumABC"),
+        (Union[List[int], Dict[str, int]], "Union[List[int], Dict[str, int]]", "List[int] | Dict[str, int]"),
+        # nested unions also reordered
+        (Dict[str, Union[Any, int]], "Dict[str, Union[int, Any]]", "Dict[str, int | Any]"),
+        (Optional[List[Union[Any, bool]]], "Optional[List[Union[bool, Any]]]", "List[bool | Any] | None"),
+        (
+            Tuple[Union[Any, int], Union[object, int]],
+            "Tuple[Union[int, Any], Union[int, object]]",
+            "Tuple[int | Any, int | object]",
+        ),
+    ],
+    ids=str,
+)
+def test_union_subtypes_sorted_on_add_argument(parser, typehint, expected, expected_py314):
+    if sys.version_info >= (3, 14):
+        expected = expected_py314
+    parser.add_argument("--val", type=typehint)
+    action = next(a for a in parser._actions if a.dest == "val")
+    assert type_to_str(action._typehint) == expected
+    assert f"(type: {expected}," in get_parser_help(parser)
+
+
+@pytest.mark.parametrize(
+    ["typehint", "expected"],
+    [
+        (object | int, "int | object"),
+        (int | None, "int | None"),
+        (object | int | None, "int | object | None"),
+        (list[object | int], "list[int | object]"),
+    ],
+    ids=str,
+)
+def test_union_subtypes_sorted_new_syntax(parser, typehint, expected):
+    # sorting a PEP 604 union keeps it as such, instead of turning it into a typing.Union
+    parser.add_argument("--val", type=typehint)
+    action = next(a for a in parser._actions if a.dest == "val")
+    assert type_to_str(action._typehint) == expected
+
+
+@pytest.mark.parametrize("typehint", [Union[unvalidated_type, EnumABC], Union[Any, EnumABC]], ids=str)
+def test_union_subtypes_sorted_accept_any_last_parse(parser, typehint):
+    # without the sorting the value would be accepted as is by the first subtype
+    parser.add_argument("--val", type=typehint)
+    assert EnumABC.A == parser.parse_args(["--val=A"]).val
+    assert "X" == parser.parse_args(["--val=X"]).val
+
+
+def test_union_subtypes_sorted_nested_parse(parser):
+    parser.add_argument("--val", type=List[Union[Any, EnumABC]])
+    assert [EnumABC.A] == parser.parse_args(['--val=["A"]']).val
+
+
+class TypedDictUnionValue(TypedDict):
+    key: Union[Any, EnumABC]
+
+
+def test_union_subtypes_sorted_typed_dict_value(parser):
+    # the type of the key is only resolved when parsing, so it is sorted there
+    parser.add_argument("--val", type=TypedDictUnionValue)
+    assert {"key": EnumABC.A} == parser.parse_args(['--val={"key": "A"}']).val
+
+
+def test_union_subtypes_sorted_optional_enum_metavar(parser):
+    parser.add_argument("--val", type=Optional[EnumABC])
+    assert "--val {A,B,C,null}" in get_parser_help(parser)
 
 
 def test_union_unsupported_subtype(parser, logger):
@@ -2312,9 +2415,9 @@ def test_unsupported_subtypes_help(parser):
     help_str = get_parser_help(parser, strip=True)
     # only the parts that are not supported are shown as unvalidated
     if sys.version_info < (3, 14):
-        union = "Union[Unvalidated<UnsupportedVar>, int]"
+        union = "Union[int, Unvalidated<UnsupportedVar>]"
     else:
-        union = "Unvalidated<UnsupportedVar> | int"
+        union = "int | Unvalidated<UnsupportedVar>"
     assert "type: List[Unvalidated<UnsupportedVar>]" in help_str
     assert f"type: {union}" in help_str
 
@@ -2338,7 +2441,7 @@ def test_unsupported_type_not_required_added(parser):
     if sys.version_info < (3, 14):
         optional = "Optional[Unvalidated<UnsupportedVar>]"
     else:
-        optional = "Unvalidated<UnsupportedVar> | None"
+        optional = "None | Unvalidated<UnsupportedVar>"
     assert f"--fn.p1 P1 (type: {optional}, default: null)" in help_str
 
 
