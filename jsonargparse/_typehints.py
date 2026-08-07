@@ -20,8 +20,11 @@ from importlib.util import find_spec
 from operator import or_
 from types import FunctionType, GenericAlias, MappingProxyType, ModuleType, UnionType
 from typing import (
+    AbstractSet,
     Any,
     Callable,
+    Collection,
+    Container,
     Deque,
     Dict,
     ForwardRef,
@@ -34,6 +37,7 @@ from typing import (
     MutableSequence,
     MutableSet,
     NoReturn,
+    Reversible,
     Sequence,
     Set,
     Tuple,
@@ -54,6 +58,7 @@ from ._actions import (
     remove_actions,
 )
 from ._common import (
+    get_generic_origin,
     get_parsing_setting,
     get_unaliased_type,
     is_generic_class,
@@ -134,10 +139,16 @@ root_types = {
     FrozenSet,
     Deque,
     deque,
+    Collection,
+    Container,
     Iterable,
+    Reversible,
     Sequence,
     MutableSequence,
+    abc.Collection,
+    abc.Container,
     abc.Iterable,
+    abc.Reversible,
     abc.Sequence,
     abc.MutableSequence,
     Tuple,
@@ -146,7 +157,9 @@ root_types = {
     FrozenSet,
     set,
     frozenset,
+    AbstractSet,
     MutableSet,
+    abc.Set,
     abc.MutableSet,
     Dict,
     dict,
@@ -175,16 +188,22 @@ leaf_types = {
 
 leaf_or_root_types = leaf_types.union(root_types)
 
-tuple_set_origin_types = {Tuple, tuple, Set, set, frozenset, MutableSet, abc.Set, abc.MutableSet}
+tuple_set_origin_types = {Tuple, tuple, Set, set, frozenset, AbstractSet, MutableSet, abc.Set, abc.MutableSet}
 sequence_origin_types = {
     List,
     list,
     Deque,
     deque,
+    Collection,
+    Container,
     Iterable,
+    Reversible,
     Sequence,
     MutableSequence,
+    abc.Collection,
+    abc.Container,
     abc.Iterable,
+    abc.Reversible,
     abc.Sequence,
     abc.MutableSequence,
 }
@@ -339,7 +358,7 @@ class ActionTypeHint(Action):
                     kwargs["logger"].debug(f"Discarding unsupported subtypes {discard} from {typehint}")
                     subtypes = tuple(t for t, s in zip(typehint.__args__, subtype_supported) if s)
                     typehint = Union[subtypes]
-            self._typehint = sort_unions_in_typehint(typehint)
+            self._typehint = sort_unions_in_typehint(replace_type_vars_in_type_subtype(typehint))
             self._enable_path = False if is_pathlike(typehint) else enable_path
         elif "_typehint" not in kwargs:
             raise ValueError("Expected typehint keyword argument.")
@@ -1453,6 +1472,10 @@ def adapt_typehints(
                         partial_skip_args=partial_skip_args,
                         prev_val=prev_val,
                     )
+                elif not callable(val):
+                    # e.g. a list, which without this would be accepted unchanged, silently
+                    # preventing the resolution by other subtypes when part of a union
+                    raise ImportError(f"Expected an import path or a subclass spec, but got {val_input}")
             except (ImportError, AttributeError, ArgumentError) as ex:
                 raise_unexpected_value(f"Type {typehint} expects a function or a callable class: {ex}", val, ex)
 
@@ -1838,7 +1861,9 @@ def yield_class_types(typehint, is_single, also_lists=False, callable_return=Fal
         for subtype in typehint.__args__:
             yield from yield_class_types(subtype, **kwargs)
     if is_single(typehint, typehint_origin):
-        yield typehint
+        # a subscripted user defined generic, e.g. Strategy[T], is yielded as its origin
+        # class, since the consumers use the class itself, e.g. to look up its subclasses
+        yield get_generic_origin(typehint)
 
 
 def get_subclass_types(typehint, also_lists=False, callable_return=False):
@@ -2155,6 +2180,33 @@ def union_subtype_sort_key(subtype) -> int:
     if subtype is object:
         return 1  # accepts the import path of any class, so no class subtype after it would be attempted
     return 0
+
+
+def replace_type_vars_in_type_subtype(typehint):
+    """Returns the type hint with the TypeVar subtype of all its type[...] replaced, including nested ones.
+
+    Done when an argument is added, since a TypeVar can't be used to validate.
+    What a TypeVar stands for is given by its bound or its constraints, and
+    ``object`` when it has neither, i.e. any class. The help then shows what is
+    accepted, e.g. ``type[object]`` instead of ``type[~T]``.
+    """
+    if get_typehint_origin(typehint) in literal_types:
+        return typehint  # the args of a Literal are values, not types
+    args = getattr(typehint, "__args__", None)
+    # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
+    # class level slot descriptor, which is truthy but not the subtypes of an instance
+    if not isinstance(args, tuple) or not args:
+        return typehint
+    if get_typehint_origin(typehint) in {Type, type} and isinstance(args[0], TypeVar):
+        if args[0].__constraints__:
+            new_args = (Union[args[0].__constraints__],)
+        else:
+            new_args = (args[0].__bound__ or object,)
+    else:
+        new_args = tuple(replace_type_vars_in_type_subtype(a) for a in args)
+        if all(new is old for new, old in zip(new_args, args)):
+            return typehint
+    return rebuild_typehint_args(typehint, new_args)
 
 
 def sort_unions_in_typehint(typehint):

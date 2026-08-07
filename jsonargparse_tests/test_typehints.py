@@ -16,8 +16,11 @@ from pathlib import Path
 from textwrap import dedent
 from types import GenericAlias, MappingProxyType, ModuleType, UnionType
 from typing import (
+    AbstractSet,
     Any,
     Callable,
+    Collection,
+    Container,
     Deque,
     Dict,
     FrozenSet,
@@ -29,6 +32,7 @@ from typing import (
     NoReturn,
     Optional,
     Protocol,
+    Reversible,
     Sequence,
     Set,
     Tuple,
@@ -320,6 +324,36 @@ def test_type_typehint_help_known_subclasses(parser):
     assert f"known subclasses: {__name__}.BaseC," in help_str
 
 
+UnboundVar = TypeVar("UnboundVar")
+BoundVar = TypeVar("BoundVar", bound=BaseC)
+ConstrainedVar = TypeVar("ConstrainedVar", int, str)
+
+
+def test_type_typehint_unbound_typevar_arg(parser):
+    parser.add_argument("--cls", type=type[UnboundVar])
+    assert parser.parse_args([f"--cls={__name__}.SubC"]).cls is SubC
+    assert parser.parse_args(["--cls=uuid.UUID"]).cls is uuid.UUID
+    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=time.time"]))
+    assert "(type: type[object], default: null)" in get_parser_help(parser)
+
+
+def test_type_typehint_bound_typevar_arg(parser):
+    parser.add_argument("--cls", type=Optional[type[BoundVar]])
+    assert parser.parse_args([f"--cls={__name__}.SubC"]).cls is SubC
+    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=uuid.UUID"]))
+    help_str = get_parser_help(parser)
+    assert f"(type: {type_to_str(Optional[type[BaseC]])}, default: null" in help_str
+    assert f"known subclasses: {__name__}.BaseC, {__name__}.SubC" in help_str
+
+
+def test_type_typehint_constrained_typevar_arg(parser):
+    parser.add_argument("--cls", type=type[ConstrainedVar])
+    assert parser.parse_args(["--cls=builtins.str"]).cls is str
+    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=uuid.UUID"]))
+    expected = type_to_str(type[Union[int, str]])
+    assert f"(type: {expected}, default: null)" in get_parser_help(parser)
+
+
 # enum tests
 
 
@@ -404,6 +438,17 @@ def test_frozenset(parser):
     ctx.match("Expected a <class 'int'>")
 
 
+@pytest.mark.parametrize("set_type", [AbstractSet, abc.Set], ids=str)
+def test_abstract_set(parser, set_type):
+    parser.add_argument("--set", type=set_type[int])
+    cfg = parser.parse_args(["--set=[1, 2]"])
+    assert {1, 2} == cfg.set
+    assert parser.dump(cfg, format="json") == '{"set":[1,2]}'
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--set=["a", "b"]'])
+    ctx.match("Expected a <class 'int'>")
+
+
 # tuple tests
 
 
@@ -458,11 +503,34 @@ def test_tuple_union(parser, tmp_cwd):
 
 
 @parser_modes
-@pytest.mark.parametrize("list_type", [Iterable, List, Sequence], ids=str)
+@pytest.mark.parametrize(
+    "list_type",
+    [Iterable, List, Sequence, Collection, Container, Reversible, abc.Collection, abc.Container, abc.Reversible],
+    ids=str,
+)
 def test_list_variants(parser, list_type):
     parser.add_argument("--list", type=list_type[int])
     cfg = parser.parse_args(["--list=[1, 2]"])
     assert [1, 2] == cfg.list
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--list=["a"]'])
+    ctx.match("Expected a <class 'int'>")
+
+
+class WithCollection:
+    def __init__(self, allowed: Optional[Collection[str]] = None):
+        self.allowed = allowed
+
+
+def test_collection_signature_parameter(parser):
+    parser.add_class_arguments(WithCollection, "t")
+    expected = type_to_str(Optional[Collection[str]])
+    assert f"(type: {expected}, default: null)" in get_parser_help(parser)
+    cfg = parser.parse_args(['--t.allowed=["a", "b"]'])
+    assert cfg.t.allowed == ["a", "b"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--t.allowed=[1]"])
+    ctx.match("Expected a <class 'str'>")
 
 
 def test_deque(parser):
@@ -1697,6 +1765,29 @@ def test_callable_list_of_function_paths(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--callables=["jsonargparse.not_exist"]'])
     ctx.match("Callable expects a function or a callable class")
+
+
+def test_callable_not_a_function_path(parser):
+    parser.add_argument("--callable", type=Callable)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--callable=["time.time"]'])
+    ctx.match("Callable expects a function or a callable class")
+    ctx.match("Expected an import path or a subclass spec")
+
+
+@pytest.mark.parametrize(
+    "callable_type",
+    [
+        Optional[List[Callable]],
+        Union[Callable, List[Callable], None],
+        Union[List[Callable], Callable, None],
+    ],
+    ids=str,
+)
+def test_callable_union_with_list_of_callables(parser, callable_type):
+    parser.add_argument("--callables", type=callable_type)
+    cfg = parser.parse_args(['--callables=["random.randint", "time.time"]'])
+    assert [random.randint, time.time] == cfg.callables
 
 
 class CallableClassPath:

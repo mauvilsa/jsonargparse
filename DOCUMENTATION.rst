@@ -520,7 +520,8 @@ Some notes about this support are:
 - Fully supported types are: ``str``, ``bool`` (more details in
   :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
   ``bytes``/``bytearray`` (Base64 encoding), ``range``, ``list`` (more details
-  in :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``, ``Any``,
+  in :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``,
+  ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``, ``Any``,
   ``Union``/``Optional`` (more details in :ref:`union-types`), ``Type``,
   ``Enum``, ``PathLike``, ``UUID``, ``timedelta``, restricted types as explained
   in sections :ref:`restricted-numbers` and :ref:`restricted-strings` and path
@@ -541,8 +542,9 @@ Some notes about this support are:
   i.e. it has all the keys of the expected ``TypedDict``, with the same types
   and requiredness.
 
-- ``tuple``, ``set``, ``frozenset`` and ``MutableSet`` are supported even though
-  they can't be represented in JSON distinguishable from a list. Each ``tuple``
+- ``tuple``, ``set``, ``frozenset``, ``AbstractSet`` and ``MutableSet`` are
+  supported even though they can't be represented in JSON distinguishable from
+  a list. Each ``tuple``
   element position can have its own type and will be validated as such.
   ``tuple`` with ellipsis (``tuple[type, ...]``) is also supported. In command
   line arguments, config files and environment variables, tuples and sets are

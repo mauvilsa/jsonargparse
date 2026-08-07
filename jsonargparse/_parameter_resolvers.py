@@ -302,14 +302,18 @@ def get_signature_parameters_and_indexes(component, parent, logger):
 
 def replace_generic_type_vars(params: ParamList, parent) -> None:
     if is_generic_class(parent) and parent.__args__ and getattr(parent.__origin__, "__parameters__", None):
+        from ._typehints import rebuild_typehint_args
+
         type_vars = dict(zip(parent.__origin__.__parameters__, parent.__args__))
 
         def replace_type_vars(annotation):
             if annotation in type_vars:
                 return type_vars[annotation]
-            if getattr(annotation, "__args__", None):
-                origin = annotation.__origin__
-                return origin[tuple(replace_type_vars(a) for a in annotation.__args__)]
+            args = getattr(annotation, "__args__", None)
+            # only a tuple, since e.g. types.UnionType has __args__ as a class level slot
+            # descriptor, which is truthy but not the subtypes of an instance
+            if isinstance(args, tuple) and args:
+                return rebuild_typehint_args(annotation, tuple(replace_type_vars(a) for a in args))
             return annotation
 
         for param in params:

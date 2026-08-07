@@ -43,6 +43,9 @@ Added
   Previously adding an argument with these types failed with ``TypeError:
   'member_descriptor' object is not iterable`` (`#945
   <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
+- Support ``Collection``, ``Container`` and ``Reversible``, validated as a list,
+  and ``AbstractSet``, validated as a set (`#950
+  <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
 
 Fixed
 ^^^^^
@@ -81,6 +84,20 @@ Fixed
   as the instances given for a subclass type, i.e. as an import path when the
   value can be imported back, otherwise as a message that says that it was not
   serializable (`#948 <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+- ``AssertionError`` without a message when adding an argument typed as a
+  subscripted user defined generic class, e.g. ``Optional[Strategy[T]]`` (`#950
+  <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
+- A ``Callable`` type accepting values that are neither callable nor an import
+  path, e.g. a list, which in a union such as ``Union[Callable,
+  list[Callable]]`` prevented the list items from being resolved (`#950
+  <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
+- ``type[T]`` never validating. Now the ``TypeVar`` is replaced by its bound,
+  its constraints, or ``object`` when it has neither, so that the help shows
+  what is accepted, e.g. ``type[object]`` (`#950
+  <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
+- Parameters of a subscripted generic class being dropped when their type is a
+  PEP 604 union, e.g. ``p: int | None`` in a ``Generic[T]`` class added as
+  ``MyClass[int]`` (`#950 <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
 
 Changed
 ^^^^^^^

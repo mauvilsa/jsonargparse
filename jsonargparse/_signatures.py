@@ -341,15 +341,25 @@ class SignatureArguments(LoggerProperty):
         name = param.name
         kind = param.kind
         annotation = param.annotation
-        register_pydantic_types(annotation)  # before the check of what can be validated
+        src = get_parameter_origins(param.component, param.parent)
+        skip_message = f'Skipping parameter "{name}" from "{src}" because of: '
+        # Before anything is done with the annotation, so that a type that jsonargparse
+        # is unable to handle can be worked around by skipping the parameter.
+        if skip and name in skip:
+            self.logger.debug(skip_message + "Parameter requested to be skipped.")
+            return
         unvalidated: list = []
-        unvalidatable_replaced = replace_unvalidatable_typehints(annotation, unvalidated)
+        try:
+            register_pydantic_types(annotation)  # before the check of what can be validated
+            unvalidatable_replaced = replace_unvalidatable_typehints(annotation, unvalidated)
+        except Exception as ex:
+            raise ValueError(f'Unable to add parameter "{name}" from "{src}": {ex}') from ex
         if unvalidated:
             reasons = " ".join(f"{u.name}: {u.reason}." for u in unvalidated)
             self.logger.debug(
-                f'Parameter "{name}" from "{get_parameter_origins(param.component, param.parent)}" has '
-                f"a type that can't be fully validated: {annotation}. {reasons} These parts are shown "
-                "in the help as Unvalidated<...> and accept any value without validation."
+                f'Parameter "{name}" from "{src}" has a type that can\'t be fully validated: '
+                f"{annotation}. {reasons} These parts are shown in the help as Unvalidated<...> "
+                "and accept any value without validation."
             )
             annotation = unvalidatable_replaced
         if default == inspect_empty:
@@ -380,8 +390,6 @@ class SignatureArguments(LoggerProperty):
             is_non_positional = False  # Can be positional
         else:
             raise RuntimeError(f"The code should never reach here: kind={kind}")  # pragma: no cover
-        src = get_parameter_origins(param.component, param.parent)
-        skip_message = f'Skipping parameter "{name}" from "{src}" because of: '
         if annotation != inspect_empty:
             # Checked before linked_targets and fail_untyped adjust is_required, since the wrappers
             # are meant to agree with the requiredness that the signature itself defines.
@@ -404,9 +412,6 @@ class SignatureArguments(LoggerProperty):
             is_required = False
             is_required_link_target = True
         if not is_required and name[0] == "_":
-            return
-        elif skip and name in skip:
-            self.logger.debug(skip_message + "Parameter requested to be skipped.")
             return
         if is_factory_class(default):
             default = param.parent.__dataclass_fields__[name].default_factory()

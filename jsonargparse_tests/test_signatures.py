@@ -342,6 +342,23 @@ def test_add_class_skip_parameter_debug_logging(parser, logger):
     assert "because of: Parameter requested to be skipped" in logs.getvalue()
 
 
+class UnusableType:
+    def __init__(self, a1: int = 1, a2: Optional[Namespace] = None):
+        pass  # pragma: no cover
+
+
+def test_add_class_skip_parameter_with_unusable_type(parser):
+    parser.add_class_arguments(UnusableType, "c", skip={"a2"})
+    assert parser.parse_args([]) == Namespace(c=Namespace(a1=1))
+
+
+def test_add_class_parameter_with_unusable_type_error_context(parser):
+    with pytest.raises(ValueError) as ctx:
+        parser.add_class_arguments(UnusableType, "c")
+    ctx.match('Unable to add parameter "a2" from ".*UnusableType.__init__"')
+    ctx.match("jsonargparse.Namespace is only intended for parsing results")
+
+
 class WithinSubcommand:
     def __init__(self, a: int = 1):
         self.a = a
@@ -425,6 +442,21 @@ def test_add_class_generics(parser):
     parser.add_class_arguments(WithGenerics[int, complex], "p")
     cfg = parser.parse_args(["--p.a=5", "--p.b=(6+7j)"])
     assert cfg.p == Namespace(a=5, b=6 + 7j)
+
+
+class WithGenericsPep604Union(Generic[X]):
+    def __init__(self, a: X | None = None, b: int | None = None):  # pragma: no cover
+        self.a = a
+        self.b = b
+
+
+def test_add_class_generics_pep604_union(parser):
+    parser.add_class_arguments(WithGenericsPep604Union[int], "p")
+    cfg = parser.parse_args(["--p.a=5", "--p.b=6"])
+    assert cfg.p == Namespace(a=5, b=6)
+    help_str = get_parser_help(parser)
+    assert "--p.a A" in help_str
+    assert "--p.b B" in help_str
 
 
 class UnmatchedDefaultType:

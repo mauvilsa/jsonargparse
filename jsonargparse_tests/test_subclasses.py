@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from gzip import GzipFile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol, Union
+from typing import Any, Dict, Generic, Iterable, List, Mapping, Optional, Protocol, Type, TypeVar, Union
 from unittest.mock import patch
 from uuid import NAMESPACE_OID
 
@@ -2232,6 +2232,26 @@ def test_subclass_class_name_ambiguous(parser, option):
     parser.add_argument("--op", type=Union[Calendar, GzipFile, None])
     with pytest.raises(ArgumentError):
         parser.parse_args([f"{option}=LocaleTextCalendar"])
+
+
+T = TypeVar("T")
+
+
+class GenericStrategy(Generic[T]):
+    def __init__(self, schema: Optional[Type[T]] = None):
+        self.schema = schema
+
+
+def test_subclass_generic_alias_in_union(parser):
+    parser.add_argument("--op", type=Optional[GenericStrategy[T]])
+    help_str = get_parser_help(parser)
+    assert "Show the help for the given subclass of GenericStrategy" in help_str
+    help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.GenericStrategy"])
+    assert "--op.schema" in help_str
+    cfg = parser.parse_args([f"--op={__name__}.GenericStrategy"])
+    assert cfg.op.class_path == f"{__name__}.GenericStrategy"
+    init = parser.instantiate(cfg)
+    assert isinstance(init.op, GenericStrategy)
 
 
 def test_subclass_help_not_subclass(parser):
