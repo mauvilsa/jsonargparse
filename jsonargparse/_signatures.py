@@ -32,12 +32,12 @@ from ._typehints import (
     is_optional,
     is_subclass_container_typehint,
     not_required_types,
-    replace_unresolved_forward_refs,
+    replace_unvalidatable_typehints,
     sequence_origin_types,
     strip_required_typehint,
 )
 from ._util import NoneType, get_import_path, get_private_kwargs, get_typehint_origin, iter_to_set_str
-from .typing import _LazyInitBaseClass, register_pydantic_type
+from .typing import _LazyInitBaseClass, register_pydantic_types
 
 kinds = inspect._ParameterKind
 inspect_empty = inspect._empty
@@ -341,15 +341,17 @@ class SignatureArguments(LoggerProperty):
         name = param.name
         kind = param.kind
         annotation = param.annotation
-        unresolved_replaced = replace_unresolved_forward_refs(annotation)
-        if unresolved_replaced is not annotation:
+        register_pydantic_types(annotation)  # before the check of what can be validated
+        unvalidated: list = []
+        unvalidatable_replaced = replace_unvalidatable_typehints(annotation, unvalidated)
+        if unvalidated:
+            reasons = " ".join(f"{u.name}: {u.reason}." for u in unvalidated)
             self.logger.debug(
-                f'Unable to resolve the type of parameter "{name}" from '
-                f'"{get_parameter_origins(param.component, param.parent)}": {annotation}. '
-                "The unresolved parts are shown in the help as Unresolved<...> and accept "
-                "any value, so the parameter is accepted but its value is not validated."
+                f'Parameter "{name}" from "{get_parameter_origins(param.component, param.parent)}" has '
+                f"a type that can't be fully validated: {annotation}. {reasons} These parts are shown "
+                "in the help as Unvalidated<...> and accept any value without validation."
             )
-            annotation = unresolved_replaced
+            annotation = unvalidatable_replaced
         if default == inspect_empty:
             default = param.default
             if default == inspect_empty:
@@ -437,35 +439,31 @@ class SignatureArguments(LoggerProperty):
                 )
         if annotation in {str, int, float, bool} or is_subclass(annotation, (str, int, float)) or subclasses_disabled:
             kwargs["type"] = annotation
-            register_pydantic_type(annotation)
         elif annotation != inspect_empty:
-            try:
-                is_subclass_typehint = ActionTypeHint.is_subclass_typehint(annotation, all_subtypes=False)
-                is_return_subclass_typehint = ActionTypeHint.is_return_subclass_typehint(annotation)
-                kwargs["type"] = annotation
-                sub_add_kwargs: dict = {"fail_untyped": fail_untyped, "sub_configs": sub_configs}
-                if is_subclass_typehint or is_return_subclass_typehint:
-                    prefix = f"{name}.init_args."
-                    nested_skip = {s[len(prefix) :] for s in skip or [] if s.startswith(prefix)}
-                    sub_add_kwargs["skip"] = nested_skip
-                else:
-                    register_pydantic_type(annotation)
-                enable_path = sub_configs and (
-                    is_subclass_typehint
-                    or is_return_subclass_typehint
-                    or is_list_pathlike(annotation)
-                    or is_subclass_container_typehint(annotation)
-                )
-                args = ActionTypeHint.prepare_add_argument(
-                    args=args,
-                    kwargs=kwargs,
-                    enable_path=enable_path,
-                    container=container,
-                    logger=self.logger,
-                    sub_add_kwargs=sub_add_kwargs,
-                )
-            except ValueError as ex:
-                self.logger.debug(skip_message + str(ex))
+            # No need to handle unsupported types here, since replace_unvalidatable_typehints
+            # already replaced them by a type that accepts any value without validation.
+            is_subclass_typehint = ActionTypeHint.is_subclass_typehint(annotation, all_subtypes=False)
+            is_return_subclass_typehint = ActionTypeHint.is_return_subclass_typehint(annotation)
+            kwargs["type"] = annotation
+            sub_add_kwargs: dict = {"fail_untyped": fail_untyped, "sub_configs": sub_configs}
+            if is_subclass_typehint or is_return_subclass_typehint:
+                prefix = f"{name}.init_args."
+                nested_skip = {s[len(prefix) :] for s in skip or [] if s.startswith(prefix)}
+                sub_add_kwargs["skip"] = nested_skip
+            enable_path = sub_configs and (
+                is_subclass_typehint
+                or is_return_subclass_typehint
+                or is_list_pathlike(annotation)
+                or is_subclass_container_typehint(annotation)
+            )
+            args = ActionTypeHint.prepare_add_argument(
+                args=args,
+                kwargs=kwargs,
+                enable_path=enable_path,
+                container=container,
+                logger=self.logger,
+                sub_add_kwargs=sub_add_kwargs,
+            )
         if "type" in kwargs or "action" in kwargs:
             sub_add_kwargs = {
                 "fail_untyped": fail_untyped,

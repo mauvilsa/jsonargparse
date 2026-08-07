@@ -731,4 +731,15 @@ def register_pydantic_type(class_type):
         )
 
 
+def register_pydantic_types(typehint):
+    """Registers the pydantic types found anywhere in a type hint, e.g. also in list[HttpUrl]."""
+    register_pydantic_type(typehint)
+    args = getattr(typehint, "__args__", None)
+    # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
+    # class level slot descriptor, which is truthy but not the subtypes of an instance
+    if isinstance(args, tuple):
+        for arg in args:
+            register_pydantic_types(arg)
+
+
 del _fail_already_registered

@@ -10,6 +10,7 @@ import time
 import uuid
 from collections import OrderedDict, abc, deque
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from pathlib import Path
 from textwrap import dedent
@@ -20,10 +21,12 @@ from typing import (
     Deque,
     Dict,
     FrozenSet,
+    Generic,
     Iterable,
     List,
     Literal,
     Mapping,
+    NoReturn,
     Optional,
     Protocol,
     Sequence,
@@ -31,6 +34,7 @@ from typing import (
     Tuple,
     Type,
     TypedDict,
+    TypeVar,
     Union,
 )
 from unittest import mock
@@ -45,10 +49,13 @@ from jsonargparse._typehints import (
     NotRequired,
     Required,
     Unpack,
+    UnvalidatedType,
     get_all_subclass_paths,
     get_subclass_types,
     is_optional,
     is_typed_dict_subtype,
+    replace_unvalidatable_typehints,
+    serialize_unvalidated,
     type_to_str,
 )
 from jsonargparse._util import get_import_path
@@ -221,6 +228,54 @@ def test_type_any_dump(parser):
     parser.add_argument("--any", type=Any, default=EnumABC.B)
     cfg = parser.parse_args([])
     assert {"any": "B"} == json_or_yaml_load(parser.dump(cfg))
+
+
+class NotSerializable:
+    def __repr__(self):
+        return "<NotSerializable>"
+
+
+not_serializable = NotSerializable()
+unable_to_serialize = "Unable to serialize instance <NotSerializable>"
+
+
+def test_type_any_dump_not_serializable(parser):
+    # without a type there is no serializer, so instances that a config format can't
+    # represent are serialized the same as instances given for a subclass type
+    parser.add_argument("--any", type=Any, default=NotSerializable())
+    parser.add_argument("--items", type=Any, default=[NotSerializable(), 1])
+    parser.add_argument("--nested", type=Any, default={"a": (NotSerializable(),)})
+    cfg = parser.parse_args([])
+    with catch_warnings(record=True) as w:
+        dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump["any"] == unable_to_serialize
+    assert dump["items"] == [unable_to_serialize, 1]
+    assert dump["nested"] == {"a": [unable_to_serialize]}
+    assert unable_to_serialize in str(w[0].message)
+
+
+def test_type_any_dump_importable(parser):
+    # values that can be imported back are serialized as their import path
+    parser.add_argument("--cls", type=Any, default=NotSerializable)
+    parser.add_argument("--obj", type=Any, default=not_serializable)
+    cfg = parser.parse_args([])
+    assert json_or_yaml_load(parser.dump(cfg)) == {
+        "cls": f"{__name__}.NotSerializable",
+        "obj": f"{__name__}.not_serializable",
+    }
+
+
+def test_serialize_unvalidated_containers():
+    import_path = f"{__name__}.not_serializable"
+    # the container types that a config format represents are kept, only the items serialized
+    assert serialize_unvalidated({"a": not_serializable}) == {"a": import_path}
+    assert serialize_unvalidated([not_serializable]) == [import_path]
+    assert serialize_unvalidated((not_serializable,)) == [import_path]
+    assert serialize_unvalidated({not_serializable}) == {import_path}
+    assert serialize_unvalidated(frozenset({not_serializable})) == {import_path}
+    # values that a config format represents natively are left as is
+    representable = [1, "a", 2.3, True, None, date(2020, 1, 2)]
+    assert serialize_unvalidated(representable) == representable
 
 
 def test_type_typehint_without_arg(parser):
@@ -2177,6 +2232,159 @@ def test_lazy_instance_callable():
     assert optimizer.params == [1, 2]
     optimizer = lazy_optimizer([3, 4])
     assert optimizer.params == [3, 4]
+
+
+# unvalidated types tests
+
+
+UnsupportedVar = TypeVar("UnsupportedVar")
+unvalidated_var = UnvalidatedType(UnsupportedVar)
+
+
+class UserGeneric(Generic[UnsupportedVar]):
+    def __init__(self, p1: int = 1):
+        self.p1 = p1  # pragma: no cover
+
+
+def test_unvalidated_type_repr():
+    assert repr(unvalidated_var) == "Unvalidated<UnsupportedVar>"
+    assert repr(UnvalidatedType(NoReturn)) == "Unvalidated<NoReturn>"
+
+
+@pytest.mark.parametrize(
+    ["typehint", "expected"],
+    [
+        (UnsupportedVar, unvalidated_var),
+        (NoReturn, UnvalidatedType(NoReturn)),
+        (List[UnsupportedVar], List[unvalidated_var]),  # type: ignore[valid-type]
+        (list[UnsupportedVar], list[unvalidated_var]),  # type: ignore[valid-type]
+        (Dict[UnsupportedVar, int], Dict[unvalidated_var, int]),  # type: ignore[valid-type]
+        (Optional[UnsupportedVar], Optional[unvalidated_var]),
+        (Union[UnsupportedVar, int], Union[unvalidated_var, int]),
+        (Tuple[UnsupportedVar, ...], Tuple[unvalidated_var, ...]),
+        (Callable[..., UnsupportedVar], Callable[..., unvalidated_var]),
+        (List[Union[UnsupportedVar, int]], List[Union[unvalidated_var, int]]),  # type: ignore[valid-type]
+        (List[List[UnsupportedVar]], List[List[unvalidated_var]]),  # type: ignore[valid-type]
+    ],
+    ids=str,
+)
+def test_replace_unsupported_typehints(typehint, expected):
+    assert replace_unvalidatable_typehints(typehint) == expected
+
+
+@pytest.mark.parametrize(
+    "typehint",
+    [
+        int,
+        List[int],
+        Optional[str],
+        Dict[str, int],
+        Tuple[int, ...],
+        Literal["a", "b"],
+        Type[UnsupportedVar],  # a TypeVar is accepted as the subtype of type
+        UserGeneric[UnsupportedVar],  # type: ignore[valid-type]  # subtypes of a subclass type not validated
+    ],
+    ids=str,
+)
+def test_replace_unvalidatable_supported_unchanged(typehint):
+    assert replace_unvalidatable_typehints(typehint) == typehint
+
+
+def function_unsupported_subtypes(p1: List[UnsupportedVar] = [], p2: Union[UnsupportedVar, int] = 0):
+    return p1, p2  # pragma: no cover
+
+
+def test_unsupported_subtypes_parameters_added(parser):
+    added = parser.add_function_arguments(function_unsupported_subtypes, "fn")
+    assert added == ["fn.p1", "fn.p2"]
+    # the unsupported parts accept any value without validation
+    cfg = parser.parse_args(['--fn.p1=[{"a": 1}]', "--fn.p2=x"])
+    assert cfg.fn.p1 == [{"a": 1}]
+    assert cfg.fn.p2 == "x"
+    # the supported parts are still validated
+    assert parser.parse_args(["--fn.p2=3"]).fn.p2 == 3
+    with pytest.raises(ArgumentError, match="Expected a <class 'list'>"):
+        parser.parse_args(["--fn.p1=1"])
+
+
+def test_unsupported_subtypes_help(parser):
+    parser.add_function_arguments(function_unsupported_subtypes, "fn")
+    help_str = get_parser_help(parser, strip=True)
+    # only the parts that are not supported are shown as unvalidated
+    if sys.version_info < (3, 14):
+        union = "Union[Unvalidated<UnsupportedVar>, int]"
+    else:
+        union = "Unvalidated<UnsupportedVar> | int"
+    assert "type: List[Unvalidated<UnsupportedVar>]" in help_str
+    assert f"type: {union}" in help_str
+
+
+def test_unsupported_subtypes_debug_log(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        parser.add_function_arguments(function_unsupported_subtypes, "fn")
+    assert "UnsupportedVar: not a supported type" in logs.getvalue()
+
+
+def function_unsupported_optional(p1: UnsupportedVar = None):  # type: ignore[assignment]
+    return p1  # pragma: no cover
+
+
+def test_unsupported_type_not_required_added(parser):
+    added = parser.add_function_arguments(function_unsupported_optional, "fn")
+    assert added == ["fn.p1"]
+    assert parser.parse_args(["--fn.p1=x"]).fn.p1 == "x"
+    help_str = get_parser_help(parser, strip=True)
+    if sys.version_info < (3, 14):
+        optional = "Optional[Unvalidated<UnsupportedVar>]"
+    else:
+        optional = "Unvalidated<UnsupportedVar> | None"
+    assert f"--fn.p1 P1 (type: {optional}, default: null)" in help_str
+
+
+def function_unsupported_required(p1: UnsupportedVar, p2: List[UnsupportedVar]):
+    return p1, p2  # pragma: no cover
+
+
+def test_unvalidated_mandatory_fail_untyped_true(parser):
+    # fail_untyped is about parameters that don't have a type, not about types that
+    # jsonargparse can't validate, so these are added and required as any other
+    added = parser.add_function_arguments(function_unsupported_required, "fn", fail_untyped=True)
+    assert added == ["fn.p1", "fn.p2"]
+    cfg = parser.parse_args(["--fn.p1=x", '--fn.p2=["y"]'])
+    assert cfg.fn == Namespace(p1="x", p2=["y"])
+    with pytest.raises(ArgumentError, match="arguments are required: fn.p1"):
+        parser.parse_args(['--fn.p2=["y"]'])
+
+
+def function_unvalidated_not_serializable(
+    p1: UnsupportedVar = NotSerializable(),  # type: ignore[assignment]
+    p2: List[UnsupportedVar] = [NotSerializable()],  # type: ignore[list-item]
+    p3: UnsupportedVar = not_serializable,  # type: ignore[assignment]
+):
+    return p1, p2, p3  # pragma: no cover
+
+
+def test_unvalidated_not_serializable_default_dump(parser):
+    # a default that a config format can't represent must not make dump fail
+    parser.add_function_arguments(function_unvalidated_not_serializable, "fn")
+    cfg = parser.parse_args([])
+    with catch_warnings(record=True) as w:
+        dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump["fn"]["p1"] == unable_to_serialize
+    assert dump["fn"]["p2"] == [unable_to_serialize]
+    assert dump["fn"]["p3"] == f"{__name__}.not_serializable"  # importable back, so its import path
+    assert unable_to_serialize in str(w[0].message)
+
+
+def function_namespace_parameter(p1: Namespace = None):  # type: ignore[assignment]
+    return p1  # pragma: no cover
+
+
+def test_namespace_signature_parameter_fails(parser):
+    # deliberate user facing error, not turned into an unvalidated type
+    with pytest.raises(ValueError, match="Namespace .* not supported as a type"):
+        parser.add_function_arguments(function_namespace_parameter, "fn")
 
 
 # other tests

@@ -12,6 +12,7 @@ from collections import OrderedDict, abc, defaultdict, deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
+from datetime import date, datetime
 from enum import Enum
 from functools import partial
 from importlib import import_module
@@ -407,7 +408,7 @@ class ActionTypeHint(Action):
 
         supported = (
             typehint in root_types
-            or isinstance(typehint, UnresolvedType)
+            or isinstance(typehint, UnvalidatedType)
             or get_typehint_origin(typehint) in root_types
             or get_registered_type(typehint) is not None
             or is_subclass(typehint, Enum)
@@ -886,18 +887,30 @@ def resolve_forward_ref(ref, global_vars=None):
     return aliases.get(ref.__forward_arg__, ref)
 
 
-class UnresolvedType:
-    """Type hint that stands in for one that failed to resolve, accepting any value.
+unresolved_reason = "failed to resolve, e.g. a missing import or a typo"
+unsupported_reason = "not a supported type"
+unrebuildable_reason = "could not be rebuilt with its unvalidatable subtypes replaced"
 
-    Instances are used as the type hint, keeping what the source code has, such that the
-    help shows it as Unresolved<...> instead of the Any that makes the value accepted.
+
+class UnvalidatedType:
+    """Type hint that stands in for one that can't be validated, accepting any value.
+
+    A type hint can't be validated when it fails to resolve, e.g. a missing
+    import or a typo in a postponed annotation, or an unsupported type.
+    Instances are used as the type hint, keeping what the source code has, such
+    that the help shows it as Unvalidated<...>.
     """
 
-    def __init__(self, typehint):
+    def __init__(self, typehint, reason: str = unresolved_reason):
+        self.reason = reason
         if isinstance(typehint, ForwardRef):
             self.name = typehint.__forward_arg__
         elif isinstance(typehint, str):
             self.name = typehint
+        elif isinstance(typehint, TypeVar):
+            self.name = typehint.__name__  # the str of a TypeVar has a ~ prefix
+        elif inspect.isclass(typehint):
+            self.name = f"{typehint.__module__}.{typehint.__qualname__}"  # the str of a class has a <class ...> wrap
         else:
             # unresolved subtypes are kept as ForwardRef or str, named here as in the source code
             name = re.sub(r"ForwardRef\('([^']*)'\)", r"\1", str(typehint))
@@ -908,47 +921,77 @@ class UnresolvedType:
 
     def __repr__(self):
         # module names stripped as done by type_to_str, which otherwise would mangle this repr
-        return f"Unresolved<{strip_module_names(self.name)}>"
+        return f"Unvalidated<{strip_module_names(self.name)}>"
 
     def __eq__(self, other):
-        return isinstance(other, UnresolvedType) and other.name == self.name
+        return isinstance(other, UnvalidatedType) and other.name == self.name
 
     def __hash__(self):
-        return hash((UnresolvedType, self.name))
+        return hash((UnvalidatedType, self.name))
 
 
-def replace_unresolved_forward_refs(typehint):
-    """Replaces the unresolved forward references of a type hint with UnresolvedType.
+def keep_subtype_as_is(subtype, typehint_origin) -> bool:
+    """Whether a subtype is never replaced, mirroring the exceptions that is_supported_typehint makes."""
+    return (
+        subtype is NoneType
+        or subtype is Ellipsis
+        or (typehint_origin is type and isinstance(subtype, TypeVar))
+        or (isinstance(subtype, type) and subtype in leaf_types)
+    )
 
-    Postponed annotations that fail to resolve, e.g. because of a missing import or a
-    typo, remain as a string or a ForwardRef. Replacing only the unresolved parts with a
-    type hint that accepts any value keeps the parameter usable, though without
-    validation, instead of discarding it. What failed to resolve is kept so that the help
-    shows it, making it evident that the value is not validated as the type in the code.
+
+def replace_unvalidatable_typehints(typehint, unvalidated: list | None = None, replace_unsupported: bool = True):
+    """Replaces the parts of a type hint that can't be validated with UnvalidatedType.
+
+    A type hint can't be validated when it fails to resolve, i.e. a postponed
+    annotation that remains a string or a ForwardRef, or when it is not
+    supported. Replacing only these parts with a type hint that accepts any
+    value keeps the parameter usable, though without validation. What can't be
+    validated is kept so that the help shows it, making it evident that the
+    value is not validated as the type in the code. The instances that replace
+    it are appended to the given unvalidated list.
     """
+
+    def replaced(typehint, reason):
+        unvalidatable = UnvalidatedType(typehint, reason)
+        if unvalidated is not None:
+            unvalidated.append(unvalidatable)
+        return unvalidatable
+
     if isinstance(typehint, (str, ForwardRef)):
-        return UnresolvedType(typehint)
-    if get_typehint_origin(typehint) in literal_types:
+        return replaced(typehint, unresolved_reason)
+    typehint_origin = get_typehint_origin(typehint)
+    if typehint_origin in literal_types:
         return typehint  # the args of a Literal are values, not types
     args = getattr(typehint, "__args__", None)
     # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
     # class level slot descriptor, which is truthy but not the subtypes of an instance
-    if not isinstance(args, tuple) or not args:
-        return typehint
-    new_args = tuple(replace_unresolved_forward_refs(a) for a in args)
-    if new_args == args:
-        return typehint
-    try:
-        if hasattr(typehint, "copy_with"):
-            return typehint.copy_with(new_args)
-        subscript_args = get_args(typehint)
-        if subscript_args and isinstance(subscript_args[0], list):
-            # a Callable that has its parameters flattened in __args__, e.g. the __args__ of
-            # Callable[[int], str] are (int, str), while subscripting needs them as a list
-            return get_typehint_origin(typehint)[[*new_args[:-1]], new_args[-1]]
-        return get_typehint_origin(typehint)[new_args]
-    except Exception:
-        return UnresolvedType(typehint)
+    if isinstance(args, tuple) and args:
+        # Subtypes are only validated when the origin is a supported container type. For the
+        # others, e.g. a user defined generic, the subtypes are not used for validation, so
+        # only the unresolved ones are replaced, keeping the type hint as in the source code.
+        sub_replace_unsupported = replace_unsupported and typehint_origin in root_types
+        new_args = tuple(
+            a
+            if keep_subtype_as_is(a, typehint_origin)
+            else replace_unvalidatable_typehints(a, unvalidated, sub_replace_unsupported)
+            for a in args
+        )
+        if new_args != args:
+            try:
+                if hasattr(typehint, "copy_with"):
+                    return typehint.copy_with(new_args)
+                subscript_args = get_args(typehint)
+                if subscript_args and isinstance(subscript_args[0], list):
+                    # a Callable that has its parameters flattened in __args__, e.g. the __args__ of
+                    # Callable[[int], str] are (int, str), while subscripting needs them as a list
+                    return get_typehint_origin(typehint)[[*new_args[:-1]], new_args[-1]]
+                return get_typehint_origin(typehint)[new_args]
+            except Exception:
+                return replaced(typehint, unrebuildable_reason)
+    if replace_unsupported and not ActionTypeHint.is_supported_typehint(typehint, full=True):
+        return replaced(typehint, unsupported_reason)
+    return typehint
 
 
 def resolve_module_annotations(module: str, annotations: dict, global_vars: dict, logger=None) -> dict:
@@ -1117,8 +1160,8 @@ def adapt_typehints(
     typehint_origin = get_typehint_origin(typehint) or typehint
     unset_sentinel = get_parsing_setting("unset_sentinel")
 
-    # Any and unresolved, i.e. no validation
-    if typehint == Any or isinstance(typehint, UnresolvedType):
+    # Any and unvalidated, i.e. no validation
+    if typehint == Any or isinstance(typehint, UnvalidatedType):
         type_val = type(val)
         if get_registered_type(type_val) or is_subclass(type_val, Enum):
             val = adapt_typehints(val, type_val, **adapt_kwargs)
@@ -1126,6 +1169,8 @@ def adapt_typehints(
             with suppress(*get_loader_exceptions()):
                 val, _ = parse_value_or_config(val, enable_path=False, simple_types=True)
         val = adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs, logger)
+        if serialize:
+            val = serialize_unvalidated(val)
 
     # Literal
     elif typehint_origin in literal_types:
@@ -2218,6 +2263,36 @@ def serialize_class_instance(val):
     val = f"Unable to serialize instance {val}"
     warning(val)
     return val
+
+
+# The types that the config formats represent natively. Values of any other type require a
+# serializer, which for the types that are not validated there is none, see serialize_unvalidated.
+representable_types = (NoneType, bool, int, float, str, bytes, date, datetime)
+
+
+def serialize_unvalidated(val):
+    """Serializes the class instances in the value of a type that is not validated.
+
+    Values of an Any or Unvalidated type don't have a serializer, so an instance
+    that a config format can't represent would make dump fail. Instead they are
+    serialized the same as the instances given for a subclass type, i.e. as an
+    import path when the value can be imported back, otherwise as a message that
+    says that it was not serializable.
+    """
+    if isinstance(val, Namespace):
+        # e.g. a subclass spec that adapt_classes_any already serialized
+        for key, subval in val.items(branches=True, nested=False):
+            val[key] = serialize_unvalidated(subval)
+        return val
+    if isinstance(val, dict):
+        return {k: serialize_unvalidated(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [serialize_unvalidated(v) for v in val]
+    if isinstance(val, (set, frozenset)):
+        return {serialize_unvalidated(v) for v in val}
+    if isinstance(val, representable_types):
+        return val
+    return serialize_class_instance(val)
 
 
 def callable_instances(cls: type):

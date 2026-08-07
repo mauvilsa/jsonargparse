@@ -32,10 +32,10 @@ from jsonargparse._postponed_annotations import (
 from jsonargparse._typehints import (
     Required,
     Unpack,
-    UnresolvedType,
+    UnvalidatedType,
     get_typed_dict_annotations,
     get_typed_dict_required_keys,
-    replace_unresolved_forward_refs,
+    replace_unvalidatable_typehints,
     type_to_str,
 )
 from jsonargparse.typing import Path_drw
@@ -348,7 +348,7 @@ def test_typed_dict_unresolvable_key_unpack(parser):
     # and it remains not required, since the key is not required
     assert parser.parse_args(["--cls.num=1"]).cls == Namespace(num=1)
     help_str = get_parser_help(parser, strip=True)
-    assert "--cls.typo TYPO (type: Unresolved<MisspelledType>" in help_str
+    assert "--cls.typo TYPO (type: Unvalidated<MisspelledType>" in help_str
 
 
 def function_unresolvable_annotation(num: int = 1, typo: "MisspelledType" = None):  # type: ignore[name-defined]  # noqa: F821
@@ -366,8 +366,19 @@ def test_unresolvable_annotation_debug_log(parser, logger):
     parser.logger = logger
     with capture_logs(logger) as logs:
         parser.add_function_arguments(function_unresolvable_annotation, "fn")
-    assert "Unable to resolve the type of parameter" in logs.getvalue()
-    assert "typo" in logs.getvalue()
+    assert 'Parameter "typo"' in logs.getvalue()
+    assert "MisspelledType: failed to resolve" in logs.getvalue()
+
+
+def function_unresolvable_required(typo: "MisspelledType"):  # type: ignore[name-defined]  # noqa: F821
+    return typo  # pragma: no cover
+
+
+def test_unresolvable_annotation_mandatory_fail_untyped_true(parser):
+    # fail_untyped is about parameters that don't have a type, not about types that fail to resolve
+    added = parser.add_function_arguments(function_unresolvable_required, "fn", fail_untyped=True)
+    assert added == ["fn.typo"]
+    assert parser.parse_args(["--fn.typo=abc"]).fn.typo == "abc"
 
 
 def test_unresolvable_annotation_help(parser):
@@ -375,9 +386,9 @@ def test_unresolvable_annotation_help(parser):
     help_str = get_parser_help(parser, strip=True)
     # the help shows the type that failed to resolve, making evident that it is not validated
     if sys.version_info < (3, 14):
-        optional = "Optional[Unresolved<MisspelledType>]"
+        optional = "Optional[Unvalidated<MisspelledType>]"
     else:
-        optional = "Unresolved<MisspelledType> | None"
+        optional = "Unvalidated<MisspelledType> | None"
     assert f"--fn.typo TYPO (type: {optional}, default: null)" in help_str
 
 
@@ -396,15 +407,15 @@ def function_unresolvable_subtype(
     return p1, p2, p3  # pragma: no cover
 
 
-def test_unresolvable_subtype_replaced_with_unresolved():
-    unresolved = UnresolvedType("MisspelledType")
+def test_unresolvable_subtype_replaced_with_unvalidated():
+    unvalidated = UnvalidatedType("MisspelledType")
     annotations = {p.name: p.annotation for p in get_params(function_unresolvable_subtype)}
-    assert replace_unresolved_forward_refs(annotations["p1"]) == List[unresolved]
-    assert replace_unresolved_forward_refs(annotations["p2"]) == list[unresolved]
-    assert replace_unresolved_forward_refs(annotations["p3"]) == Callable[[unresolved], int]
+    assert replace_unvalidatable_typehints(annotations["p1"]) == List[unvalidated]
+    assert replace_unvalidatable_typehints(annotations["p2"]) == list[unvalidated]
+    assert replace_unvalidatable_typehints(annotations["p3"]) == Callable[[unvalidated], int]
     # both spellings of Callable give the same, even though only the typing one has copy_with
     typing_callable = typing.Callable[[ForwardRef("MisspelledType")], int]
-    assert replace_unresolved_forward_refs(typing_callable) == typing.Callable[[unresolved], int]
+    assert replace_unvalidatable_typehints(typing_callable) == typing.Callable[[unvalidated], int]
 
 
 def test_unresolvable_subtype_parse(parser):
@@ -431,24 +442,24 @@ class UnrebuildableTypehint:
 def test_types_with_args_slot_descriptor_unchanged():
     # types.UnionType and types.GenericAlias have __args__ as a class level slot
     # descriptor, which is truthy but not the tuple of subtypes of an instance
-    assert replace_unresolved_forward_refs(UnionType) is UnionType
-    assert replace_unresolved_forward_refs(GenericAlias) is GenericAlias
-    assert replace_unresolved_forward_refs(Union[type, UnionType]) == Union[type, UnionType]
+    assert replace_unvalidatable_typehints(UnionType) is UnionType
+    assert replace_unvalidatable_typehints(GenericAlias) is GenericAlias
+    assert replace_unvalidatable_typehints(Union[type, UnionType]) == Union[type, UnionType]
 
 
 def test_unresolvable_subtype_not_rebuildable():
     # failing to be rebuilt, the entire type hint becomes unresolved instead of an error
-    unresolved = replace_unresolved_forward_refs(UnrebuildableTypehint())
-    assert type_to_str(unresolved) == "Unresolved<Unrebuildable[MisspelledType]>"
+    unvalidated = replace_unvalidatable_typehints(UnrebuildableTypehint())
+    assert type_to_str(unvalidated) == "Unvalidated<Unrebuildable[MisspelledType]>"
 
 
 def test_unresolvable_subtype_help(parser):
     parser.add_function_arguments(function_unresolvable_subtype, "fn")
     help_str = get_parser_help(parser, strip=True)
     # only the part that failed to resolve is shown as unresolved
-    assert "type: List[Unresolved<MisspelledType>])" in help_str
-    assert "type: list[Unresolved<MisspelledType>])" in help_str
-    assert "type: Callable[[Unresolved<MisspelledType>], int])" in help_str
+    assert "type: List[Unvalidated<MisspelledType>])" in help_str
+    assert "type: list[Unvalidated<MisspelledType>])" in help_str
+    assert "type: Callable[[Unvalidated<MisspelledType>], int])" in help_str
 
 
 # A TypedDict that inherits from a TypedDict in a different module must resolve the

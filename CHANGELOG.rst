@@ -59,22 +59,43 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/939>`__).
 - ``shtab`` bash completion scripts not escaping choices and type messages, such
   that a value containing a single quote, e.g. a ``Literal`` type, produced a
-  script with invalid syntax (`#497
-  <https://github.com/mauvilsa/jsonargparse/pull/497>`__).
+  script with invalid syntax (`#947
+  <https://github.com/mauvilsa/jsonargparse/pull/947>`__).
 - Tests for ``shtab`` completions failing with ``shtab>=1.9.1`` due to a change
   in how it quotes the elements of the generated bash arrays. The completion
-  scripts themselves were not affected (`#497
-  <https://github.com/mauvilsa/jsonargparse/pull/497>`__).
+  scripts themselves were not affected (`#947
+  <https://github.com/mauvilsa/jsonargparse/pull/947>`__).
+- ``fail_untyped=True`` failing for mandatory parameters that do have a type,
+  with an error that says the parameter "does not specify a type". This happened
+  for any type that jsonargparse can't validate, since the parameter was skipped,
+  making it indistinguishable from an untyped one. Now ``fail_untyped`` only fails
+  for parameters that have no type at all (`#948
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+- Signature parameters with a pydantic type nested in a container, e.g.
+  ``list[HttpUrl]``, being skipped. Only pydantic types given as the entire type
+  of a parameter were registered for validation (`#948
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+- ``dump``, and thus ``--print_config``, failing when the value of an ``Any``
+  typed argument is a class instance that the config format can't represent, e.g.
+  a default that is an arbitrary object. Now these values are serialized the same
+  as the instances given for a subclass type, i.e. as an import path when the
+  value can be imported back, otherwise as a message that says that it was not
+  serializable (`#948 <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 
 Changed
 ^^^^^^^
-- Signature parameters with a type hint that fails to resolve, e.g. a missing
-  import or a typo in a postponed annotation, are now accepted instead of the
-  parameter being skipped or, when mandatory and ``fail_untyped=True``, raising
-  a ``ValueError``. The unresolved parts accept any value without validation and
-  are shown in the help as ``Unresolved<...>``, making evident which type failed
-  to resolve (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__,
-  `#944 <https://github.com/mauvilsa/jsonargparse/pull/944>`__).
+- Signature parameters with a type that jsonargparse can't validate are now
+  accepted instead of skipped. A type can't be validated when it fails to
+  resolve, e.g. a missing import or a typo in a postponed annotation, or when it
+  is not a supported type. Only the parts of the type that can't be validated
+  accept any value, e.g. a ``list[SomeType]`` still requires a list, and the
+  subtypes of a ``Union`` that can't be validated are no longer silently
+  discarded. These parts are shown in the help as ``Unvalidated<...>``, making
+  evident which type is not validated, and a debug log states the reason. See
+  the new documentation section :ref:`unvalidated-types` (`#936
+  <https://github.com/mauvilsa/jsonargparse/pull/936>`__, `#944
+  <https://github.com/mauvilsa/jsonargparse/pull/944>`__, `#948
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 - ``Required`` and ``NotRequired`` given as the type of an argument are no
   longer shown in the help. Now they must agree with whether the argument is
   required, otherwise adding the argument fails (`#937
@@ -90,6 +111,10 @@ Changed
   <https://github.com/mauvilsa/jsonargparse/pull/941>`__).
 - The default print config argument name will remain as ``--print_config`` in
   v5.0.0, no longer changing as described in the deprecated section of v4.35.0.
+- A signature parameter typed as ``jsonargparse.Namespace`` now raises a
+  ``ValueError`` when adding the arguments, instead of the parameter being
+  silently skipped. ``Namespace`` is only intended for parsing results (`#948
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 
 
 v4.50.0 (2026-07-22)

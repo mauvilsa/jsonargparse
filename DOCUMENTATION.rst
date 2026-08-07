@@ -612,6 +612,52 @@ Some notes about this support are:
   (python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``.
 
 
+.. _unvalidated-types:
+
+Unvalidated types
+-----------------
+
+When arguments are added from a signature, i.e. :meth:`add_function_arguments
+<.ArgumentParser.add_function_arguments>`, :meth:`add_method_arguments
+<.ArgumentParser.add_method_arguments>`, :meth:`add_class_arguments
+<.ArgumentParser.add_class_arguments>` or a parameter of a :ref:`subclass type
+<sub-classes>`, there can be parameters with a type that jsonargparse can't
+validate. Instead of skipping these parameters, which would make it impossible
+to give them in the command line or a config file, the parameter is added with
+only the parts of the type that can't be validated replaced by a type that
+accepts any value. In the help these parts are shown as ``Unvalidated<...>``,
+keeping the name that the source code has. For example, a class with an ``items:
+list[SomeType] = []`` parameter for which ``SomeType`` can't be validated, is
+shown in the help as:
+
+.. code-block:: text
+
+    --myclass.items ITEMS  (type: list[Unvalidated<SomeType>], default: [])
+
+A type or a part of it can't be validated when:
+
+- It failed to resolve, e.g. a missing import or a typo in a postponed
+  annotation.
+- It is not a type that jsonargparse supports.
+
+To know which of the two it is for a given parameter, enable debut level
+logging, see :ref:`logging`. The debug log states the reason for each of the
+parts of the type that can't be validated.
+
+Note that only these parts accept any value. In the example above, the value
+must still be a list, though its items are not validated. Likewise, in a
+``Union`` only the subtypes that can't be validated accept any value, the others
+are still validated as usual.
+
+Since there is no type to serialize with, a value of one of these parameters
+that a config format can't represent, e.g. a default that is an arbitrary
+object, is serialized in :meth:`dump <.ArgumentParser.dump>` and
+``--print_config`` the same as the instances given for a :ref:`subclass type
+<sub-classes>`. That is, as an import path when the value can be imported back,
+and otherwise as a message that says that it was not serializable, in which case
+a warning is also raised. The same applies to arguments typed as ``Any``.
+
+
 .. _restricted-numbers:
 
 Restricted numbers
@@ -1722,6 +1768,10 @@ used to provide arguments that will not be validated during parsing, but will be
 used for class instantiation. It is called ``dict_kwargs`` because there are use
 cases in which ``**kwargs`` is used just as a dict, thus it also serves that
 purpose.
+
+This section is about parameters whose *name* the resolvers can't determine. For
+parameters that are resolved but have a type that can't be validated, see
+:ref:`unvalidated-types`.
 
 Take for example the following parsing and instantiation:
 

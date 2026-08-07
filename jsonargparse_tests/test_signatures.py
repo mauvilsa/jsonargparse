@@ -631,14 +631,16 @@ def test_add_function_skip_positionals_invalid(parser):
     ctx.match("Unexpected number of positionals to skip")
 
 
-def func_invalid_type(a1: None):
+def func_unsupported_type(a1: None):
     return a1  # pragma: no cover
 
 
-def test_add_function_invalid_type(parser):
-    with pytest.raises(ValueError) as ctx:
-        parser.add_function_arguments(func_invalid_type)
-    ctx.match("all mandatory parameters must have a supported type")
+def test_add_function_unsupported_type(parser):
+    # not a supported type, so added without validation
+    assert ["a1"] == parser.add_function_arguments(func_unsupported_type)
+    help_str = get_parser_help(parser, strip=True)
+    # shown as null or None, depending on whether the annotation is postponed
+    assert "--a1 A1 (required, type: Unvalidated<" in help_str
 
 
 def func_implicit_optional(a1: int = None):  # type: ignore[assignment]

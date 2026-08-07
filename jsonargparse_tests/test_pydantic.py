@@ -273,6 +273,17 @@ class TestPydanticBasics:
         with pytest.raises(ArgumentError, match='Parser key "model.param"'):
             parser.parse_args([f"--model.param={invalid_value}"])
 
+    @skip_if_pydantic_v1_on_v2
+    def test_pydantic_type_as_subtype(self, parser):
+        self.num_models += 1
+        Model = pydantic.create_model(f"Model{self.num_models}", param=(List[pydantic.HttpUrl], ...))
+
+        parser.add_argument("--model", type=Model)
+        cfg = parser.parse_args(['--model.param=["http://abc.es/"]'])
+        assert [str(v) for v in cfg.model.param] == ["http://abc.es/"]
+        with pytest.raises(ArgumentError, match='Parser key "model.param"'):
+            parser.parse_args(["--model.param=[-]"])
+
     @pytest.mark.skipif(not pydantic_supports_field_init, reason="Field.init is required")
     def test_dataclass_field_init_false(self, parser):
         parser.add_argument("--data", type=PydanticDataFieldInitFalse)
