@@ -257,7 +257,12 @@ def shtab_prepare_action(action, parser) -> None:
 
 # "{prog}" is a placeholder replaced with the normalized prog name, see get_shtab_script.
 bash_compgen_typehint_name = "_jsonargparse_{prog}_compgen_typehint"
+# When there are zero completions only a message is printed, so readline doesn't redraw the
+# prompt. A SIGWINCH doesn't help since readline redraws only if the terminal size changed.
+# Thus, ask the terminal for a device status report (\\e[5n) and bind its reply (\\e[0n) to
+# redraw-current-line, making readline itself redraw once the completion function returns.
 bash_compgen_typehint = """
+[[ $- == *i* ]] && bind '"\\e[0n": redraw-current-line' 2>/dev/null
 %(name)s() {
   local CHOICES="$1" WORD="$2" MESSAGE="$3" REQUIRE_PREFIX="$4" TOTAL="$5"
   local IFS=$'\\n'  # choices may contain spaces, so split matches on newline only
@@ -274,7 +279,7 @@ bash_compgen_typehint = """
   if [ ${#MATCH[@]} = 0 ]; then
     if [ "$COMP_TYPE" = 63 ]; then
       printf "%(b)s\\n%%s%%s\\n%(n)s" "$MESSAGE" "$MATCHED" >&2
-      kill -WINCH $$
+      printf '\\033[5n' >&2
     fi
   else
     for match in "${MATCH[@]}"; do

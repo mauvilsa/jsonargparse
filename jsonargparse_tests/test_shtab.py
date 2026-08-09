@@ -1,8 +1,14 @@
 import dataclasses
+import os
 import re
+import select
 import shlex
+import struct
 import subprocess
+import sys
 import tempfile
+import time
+from contextlib import suppress
 from enum import Enum
 from importlib.util import find_spec
 from os import PathLike
@@ -87,6 +93,8 @@ def assert_bash_typehint_completions(subtests, shtab_script, completions):
                     assert f"Expected type: {typehint}; Accepted by subclasses: {extra}" in err.decode()
                 if is_positional(dest, parser):
                     assert f"Argument: {dest}; Expected type: {typehint}" in err.decode()
+                redraw_requested = "\x1b[5n" in err.decode()
+                assert redraw_requested == (choices == []), "device status report expected iff there are no completions"
 
 
 def test_bash_any(parser, subtests):
@@ -291,6 +299,77 @@ def test_shtab_bash_optionals_as_positionals(parser, subtests, parsing_settings_
             ("flag", bool, "easy 10 x", [], "0/2"),
         ],
     )
+
+
+def test_bash_script_binds_redraw_current_line(parser):
+    parser.add_argument("--num", type=int)
+    shtab_script = get_shtab_script(parser, "bash")
+    assert "bind '\"\\e[0n\": redraw-current-line'" in shtab_script
+
+
+def get_bash_major_version():
+    out = subprocess.run(["bash", "-c", 'echo "${BASH_VERSINFO[0]}"'], capture_output=True)
+    try:
+        return int(out.stdout.strip())
+    except ValueError:  # pragma: no cover
+        return 0
+
+
+def read_from_pty_until(fd, pattern, timeout=10.0):
+    out = b""
+    end = time.monotonic() + timeout
+    while pattern not in out and time.monotonic() < end:
+        ready, _, _ = select.select([fd], [], [], 0.5)
+        if ready:
+            try:
+                data = os.read(fd, 65536)
+            except OSError:
+                break
+            if not data:
+                break
+            out += data
+    return out
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pty is not available on Windows")
+@pytest.mark.filterwarnings("ignore:.*multi-threaded, use of forkpty.*:DeprecationWarning")
+def test_bash_interactive_no_completions_redraws_prompt(parser, tmp_path):
+    if get_bash_major_version() < 4:
+        pytest.skip("test requires bash>=4")
+    import fcntl
+    import pty
+    import termios
+
+    parser.add_argument("--num", type=int)
+    shtab_script_path = tmp_path / "comp.sh"
+    shtab_script_path.write_text(get_shtab_script(parser, "bash"))
+    rcfile = tmp_path / "rcfile"
+    rcfile.write_text(f"PS1='PROMPT$ '\nsource {shtab_script_path}\n")
+
+    pid, fd = pty.fork()
+    if pid == 0:  # pragma: no cover
+        try:
+            os.environ["TERM"] = "xterm-256color"
+            os.execvp("bash", ["bash", "--noprofile", "--rcfile", str(rcfile), "-i"])
+        finally:
+            os._exit(1)
+    try:
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 200, 0, 0))
+        read_from_pty_until(fd, b"PROMPT$ ")
+        os.write(fd, b"tool --num \t\t")
+        out = read_from_pty_until(fd, b"\x1b[5n")
+        assert b"Expected type: int" in out
+        assert b"\x1b[5n" in out, "completion should request a device status report from the terminal"
+        os.write(fd, b"\x1b[0n")  # a real terminal replies this to the \x1b[5n device status report
+        out = read_from_pty_until(fd, b"PROMPT$ tool --num ")
+        assert b"PROMPT$ tool --num " in out, "prompt should be redrawn after the guidance message"
+    finally:
+        with suppress(OSError):
+            os.write(fd, b"\x03exit\n")
+        with suppress(OSError):
+            os.close(fd)
+        with suppress(OSError):
+            os.waitpid(pid, 0)
 
 
 def test_bash_config(parser):

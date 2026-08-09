@@ -170,6 +170,10 @@ Fixed
   then forwarded explicitly as a keyword, e.g. ``x = kwargs.pop("x", None)``
   followed by ``super().__init__(x=x, **kwargs)`` (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- ``shtab`` bash completion not redrawing the prompt after printing the type
+  guidance message when there are zero completions, leaving the cursor on an
+  empty line, observed since bash 5.3 (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^
