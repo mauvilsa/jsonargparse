@@ -6,7 +6,6 @@ import re
 import sys
 from contextlib import contextmanager
 from copy import deepcopy
-from dataclasses import is_dataclass
 from importlib.metadata import version
 from importlib.util import find_spec
 from typing import Any, Union
@@ -229,33 +228,59 @@ def parse_docstring(component, params=False, logger=None):
     return None
 
 
+# modules of base classes that only provide machinery, e.g. object, abc.ABC,
+# typing.Generic, enum.Enum, pydantic.BaseModel, whose docstrings describe
+# themselves instead of the parameters of the derived classes
+docstring_skip_modules = {"abc", "attr", "attrs", "builtins", "enum", "pydantic", "typing", "typing_extensions"}
+
+
+def is_docstring_base_source(cls) -> bool:
+    """Whether a base class can have docstrings that document the parameters of its subclasses."""
+    return cls.__module__.split(".", 1)[0] not in docstring_skip_modules
+
+
+def get_mro_doc_sources(cls) -> list:
+    """Docstring sources for a class, from the most base class to the class itself."""
+    bases = [b for b in inspect.getmro(cls)[1:] if is_docstring_base_source(b)]
+    return bases[::-1] + [cls]
+
+
 def parse_docs(component, parent, logger):
     docs = {}
     if docstring_parser_support:
-        if is_dataclass(parent) and component.__name__ == "__init__":
-            next_mro = inspect.getmro(parent)[1]
-            if is_dataclass(next_mro):
-                docs.update(parse_docs(next_mro, next_mro.__init__, logger))
-        doc_sources = [component]
         if inspect.isclass(parent) and component.__name__ == "__init__":
-            doc_sources += [parent]
+            # base classes first, so that descriptions in derived classes take precedence
+            doc_sources = get_mro_doc_sources(parent)[:-1] + [component, parent]
+        elif inspect.isclass(component):
+            doc_sources = get_mro_doc_sources(component)
+        else:
+            doc_sources = [component]
         for src in doc_sources:
             doc = parse_docstring(src, params=True, logger=logger)
             if doc:
                 for param in doc.params:
-                    docs[param.arg_name] = param.description
+                    if param.description:
+                        docs[param.arg_name] = param.description
     return docs
 
 
 def get_doc_short_description(function_or_class, method_name=None, logger=None):
     if docstring_parser_support:
-        component = function_or_class
-        if inspect.isclass(function_or_class):
-            if not method_name:
-                docstring = parse_docstring(function_or_class, params=False, logger=logger)
+        if inspect.isclass(function_or_class) and not method_name:
+            # nearest short description in the mro, since a derived class often inherits the constructor
+            for cls in get_mro_doc_sources(function_or_class)[::-1]:
+                docstring = parse_docstring(cls, params=False, logger=logger)
                 if docstring and docstring.short_description:
                     return docstring.short_description
-            component = getattr(function_or_class, method_name or "__init__")
+                init = cls.__dict__.get("__init__")
+                if init is not None:
+                    # the class defines its own constructor, so base classes don't describe it
+                    docstring = parse_docstring(init, params=False, logger=logger)
+                    return docstring.short_description if docstring else None
+            return None
+        component = function_or_class
+        if inspect.isclass(function_or_class):
+            component = getattr(function_or_class, method_name)
         docstring = parse_docstring(component, params=False, logger=logger)
         if docstring:
             return docstring.short_description

@@ -415,6 +415,37 @@ def test_attribute_docstrings(parser):
 
 
 @dataclasses.dataclass
+class WithAttrDocsBase:
+    """Base description."""
+
+    attr_base: str = "b"
+    "attr_base description"
+
+
+@dataclasses.dataclass
+class WithAttrDocsMid(WithAttrDocsBase):
+    attr_mid: int = 1
+    "attr_mid description"
+
+
+@dataclasses.dataclass
+class WithAttrDocsSub(WithAttrDocsMid):
+    attr_sub: float = 0.1
+    "attr_sub description"
+
+
+@skip_if_docstring_parser_unavailable
+@patch.dict("jsonargparse._optionals._docstring_parse_options")
+def test_attribute_docstrings_inherited(parser):
+    set_parsing_settings(docstring_parse_attribute_docstrings=True)
+    parser.add_class_arguments(WithAttrDocsSub)
+    help_str = get_parser_help(parser)
+    assert "attr_base description (type: str, default: b)" in help_str
+    assert "attr_mid description (type: int, default: 1)" in help_str
+    assert "attr_sub description (type: float, default: 0.1)" in help_str
+
+
+@dataclasses.dataclass
 class Data:
     p1: str
     p2: int = 0

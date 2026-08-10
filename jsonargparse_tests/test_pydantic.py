@@ -5,6 +5,7 @@ import json
 import pathlib
 from copy import deepcopy
 from typing import Dict, List, Literal, Optional, Union
+from unittest.mock import patch
 
 import pytest
 
@@ -21,6 +22,7 @@ from jsonargparse_tests.conftest import (
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_load,
+    skip_if_docstring_parser_unavailable,
 )
 
 if pydantic_support:
@@ -414,6 +416,53 @@ def test_pydantic_model_path_fields(parser, file_r):
         parser.parse_args(["--model.file=not_exist", "--model.dir=."])
     with pytest.raises(ArgumentError, match='Parser key "model.dir"'):
         parser.parse_args([f"--model.file={file_r}", "--model.dir=not_exist"])
+
+
+if pydantic_support:
+
+    class ModelAttrDocsBase(pydantic.BaseModel):
+        """Base model description."""
+
+        p1: str = "-"
+        """p1 description"""
+
+    class ModelAttrDocsMid(ModelAttrDocsBase):
+        p2: int = 2
+        """p2 description"""
+
+    class ModelAttrDocsSub(ModelAttrDocsMid):
+        p3: float = 0.3
+        """p3 description"""
+
+    class ModelWithoutDocs(pydantic.BaseModel):
+        p1: str = "-"
+
+
+@skip_if_docstring_parser_unavailable
+@patch.dict("jsonargparse._optionals._docstring_parse_options")
+def test_pydantic_attribute_docstrings_inherited(parser):
+    set_parsing_settings(docstring_parse_attribute_docstrings=True)
+    parser.add_class_arguments(ModelAttrDocsSub, "s")
+    help_str = get_parser_help(parser)
+    assert "p1 description (type: str, default: -)" in help_str
+    assert "p2 description (type: int, default: 2)" in help_str
+    assert "p3 description (type: float, default: 0.3)" in help_str
+
+
+def test_pydantic_group_description_from_base(parser):
+    parser.add_class_arguments(ModelAttrDocsSub, "s")
+    help_str = get_parser_help(parser)
+    assert "Create a new model by parsing" not in help_str
+    if docstring_parser_support:
+        assert "Base model description:" in help_str
+
+
+def test_pydantic_group_description_without_docstrings(parser):
+    parser.add_class_arguments(ModelWithoutDocs, "n")
+    help_str = get_parser_help(parser)
+    assert "Create a new model by parsing" not in help_str
+    assert "A base class for creating Pydantic models" not in help_str
+    assert f"<class '{__name__}.ModelWithoutDocs'>:" in help_str
 
 
 if pydantic_support:

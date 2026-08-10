@@ -519,7 +519,7 @@ def test_list_variants(parser, list_type):
 
 class WithCollection:
     def __init__(self, allowed: Optional[Collection[str]] = None):
-        self.allowed = allowed
+        self.allowed = allowed  # pragma: no cover
 
 
 def test_collection_signature_parameter(parser):
@@ -1062,7 +1062,7 @@ def test_module_type_union_with_callable_dump(parser):
 
 class WithCallableDefault:
     def __init__(self, cb: Callable = uuid.uuid4):
-        self.cb = cb
+        self.cb = cb  # pragma: no cover
 
 
 def test_module_type_union_with_class_dump(parser):

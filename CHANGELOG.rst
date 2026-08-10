@@ -39,10 +39,8 @@ Added
   <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
 - Support ``types.UnionType`` and ``types.GenericAlias`` as types, often seen in
   third party libraries in unions such as ``type | UnionType | dict``. The value
-  is a string with a type expression, e.g. ``"int | str"`` and ``"list[int]"``.
-  Previously adding an argument with these types failed with ``TypeError:
-  'member_descriptor' object is not iterable`` (`#945
-  <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
+  is a string with a type expression, e.g. ``"int | str"`` and ``"list[int]"``
+  (`#945 <https://github.com/mauvilsa/jsonargparse/pull/945>`__).
 - Support ``Collection``, ``Container`` and ``Reversible``, validated as a list,
   and ``AbstractSet``, validated as a set (`#950
   <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
@@ -69,21 +67,17 @@ Fixed
   scripts themselves were not affected (`#947
   <https://github.com/mauvilsa/jsonargparse/pull/947>`__).
 - ``fail_untyped=True`` failing for mandatory parameters that do have a type,
-  with an error that says the parameter "does not specify a type". This happened
-  for any type that jsonargparse can't validate, since the parameter was skipped,
-  making it indistinguishable from an untyped one. Now ``fail_untyped`` only fails
-  for parameters that have no type at all (`#948
+  with an error that says the parameter "does not specify a type". Now it only
+  fails for parameters that have no type at all (`#948
   <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 - Signature parameters with a pydantic type nested in a container, e.g.
-  ``list[HttpUrl]``, being skipped. Only pydantic types given as the entire type
-  of a parameter were registered for validation (`#948
+  ``list[HttpUrl]``, being skipped (`#948
   <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 - ``dump``, and thus ``--print_config``, failing when the value of an ``Any``
-  typed argument is a class instance that the config format can't represent, e.g.
-  a default that is an arbitrary object. Now these values are serialized the same
-  as the instances given for a subclass type, i.e. as an import path when the
-  value can be imported back, otherwise as a message that says that it was not
-  serializable (`#948 <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+  typed argument is a class instance that the config format can't represent. Now
+  these values are serialized as an import path, or as a message that says that
+  it was not serializable, see :ref:`unvalidated-types` (`#948
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 - ``AssertionError`` without a message when adding an argument typed as a
   subscripted user defined generic class, e.g. ``Optional[Strategy[T]]`` (`#950
   <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
@@ -97,20 +91,27 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
 - Parameters of a subscripted generic class being dropped when their type is a
   PEP 604 union, e.g. ``p: int | None`` in a ``Generic[T]`` class added as
-  ``MyClass[int]`` (`#950 <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
+  ``MyClass[int]`` (`#950
+  <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
+- Docstrings of base classes not being used to document inherited parameters and
+  attributes, e.g. the attribute docstrings of a pydantic model declared in a
+  base model not being shown in the help. Now the entire method resolution order
+  is searched (`#951 <https://github.com/mauvilsa/jsonargparse/pull/951>`__).
+- The description of a group being taken from an inherited ``__init__``
+  docstring of a base class from another package, most notably pydantic models
+  without a docstring getting ``Create a new model by parsing and validating
+  input data from keyword arguments``. Now the nearest class docstring in the
+  method resolution order is used, skipping base classes that only provide
+  machinery (`#951 <https://github.com/mauvilsa/jsonargparse/pull/951>`__).
 
 Changed
 ^^^^^^^
 - Signature parameters with a type that jsonargparse can't validate are now
-  accepted instead of skipped. A type can't be validated when it fails to
-  resolve, e.g. a missing import or a typo in a postponed annotation, or when it
-  is not a supported type. Only the parts of the type that can't be validated
-  accept any value, e.g. a ``list[SomeType]`` still requires a list, and the
-  subtypes of a ``Union`` that can't be validated are no longer silently
-  discarded. These parts are shown in the help as ``Unvalidated<...>``, making
-  evident which type is not validated, and a debug log states the reason. See
-  the new documentation section :ref:`unvalidated-types` (`#936
-  <https://github.com/mauvilsa/jsonargparse/pull/936>`__, `#944
+  accepted instead of skipped. Only the parts of the type that can't be
+  validated accept any value, e.g. a ``list[SomeType]`` still requires a list.
+  These parts are shown in the help as ``Unvalidated<...>`` and a debug log
+  states the reason. See the new documentation section :ref:`unvalidated-types`
+  (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__, `#944
   <https://github.com/mauvilsa/jsonargparse/pull/944>`__, `#948
   <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 - ``Required`` and ``NotRequired`` given as the type of an argument are no
@@ -120,11 +121,9 @@ Changed
 - Whether a class implements a ``Protocol`` is now decided by checking that its
   methods can be called in all the ways that the protocol methods can be called,
   similar to what static type checkers do, instead of requiring the parameter
-  lists to be identical. Among others, this means that names of positional-only
-  parameters are ignored, ``*args``/``**kwargs`` in the implementation can stand
-  in for protocol parameters, and extra optional parameters in the
-  implementation are accepted. Parameter and return types must still match
-  exactly, except when the protocol has no annotation or ``Any`` (`#941
+  lists to be identical. This accepts more implementations than before.
+  Parameter and return types must still match exactly, except when the protocol
+  has no annotation or ``Any`` (`#941
   <https://github.com/mauvilsa/jsonargparse/pull/941>`__).
 - The default print config argument name will remain as ``--print_config`` in
   v5.0.0, no longer changing as described in the deprecated section of v4.35.0.
@@ -133,14 +132,12 @@ Changed
   silently skipped. ``Namespace`` is only intended for parsing results (`#948
   <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
 - The subtypes of a ``Union`` are now sorted when the argument is added, instead
-  of only while parsing. This means that the type shown in the help tells the
-  order in which the subtypes are attempted. The subtypes that accept any value,
-  i.e. ``Any`` and the ones that can't be validated, are now moved to the end,
-  so that they no longer prevent the remaining subtypes from being attempted.
-  The same is done for ``object``, which accepts the import path of any class.
-  The only sorting that still happens while parsing is for list append, since it
-  depends on the value. See the new documentation section :ref:`union-types`
-  (`#949 <https://github.com/mauvilsa/jsonargparse/pull/949>`__).
+  of only while parsing, so the type shown in the help tells the order in which
+  the subtypes are attempted. The subtypes that accept any value, i.e. ``Any``,
+  ``object`` and the ones that can't be validated, are now moved to the end, so
+  that they no longer prevent the remaining subtypes from being attempted. See
+  the new documentation section :ref:`union-types` (`#949
+  <https://github.com/mauvilsa/jsonargparse/pull/949>`__).
 
 
 v4.50.0 (2026-07-22)

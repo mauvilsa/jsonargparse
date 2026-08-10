@@ -414,6 +414,29 @@ def test_add_class_docstring_parse_fail(parser, logger):
     assert "a1 description" not in help_str
 
 
+class WithDocstringBase:
+    """WithDocstringBase short description.
+
+    Args:
+        b1: b1 description
+    """
+
+    def __init__(self, b1: int = 1):
+        pass  # pragma: no cover
+
+
+class WithoutOwnDocstring(WithDocstringBase):
+    pass
+
+
+@skip_if_docstring_parser_unavailable
+def test_add_class_group_description_from_base(parser):
+    parser.add_class_arguments(WithoutOwnDocstring, "w")
+    help_str = get_parser_help(parser)
+    assert "WithDocstringBase short description:" in help_str
+    assert "b1 description" in help_str
+
+
 def test_add_class_custom_instantiator(parser, clear_instantiators):
     def instantiate(cls, **kwargs):
         instance = cls(**kwargs)

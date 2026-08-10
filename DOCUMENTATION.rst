@@ -1747,6 +1747,14 @@ that don't have attribute docstrings. To enable this, do as follows:
         prize: int = 100
         """Amount won."""
 
+Docstrings are searched for in the entire class inheritance chain. Thus,
+parameters and attributes that a class inherits are documented in the help by
+the base class that declares them, and the description of a group is taken from
+the nearest class in the method resolution order that has a docstring. Base
+classes that only provide machinery, i.e. ``object``, ``abc.ABC``,
+``typing.Generic``, ``enum.Enum``, ``pydantic.BaseModel`` and the like, are
+skipped, since their docstrings describe themselves instead of the class being
+added to the parser.
 
 .. testcleanup:: docstrings
 

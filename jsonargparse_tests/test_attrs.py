@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from typing import List
+from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import Namespace
+from jsonargparse import Namespace, set_parsing_settings
 from jsonargparse._optionals import attrs_support
-from jsonargparse_tests.conftest import get_parser_help
+from jsonargparse_tests.conftest import get_parser_help, skip_if_docstring_parser_unavailable
 
 if attrs_support:
     import attrs
@@ -45,6 +46,16 @@ if attrs_support:
     class AttrsWithNestedDataclassNoDefault:
         p1: float
         subfield: AttrsSubField
+
+    @attrs.define
+    class AttrsAttrDocsBase:
+        p1: str = "-"
+        """p1 description"""
+
+    @attrs.define
+    class AttrsAttrDocsSub(AttrsAttrDocsBase):
+        p2: int = 2
+        """p2 description"""
 
 
 @pytest.mark.skipif(not attrs_support, reason="attrs package is required")
@@ -87,3 +98,12 @@ class TestAttrs:
         parser.add_argument("--data", type=AttrsWithNestedDataclassNoDefault)
         cfg = parser.parse_args(["--data.p1=1.23"])
         assert cfg.data == Namespace(p1=1.23, subfield=Namespace(p1="-", p2=0))
+
+    @skip_if_docstring_parser_unavailable
+    @patch.dict("jsonargparse._optionals._docstring_parse_options")
+    def test_attribute_docstrings_inherited(self, parser):
+        set_parsing_settings(docstring_parse_attribute_docstrings=True)
+        parser.add_class_arguments(AttrsAttrDocsSub, "d")
+        help_str = get_parser_help(parser)
+        assert "p1 description (type: str, default: -)" in help_str
+        assert "p2 description (type: int, default: 2)" in help_str
