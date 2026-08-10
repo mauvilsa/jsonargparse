@@ -189,6 +189,8 @@ Villegas = "Villegas"
 legacy_tox_ini = """
 [tox]
 envlist = py{310,311,312,313,314}-{all-extras,no-extras,argparse},omegaconf,pydantic-v1,without-pyyaml,without-future-annotations
+labels =
+    coverage = py{310,311,312,313,314}-{all-extras,no-extras},pydantic-v1,without-pyyaml,without-future-annotations
 skip_missing_interpreters = true
 
 [testenv]
@@ -202,6 +204,7 @@ passenv = UV_EXCLUDE_NEWER
 # Ensure uv installs into the tox env even if UV_SYSTEM_PYTHON=1 set outside
 setenv =
     UV_SYSTEM_PYTHON = 0
+    COVERAGE_FILE = {tox_root}/jsonargparse_tests/.coverage.{env_name}
 commands =
     all-extras: python -m pytest {posargs}
     no-extras: python -m pytest {posargs}
@@ -271,4 +274,14 @@ commands =
     python -m pytest /tmp/_without_future_annotations {posargs}
 commands_post =
     sh -c "rm -rf /tmp/_without_future_annotations"
+
+[testenv:coverage-report]
+skip_install = true
+deps = coverage[toml]
+changedir = jsonargparse_tests
+setenv =
+    COVERAGE_FILE = {tox_root}/jsonargparse_tests/.coverage
+commands =
+    coverage combine
+    coverage html
 """

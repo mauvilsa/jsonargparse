@@ -96,8 +96,8 @@ repos:
     verbose: true
 
   - id: tox
-    name: tox --parallel
-    entry: tox --parallel
+    name: tox --parallel --parallel-no-spinner
+    entry: tox --parallel --parallel-no-spinner
     stages: [pre-push]
     language: system
     pass_filenames: false
