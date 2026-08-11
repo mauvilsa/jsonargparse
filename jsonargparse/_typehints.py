@@ -1184,7 +1184,7 @@ def adapt_typehints(
         elif isinstance(val, str):
             with suppress(*get_loader_exceptions()):
                 val, _ = parse_value_or_config(val, enable_path=False, simple_types=True)
-        val = adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs, logger)
+        val = adapt_classes_any(val, typehint, serialize, instantiate_classes, sub_add_kwargs, logger)
         if serialize:
             val = serialize_unvalidated(val)
 
@@ -1360,6 +1360,8 @@ def adapt_typehints(
 
     # Dict, Mapping
     elif typehint_origin in mapping_origin_types:
+        if not serialize and not instantiate_classes:
+            validate_subclass_spec_in_mapping(val, typehint, subtypehints, sub_add_kwargs, logger)
         if isinstance(val, NestedArg):
             if isinstance(prev_val, dict):
                 if isinstance(val.key, str) and "." in val.key:
@@ -2160,30 +2162,51 @@ def subclasses_disabled_remove_class_path(value):
     return value
 
 
-def adapt_classes_any(val, serialize, instantiate_classes, sub_add_kwargs, logger=None):
+def adapt_classes_any(val, typehint, serialize, instantiate_classes, sub_add_kwargs, logger=None):
     if is_subclass_spec(val):
         orig_val = val
         val = subclass_spec_as_namespace(val)
         init_args = val.get("init_args")
         if init_args and not instantiate_classes:
             for subkey, subval in init_args.items(branches=True, nested=False):
-                init_args[subkey] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs, logger)
+                init_args[subkey] = adapt_classes_any(
+                    subval, typehint, serialize, instantiate_classes, sub_add_kwargs, logger
+                )
             val["init_args"] = init_args
         try:
             val = adapt_class_type(val, serialize, instantiate_classes, sub_add_kwargs)
         except Exception as ex:
+            type_str = type_to_str(typehint)
             if get_parsing_setting("validate_subclass_spec_in_any"):
-                raise ValueError(f"Invalid subclass spec given as value for an Any type: {ex}") from ex
+                raise ValueError(f"Invalid subclass spec given as value for type {type_str}: {ex}") from ex
             if logger:
-                logger.debug(f"Ignoring invalid subclass spec given as value for an Any type: {ex}", exc_info=ex)
+                logger.debug(f"Ignoring invalid subclass spec given as value for type {type_str}: {ex}", exc_info=ex)
             return orig_val
     elif isinstance(val, list):
         for num, subval in enumerate(val):
-            val[num] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs, logger)
+            val[num] = adapt_classes_any(subval, typehint, serialize, instantiate_classes, sub_add_kwargs, logger)
     elif isinstance(val, dict):
         for key, subval in val.items():
-            val[key] = adapt_classes_any(subval, serialize, instantiate_classes, sub_add_kwargs, logger)
+            val[key] = adapt_classes_any(subval, typehint, serialize, instantiate_classes, sub_add_kwargs, logger)
     return val
+
+
+def validate_subclass_spec_in_mapping(val, typehint, subtypehints, sub_add_kwargs, logger) -> None:
+    """Raises if the value of a mapping that doesn't validate its values is an invalid subclass spec.
+
+    Only done when the ``validate_subclass_spec_in_any`` setting is enabled.
+    Unlike for ``Any``, the value is only validated and kept as a mapping, since
+    an instance would not correspond to the type. Building the class is the
+    responsibility of a class type, e.g. a member of the union that the mapping
+    is part of.
+    """
+    if not get_parsing_setting("validate_subclass_spec_in_any") or not is_subclass_spec(val):
+        return
+    if type(typehint) in typed_dict_meta_types:
+        return
+    if subtypehints is not None and not (subtypehints[1] == Any or isinstance(subtypehints[1], UnvalidatedType)):
+        return
+    adapt_classes_any(deepcopy(val), typehint, False, False, sub_add_kwargs, logger)
 
 
 def union_subtype_sort_key(subtype) -> int:

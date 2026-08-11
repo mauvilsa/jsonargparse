@@ -1,12 +1,14 @@
+import json
 import re
 from dataclasses import dataclass
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
 
 from jsonargparse import SUPPRESS, ActionYesNo, ArgumentError, Namespace, Unset, set_parsing_settings
 from jsonargparse._common import _UnsetType, get_parsing_setting
+from jsonargparse._typehints import UnvalidatedType
 from jsonargparse_tests.conftest import capture_logs, get_parse_args_stdout, get_parser_help, json_or_yaml_load
 from jsonargparse_tests.test_typehints import Optimizer
 
@@ -489,14 +491,14 @@ def test_validate_subclass_spec_in_any_disabled_ignored_with_debug_log(parser, l
     with capture_logs(logger) as logs:
         cfg = parser.parse_args(['--any={"class_path": "nonexistent.Foo"}'])
     assert cfg.any == {"class_path": "nonexistent.Foo"}
-    assert "Ignoring invalid subclass spec given as value for an Any type" in logs.getvalue()
+    assert "Ignoring invalid subclass spec given as value for type Any" in logs.getvalue()
 
 
 def test_validate_subclass_spec_in_any_enabled_fails(parser):
     set_parsing_settings(validate_subclass_spec_in_any=True)
     parser.add_argument("--any", type=Any)
 
-    with pytest.raises(ArgumentError, match="Invalid subclass spec given as value for an Any type"):
+    with pytest.raises(ArgumentError, match="Invalid subclass spec given as value for type Any"):
         parser.parse_args(['--any={"class_path": "nonexistent.Foo"}'])
 
 
@@ -514,3 +516,97 @@ def test_validate_subclass_spec_in_any_enabled_non_subclass_dict_kept(parser):
 
     cfg = parser.parse_args(['--any={"a": 0, "b": 1}'])
     assert cfg.any == {"a": 0, "b": 1}
+
+
+# validate_subclass_spec_in_any for dict types that accept any value
+
+unvalidated_dict_type = Dict[str, UnvalidatedType("some.SomeType")]  # type: ignore[misc,valid-type]
+any_dict_types = [dict, Dict, Dict[str, Any], unvalidated_dict_type]
+
+
+@pytest.mark.parametrize("dict_type", any_dict_types)
+def test_validate_subclass_spec_in_any_dict_disabled_kept(parser, dict_type):
+    parser.add_argument("--dict", type=dict_type)
+
+    cfg = parser.parse_args(['--dict={"class_path": "nonexistent.Foo"}'])
+    assert cfg.dict == {"class_path": "nonexistent.Foo"}
+
+
+@pytest.mark.parametrize("dict_type", any_dict_types)
+def test_validate_subclass_spec_in_any_dict_enabled_fails(parser, dict_type):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--dict", type=dict_type)
+
+    with pytest.raises(ArgumentError, match="Invalid subclass spec given as value for type"):
+        parser.parse_args(['--dict={"class_path": "nonexistent.Foo"}'])
+
+
+@pytest.mark.parametrize("dict_type", any_dict_types)
+def test_validate_subclass_spec_in_any_dict_enabled_valid_kept_as_dict(parser, dict_type):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--dict", type=dict_type)
+    spec = {"class_path": f"{__name__}.AnySubclass", "init_args": {"p": 3}}
+
+    cfg = parser.parse_args([f"--dict={json.dumps(spec)}"])
+    assert cfg.dict == spec
+
+    assert json_or_yaml_load(parser.dump(cfg)) == {"dict": spec}
+    assert parser.instantiate(cfg).dict == spec
+
+
+@pytest.mark.parametrize("dict_type", any_dict_types)
+def test_validate_subclass_spec_in_any_dict_enabled_non_subclass_dict_kept(parser, dict_type):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--dict", type=dict_type)
+
+    cfg = parser.parse_args(['--dict={"a": 0, "b": 1}'])
+    assert cfg.dict == {"a": 0, "b": 1}
+
+
+def function_unresolvable_dict_subtype(d: Dict[str, "MisspelledType"] = {}):  # type: ignore[name-defined]  # noqa: F821
+    return d  # pragma: no cover
+
+
+def test_validate_subclass_spec_in_any_enabled_unresolvable_dict_subtype_fails(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_function_arguments(function_unresolvable_dict_subtype, "fn")
+
+    with pytest.raises(ArgumentError, match=r"Invalid subclass spec given as value for type Dict\[str, Unvalidated<"):
+        parser.parse_args(['--fn.d={"class_path": "nonexistent.Foo"}'])
+
+
+def test_validate_subclass_spec_in_any_enabled_validated_dict_unaffected(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--dict", type=Dict[str, str])
+
+    cfg = parser.parse_args(['--dict={"class_path": "nonexistent.Foo"}'])
+    assert cfg.dict == {"class_path": "nonexistent.Foo"}
+
+
+class SpecTypedDict(TypedDict):
+    class_path: str
+
+
+def test_validate_subclass_spec_in_any_enabled_typed_dict_unaffected(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--dict", type=SpecTypedDict)
+
+    cfg = parser.parse_args(['--dict={"class_path": "nonexistent.Foo"}'])
+    assert cfg.dict == {"class_path": "nonexistent.Foo"}
+
+
+def test_validate_subclass_spec_in_any_disabled_union_dict_swallows(parser):
+    parser.add_argument("--union", type=Optional[Union[AnySubclass, Dict[str, Any]]])
+
+    cfg = parser.parse_args([f'--union={{"class_path": "{__name__}.AnySubclass", "init_args": {{"nope": 1}}}}'])
+    assert cfg.union == {"class_path": f"{__name__}.AnySubclass", "init_args": {"nope": 1}}
+
+
+def test_validate_subclass_spec_in_any_enabled_union_dict_fails(parser):
+    set_parsing_settings(validate_subclass_spec_in_any=True)
+    parser.add_argument("--union", type=Optional[Union[AnySubclass, Dict[str, Any]]])
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f'--union={{"class_path": "{__name__}.AnySubclass", "init_args": {{"nope": 1}}}}'])
+    ctx.match("Does not validate against any of the Union subtypes")
+    ctx.match("Invalid subclass spec given as value for type Dict")

@@ -158,12 +158,14 @@ def set_parsing_settings(
         validate_defaults: Whether default values must be valid according to the
             argument type. The default is ``False``, meaning no default
             validation, like in argparse.
-        validate_subclass_spec_in_any: If ``True``, when a value for an ``Any``
-            typed argument looks like a subclass spec (i.e. a dict with a
-            ``class_path`` key) it is required to be a valid one, otherwise the
-            parsing fails. By default, this is ``False``, meaning that an
-            invalid subclass spec is ignored (a debug log is emitted) and the
-            original value is kept.
+        validate_subclass_spec_in_any: If ``True``, when a value for a type that
+            accepts any value, i.e. ``Any``, ``Unvalidated<...>`` or a dict that
+            doesn't validate its values, looks like a subclass spec (i.e. a dict
+            with a ``class_path`` key), it is required to be a valid one,
+            otherwise the parsing fails. For dicts the spec is only validated,
+            since the value is kept as a dict. By default, this is ``False``,
+            meaning that an invalid subclass spec is ignored (a debug log is
+            emitted) and the original value is kept.
         config_read_mode_urls_enabled: Whether to read config files from URLs
             using requests package. Default is ``False``.
         config_read_mode_fsspec_enabled: Whether to read config files from

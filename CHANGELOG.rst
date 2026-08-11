@@ -18,10 +18,14 @@ v4.51.0 (unreleased)
 Added
 ^^^^^
 - ``validate_subclass_spec_in_any`` setting in ``set_parsing_settings`` so that
-  when a value for an ``Any`` typed argument looks like a subclass spec but is
-  not a valid one, the parsing fails instead of silently ignoring it. When
-  disabled (the default), a debug log now informs about the ignored invalid
-  subclass spec (`#938 <https://github.com/mauvilsa/jsonargparse/pull/938>`__).
+  when a value looks like a subclass spec but is not a valid one, the parsing
+  fails instead of silently ignoring it. Applies to types that accept any value,
+  i.e. ``Any``, ``Unvalidated<...>`` and dicts that don't validate their values,
+  e.g. ``dict[str, Any]``. For dicts the spec is only validated, since the value
+  is kept as a dict. When disabled (the default), a debug log now informs about
+  the ignored invalid subclass spec (`#938
+  <https://github.com/mauvilsa/jsonargparse/pull/938>`__, `#951
+  <https://github.com/mauvilsa/jsonargparse/pull/951>`__).
 - Items of a list of classes and values of a dict of classes can now be given as
   paths to sub-config files, instead of this only being supported for the value
   of an entire argument (`#940

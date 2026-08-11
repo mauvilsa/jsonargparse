@@ -2250,11 +2250,16 @@ be accepted. In this case the config would be like:
     ``class_path`` and ``init_args`` if the corresponding parameter has type
     ``Any``, or when ``fail_untyped=False`` which defaults to type ``Any``.
 
-    If such a value looks like a subclass spec (has a ``class_path``) but cannot
-    be parsed as one, e.g. because the class fails to import, by default it is
-    left unchanged and a debug message is logged. Set
+    If a value looks like a subclass spec (has a ``class_path``) but cannot be
+    parsed as one, e.g. because the class fails to import, by default it is left
+    unchanged and a debug message is logged. Set
     ``validate_subclass_spec_in_any=True`` in :func:`.set_parsing_settings` to
-    make the parsing fail in this case instead.
+    make the parsing fail instead. Apart from ``Any`` and ``Unvalidated<...>``,
+    this also applies to dicts that don't validate their values, e.g.
+    ``dict[str, Any]``. For dicts the spec is only validated, since the value is
+    kept as a dict, which matters for unions such as ``Union[SomeClass,
+    dict[str, Any]]``, where a spec rejected by the class member would otherwise
+    be silently swallowed by the dict member.
 
 .. note::
 
