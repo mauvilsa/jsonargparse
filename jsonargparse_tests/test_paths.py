@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import pathlib
@@ -737,6 +738,90 @@ def test_sub_configs_dict_subclass_values_from_signature(parser, item_subconfigs
 
     cfg = parser.parse_args(['--main.objects={"a": "item1.yaml", "b": "item2.yaml"}'])
     assert_items([cfg.main.objects["a"], cfg.main.objects["b"]])
+
+
+# sub_configs for dataclass-like types, i.e. subclasses disabled
+
+
+@dataclasses.dataclass
+class ItemData:
+    x: int = 1
+    y: str = "-"
+
+
+class ItemDataMain:
+    def __init__(
+        self,
+        single: Optional[ItemData] = None,
+        objects: Optional[List[ItemData]] = None,
+        mapping: Optional[Dict[str, ItemData]] = None,
+    ):
+        self.single = single  # pragma: no cover
+
+
+@pytest.fixture
+def data_subconfig(tmp_cwd):
+    pathlib.Path("data.yaml").write_text(json_or_yaml_dump({"x": 2, "y": "a"}))
+    return tmp_cwd
+
+
+def assert_data_item(item):
+    assert item == Namespace(x=2, y="a", __path__=item["__path__"])
+    assert str(item["__path__"]) == "data.yaml"
+
+
+def test_sub_configs_optional_dataclass(parser, data_subconfig):
+    parser.add_argument("--data", type=Optional[ItemData], sub_configs=True)
+
+    cfg = parser.parse_args(["--data=data.yaml"])
+    assert_data_item(cfg.data)
+
+
+def test_sub_configs_optional_dataclass_from_signature(parser, data_subconfig):
+    parser.add_class_arguments(ItemDataMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(["--main.single=data.yaml"])
+    assert_data_item(cfg.main.single)
+    init = parser.instantiate(cfg)
+    assert init.main.single == ItemData(x=2, y="a")
+
+
+def test_sub_configs_list_dataclass_from_signature(parser, data_subconfig):
+    parser.add_class_arguments(ItemDataMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(['--main.objects=["data.yaml"]'])
+    assert_data_item(cfg.main.objects[0])
+
+
+def test_sub_configs_dict_dataclass_from_signature(parser, data_subconfig):
+    parser.add_class_arguments(ItemDataMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(['--main.mapping={"a": "data.yaml"}'])
+    assert_data_item(cfg.main.mapping["a"])
+
+
+def test_sub_configs_optional_dataclass_save_multifile(parser, data_subconfig):
+    main = {"main": {"single": "data.yaml"}}
+    pathlib.Path("config.yaml").write_text(json_or_yaml_dump(main))
+    out_dir = data_subconfig / "out"
+    out_dir.mkdir()
+
+    parser.add_argument("--cfg", action="config")
+    parser.add_class_arguments(ItemDataMain, "main", sub_configs=True)
+
+    cfg = parser.parse_args(["--cfg=config.yaml"])
+    parser.save(cfg, out_dir / "config.yaml", multifile=True)
+
+    assert json_or_yaml_load((out_dir / "config.yaml").read_text())["main"] == main["main"]
+    assert json_or_yaml_load((out_dir / "data.yaml").read_text()) == {"x": 2, "y": "a"}
+
+
+def test_sub_configs_optional_dataclass_path_not_exist(parser, data_subconfig):
+    parser.add_class_arguments(ItemDataMain, "main", sub_configs=True)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--main.single=does-not-exist.yaml"])
+    ctx.match("Unexpected import path format: does-not-exist.yaml")
 
 
 def test_sub_configs_list_subclass_path_not_exist(parser, item_subconfigs):

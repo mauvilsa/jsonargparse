@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
@@ -234,6 +236,47 @@ def test_subcommand_env_overrides_default_config(parser, subparser, tmp_cwd):
     with patch.dict(os.environ, {"APP_CREATE__STATS": "false"}):
         cfg = parser.parse_args(["create"])
     assert cfg.create.stats is False
+
+
+@dataclasses.dataclass
+class EnvArea:
+    latitude: float
+    longitude: float
+    radius: float = 500.0
+
+
+def test_subcommand_env_dataclass_value(parser, subparser):
+    parser.env_prefix = "APP"
+    parser.default_env = True
+    subparser.add_argument("--area", type=Optional[EnvArea])
+    subparser.add_argument("--limit", type=int, default=20)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("search", subparser)
+
+    expected = Namespace(latitude=35.7, longitude=139.7, radius=500.0)
+    with patch.dict(os.environ, {"APP_SEARCH__AREA": '{"latitude": 35.7, "longitude": 139.7}'}):
+        cfg = parser.parse_args(["search"])
+        assert cfg.search.area == expected
+        assert parser.instantiate(cfg).search.area == EnvArea(latitude=35.7, longitude=139.7)
+        cfg = parser.parse_args(["search", "--limit=2"])
+        assert cfg.search.area == expected
+
+    env = {"APP_SUBCOMMAND": "search", "APP_SEARCH__AREA": '{"latitude": 1.0, "longitude": 2.0}'}
+    with patch.dict(os.environ, env):
+        cfg = parser.parse_env()
+        assert cfg.search.area == Namespace(latitude=1.0, longitude=2.0, radius=500.0)
+
+
+def test_subcommand_env_dataclass_value_overridden_by_command_line(parser, subparser):
+    parser.env_prefix = "APP"
+    parser.default_env = True
+    subparser.add_argument("--area", type=Optional[EnvArea])
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("search", subparser)
+
+    with patch.dict(os.environ, {"APP_SEARCH__AREA": '{"latitude": 35.7, "longitude": 139.7}'}):
+        cfg = parser.parse_args(["search", '--area={"latitude": 1.0, "longitude": 2.0, "radius": 10.0}'])
+    assert cfg.search.area == Namespace(latitude=1.0, longitude=2.0, radius=10.0)
 
 
 def test_subcommand_required_false(parser, subparser):

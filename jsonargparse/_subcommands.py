@@ -262,7 +262,9 @@ def handle_subcommands(
         subnamespace = None
         key = prefix + subcommand
         if env:
-            subnamespace = subparser.parse_env(defaults=defaults, _skip_validation=True)
+            # nested_parse so that the values keep the same internal representation as the ones
+            # already in cfg, otherwise merging the two gives a value that is neither
+            subnamespace = subparser.parse_env(defaults=defaults, _skip_validation=True, _nested_parse=True)
         elif defaults:
             subnamespace = subparser.get_defaults(skip_validation=True)
 

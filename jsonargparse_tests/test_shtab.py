@@ -1,3 +1,4 @@
+import dataclasses
 import re
 import shlex
 import subprocess
@@ -462,6 +463,33 @@ def test_bash_nested_subclasses(parser, subtests):
         shtab_script,
         [
             ("cls.s1.p2", AXEnum, "X", ["XY", "XZ"], "SubA; 2/3 matched choices"),
+        ],
+    )
+
+
+@dataclasses.dataclass
+class Area:
+    latitude: float
+    longitude: float
+    radius: float = 500.0
+
+
+@pytest.mark.parametrize("area_type", [Area, Optional[Area]])
+def test_bash_dataclass_fields(parser, area_type):
+    parser.add_argument("--area", type=area_type)
+    shtab_script = get_shtab_script(parser, "bash")
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert {"--area", "--area.latitude", "--area.longitude", "--area.radius"}.issubset(options)
+
+
+def test_bash_optional_dataclass_field_types(parser, subtests):
+    parser.add_argument("--area", type=Optional[Area])
+    assert_bash_typehint_completions(
+        subtests,
+        parser,
+        [
+            ("area.latitude", float, "", [], None),
+            ("area.radius", float, "5", [], None),
         ],
     )
 

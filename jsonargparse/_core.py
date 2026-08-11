@@ -367,6 +367,7 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
         skip_required: bool = False,
         skip_subcommands: bool = False,
         fail_no_subcommand: bool = True,
+        nested_parse: bool = False,
     ) -> Namespace:
         """Common parsing code used by other parse methods.
 
@@ -378,6 +379,8 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
             skip_required: Whether to skip check of required arguments.
             skip_subcommands: Whether to skip subcommand processing.
             fail_no_subcommand: Whether to fail if no subcommand given.
+            nested_parse: Whether the result is to be merged into an ongoing parse of another parser,
+                in which case the internal representation of values must be preserved.
 
         Returns:
             A config object with all parsed values.
@@ -406,7 +409,7 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
             if not skip_validation:
                 self.validate(cfg, skip_required=skip_required)
 
-        if not lenient_check.get():
+        if not lenient_check.get() and not nested_parse:
             cfg = subclasses_disabled_remove_class_path(cfg)
 
         return cfg
@@ -607,7 +610,9 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
         Raises:
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
         """
-        skip_validation, skip_subcommands = get_private_kwargs(kwargs, _skip_validation=False, _skip_subcommands=False)
+        skip_validation, skip_subcommands, nested_parse = get_private_kwargs(
+            kwargs, _skip_validation=False, _skip_subcommands=False, _nested_parse=False
+        )
 
         try:
             cfg = self._parse_defaults_and_environ(defaults, env=True, environ=env)
@@ -617,6 +622,7 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
                 "defaults": defaults,
                 "skip_validation": skip_validation,
                 "skip_subcommands": skip_subcommands,
+                "nested_parse": nested_parse,
             }
             if skip_validation:
                 kwargs["fail_no_subcommand"] = False
@@ -1383,6 +1389,7 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
             with parser_context(parent_parser=self, lenient_check=True):
                 value = self._check_value_key(action, value, action_dest, prev_cfg, append=append)
             if isinstance(action, _ActionConfigLoad):
+                value = action.resolve_subclass_spec(value)
                 config_keys.add(action_dest)
                 keys.append(action_dest)
             elif isinstance(action, ActionConfigFile):

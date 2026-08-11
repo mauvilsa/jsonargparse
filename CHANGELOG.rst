@@ -44,6 +44,9 @@ Added
 - Support ``Collection``, ``Container`` and ``Reversible``, validated as a list,
   and ``AbstractSet``, validated as a set (`#950
   <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
+- ``shtab`` completion scripts now include the fields of a dataclass-like type
+  that is not added as a group, e.g. ``Optional[SomeDataclass]`` (`#952
+  <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
 
 Fixed
 ^^^^^
@@ -103,6 +106,23 @@ Fixed
   input data from keyword arguments``. Now the nearest class docstring in the
   method resolution order is used, skipping base classes that only provide
   machinery (`#951 <https://github.com/mauvilsa/jsonargparse/pull/951>`__).
+- A dataclass-like type accepting the ``class_path`` of a subclass when it is
+  not added as a group, e.g. ``Optional[SomeDataclass]``, even though subclasses
+  are disabled for these types by default. The error now says how to enable
+  subclass support for the type, see :ref:`subclasses-disabled` (`#952
+  <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
+- Signature parameters typed as a dataclass-like type that is not added as a
+  group, e.g. ``Optional[SomeDataclass]``, ``list[SomeDataclass]`` and
+  ``dict[str, SomeDataclass]``, not accepting a path to a sub-config file even
+  when added with ``sub_configs=True``, failing with e.g. ``No module named
+  'data'``. Also, the path of a loaded sub-config was not kept, so ``save`` with
+  ``multifile=True`` did not write it back to its own file. See
+  :ref:`sub-config-files` (`#952
+  <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
+- The value of an environment variable not validating for a dataclass-like typed
+  argument of a subcommand, e.g. ``APP_SUB__DATA='{"p1": 2}'`` failing with
+  ``Not a valid subclass of ...`` (`#952
+  <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
 
 Changed
 ^^^^^^^
@@ -138,6 +158,12 @@ Changed
   that they no longer prevent the remaining subtypes from being attempted. See
   the new documentation section :ref:`union-types` (`#949
   <https://github.com/mauvilsa/jsonargparse/pull/949>`__).
+- A dataclass-like type added as a group now accepts a subclass spec that has
+  the ``class_path`` of the type itself, e.g. ``{"class_path": "Data",
+  "init_args": {...}}``, instead of failing with ``Group 'data' does not accept
+  option 'init_args....'``. Dataclass-like types now accept the same values
+  whether or not they are added as a group, see :ref:`subclasses-disabled`
+  (`#952 <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
 
 
 v4.50.0 (2026-07-22)

@@ -265,9 +265,10 @@ def test_add_argument_dataclass_type(parser):
 def test_add_argument_dataclass_unexpected_keys(parser):
     parser.add_argument("--b", type=DataClassB)
     invalid = {
-        "class_path": f"{__name__}.DataClassB",
+        "b1": 2.0,
+        "unexpected": 1,
     }
-    with pytest.raises(ArgumentError, match="Group 'b' does not accept option 'class_path'"):
+    with pytest.raises(ArgumentError, match="Group 'b' does not accept option 'unexpected'"):
         parser.parse_args([f"--b={json.dumps(invalid)}"])
 
 
@@ -850,8 +851,56 @@ def test_dataclass_subclasses_disabled(parser):
     assert "--data.help" not in help_str
 
     config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
-    with pytest.raises(ArgumentError, match="Group 'data' does not accept option 'init_args.p2'"):
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for DataMain"):
         parser.parse_args([f"--data={json.dumps(config)}"])
+
+
+# same capabilities for a dataclass-like type and its optional counterpart
+
+
+data_main_types = [DataMain, Optional[DataMain]]
+
+
+@pytest.mark.parametrize("data_type", data_main_types)
+def test_dataclass_optional_symmetry_own_class_path(parser, data_type):
+    parser.add_argument("--data", type=data_type, default=DataMain(p1=2))
+
+    config = {"class_path": f"{__name__}.DataMain", "init_args": {"p1": 3}}
+    cfg = parser.parse_args([f"--data={json.dumps(config)}"])
+    assert cfg.data == Namespace(p1=3)
+    init = parser.instantiate(cfg)
+    assert init.data == DataMain(p1=3)
+    assert json_or_yaml_load(parser.dump(cfg))["data"] == {"p1": 3}
+
+
+@pytest.mark.parametrize("data_type", data_main_types)
+def test_dataclass_optional_symmetry_class_path_only(parser, data_type):
+    parser.add_argument("--data", type=data_type, default=DataMain(p1=2))
+
+    cfg = parser.parse_args([f'--data={{"class_path": "{__name__}.DataMain"}}'])
+    assert cfg.data == Namespace(p1=2)
+
+
+@pytest.mark.parametrize("data_type", data_main_types)
+def test_dataclass_optional_symmetry_subclass_disabled(parser, data_type):
+    parser.add_argument("--data", type=data_type, default=DataMain(p1=2))
+
+    config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for DataMain"):
+        parser.parse_args([f"--data={json.dumps(config)}"])
+    enable_hint = r"set_parsing_settings\(subclasses_enabled=\[DataMain\]\)"
+    with pytest.raises(ArgumentError, match=enable_hint):
+        parser.parse_args(["--data=DataSub"])
+
+
+@pytest.mark.parametrize("data_type", data_main_types)
+def test_dataclass_optional_symmetry_subclass_enabled(parser, data_type, enable_subclasses):
+    parser.add_argument("--data", type=data_type, default=DataMain(p1=2))
+
+    config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
+    cfg = parser.parse_args([f"--data={json.dumps(config)}"])
+    init = parser.instantiate(cfg)
+    assert init.data == DataSub(p1=2, p2="y")
 
 
 def test_add_subclass_dataclass_subclasses_disabled(parser):
@@ -955,7 +1004,7 @@ def test_add_argument_dataclass_single_type_subclasses_disabled(parser, enable_s
     parser.add_argument("--data", type=DataMain, default=DataMain(p1=2))
 
     config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
-    with pytest.raises(ArgumentError, match="Group 'data' does not accept option 'init_args.p2'"):
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for DataMain"):
         parser.parse_args([f"--data={json.dumps(config)}"])
 
 
@@ -969,7 +1018,7 @@ def test_add_argument_dataclass_subclasses_disabled_function(parser, enable_subc
     parser.add_argument("--data", type=DataMain, default=DataMain(p1=2))
 
     config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
-    with pytest.raises(ArgumentError, match="Group 'data' does not accept option 'init_args.p2'"):
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for DataMain"):
         parser.parse_args([f"--data={json.dumps(config)}"])
 
 
@@ -993,8 +1042,27 @@ def test_dataclass_nested_subclasses_disabled(parser):
             }
         },
     }
-    with pytest.raises(ArgumentError, match="Group 'data' does not accept option 'init_args.p1'"):
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for DataMain"):
         parser.parse_args([f"--parent={json.dumps(config)}"])
+
+
+def test_dataclass_nested_own_class_path(parser):
+    parser.add_argument("--parent", type=ParentData)
+
+    config = {
+        "class_path": f"{__name__}.ParentData",
+        "init_args": {
+            "data": {
+                "class_path": f"{__name__}.DataMain",
+                "init_args": {"p1": 3},
+            }
+        },
+    }
+    cfg = parser.parse_args([f"--parent={json.dumps(config)}"])
+    assert cfg.parent.init_args.data == Namespace(p1=3)
+    assert json_or_yaml_load(parser.dump(cfg))["parent"]["init_args"]["data"] == {"p1": 3}
+    init = parser.instantiate(cfg)
+    assert init.parent.data == DataMain(p1=3)
 
 
 def test_dataclass_nested_subclasses_enabled(parser, enable_subclasses):

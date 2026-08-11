@@ -14,7 +14,12 @@ from subprocess import PIPE, Popen
 from typing import Literal, Union
 
 from ._actions import ActionConfigFile, ActionFail, _ActionConfigLoad, _ActionHelpClassPath, remove_actions
-from ._common import NonParsingAction, get_optionals_as_positionals_actions, get_parsing_setting
+from ._common import (
+    NonParsingAction,
+    get_optionals_as_positionals_actions,
+    get_parsing_setting,
+    is_subclasses_disabled,
+)
 from ._optionals import get_pydantic_path_type
 from ._parameter_resolvers import get_signature_parameters
 from ._typehints import (
@@ -23,6 +28,7 @@ from ._typehints import (
     get_all_subclass_paths,
     get_callable_return_type,
     get_typehint_origin,
+    is_single_subclass_or_closed_type,
     is_subclass,
     type_to_str,
 )
@@ -347,6 +353,13 @@ def get_typehint_choices(typehint, prefix, parser, skip, added_subclasses=None) 
             choices = add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses)
             return choices, True, False
 
+        if is_single_subclass_or_closed_type(typehint, origin) and is_subclasses_disabled(typehint):
+            # a closed type, e.g. a dataclass, only inlined as a group when not in a union,
+            # so its init args need to be added as options for them to be completed
+            added_subclasses.add(typehint)
+            add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses, closed_type=True)
+            return [], False, True
+
         if origin in callable_origin_types:
             return_type = get_callable_return_type(typehint)
             if return_type and ActionTypeHint.is_subclass_typehint(return_type):
@@ -363,18 +376,23 @@ def get_typehint_choices(typehint, prefix, parser, skip, added_subclasses=None) 
     return choices, require_prefix
 
 
-def add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses) -> list[str]:
-    choices = []
-    paths = get_all_subclass_paths(typehint)
+def add_subactions_and_get_subclass_choices(
+    typehint, prefix, parser, skip, added_subclasses, closed_type: bool = False
+) -> list[str]:
+    choices: list[str] = []
     init_args = defaultdict(list)
     subclasses = defaultdict(list)
-    for path in paths:
-        choices.append(path)
+    # a closed type is not a choice, since only its init args are accepted
+    classes: list = [typehint] if closed_type else get_all_subclass_paths(typehint)
+    for class_or_path in classes:
+        name = class_or_path if isinstance(class_or_path, str) else class_or_path.__name__
+        if isinstance(class_or_path, str):
+            choices.append(class_or_path)
         try:
-            cls = import_object(path)
+            cls = import_object(class_or_path) if isinstance(class_or_path, str) else class_or_path
             params = get_signature_parameters(cls, None, parser._logger)
         except Exception as ex:
-            parser._logger.debug(f"Unable to get signature parameters for '{path}': {ex}")
+            parser._logger.debug(f"Unable to get signature parameters for '{name}': {ex}")
             continue
         num_skip = next((s for s in skip if isinstance(s, int)), 0)
         if num_skip > 0:
@@ -382,7 +400,7 @@ def add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, adde
         for param in params:
             if param.name not in skip:
                 init_args[param.name].append(param.annotation)
-                subclasses[param.name].append(path.rsplit(".", 1)[-1])
+                subclasses[param.name].append(name.rsplit(".", 1)[-1])
 
     if prefix is not None:
         for name, subtypes in init_args.items():
@@ -394,8 +412,9 @@ def add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, adde
                         subtype, option_string, parser, skip, added_subclasses
                     )
                     if shtab_shell.get() == "bash":
-                        message = f"Expected type: {type_to_str(subtype)}; "
-                        message += f"Accepted by subclasses: {', '.join(subclasses[name])}"
+                        message = f"Expected type: {type_to_str(subtype)}"
+                        if not closed_type:
+                            message += f"; Accepted by subclasses: {', '.join(subclasses[name])}"
                         add_bash_typehint_completion(
                             parser,
                             action,

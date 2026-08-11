@@ -229,6 +229,10 @@ class _ActionPrintConfig(NonParsingAction):
         return False
 
 
+class SubclassesDisabledError(TypeError):
+    """Raised when a class_path is given for a type that has subclasses disabled."""
+
+
 class _ActionConfigLoad(Action):
     def __init__(self, basetype: type | None = None, **kwargs):
         if len(kwargs) == 0:
@@ -253,14 +257,56 @@ class _ActionConfigLoad(Action):
         namespace[self.dest] = loaded_value
         return None
 
+    def resolve_subclass_spec(self, value):
+        """Resolves a subclass spec given for a subclasses disabled type, e.g. a dataclass.
+
+        These types are added as a group, such that their init args are individual arguments. Still a
+        subclass spec is accepted, so that the accepted values are the same as for the optional
+        counterpart of the type, which is added as a single typehint argument.
+        """
+        from ._typehints import is_subclass_spec, resolve_class_path_by_name, subclasses_disabled_message
+
+        if self.basetype is None or not is_subclasses_disabled(self.basetype):
+            return value
+
+        def resolve_class(class_path):
+            try:
+                return import_object(resolve_class_path_by_name(self.basetype, class_path))
+            except Exception:
+                return None
+
+        if isinstance(value, str):
+            if resolve_class(value) is None:
+                return value  # not a class path, e.g. a path to a config file
+            value = Namespace(class_path=value)
+        elif not is_subclass_spec(value):
+            return value
+        class_path = value["class_path"]
+        if resolve_class(class_path) is not self.basetype:
+            raise SubclassesDisabledError(subclasses_disabled_message(self.basetype, class_path))
+        resolved = Namespace()
+        for key in ["init_args", "dict_kwargs"]:
+            sub_value = value.get(key)
+            if isinstance(sub_value, dict):
+                sub_value = Namespace(sub_value)
+            if isinstance(sub_value, Namespace):
+                resolved.update(sub_value)
+        return resolved
+
     def _load_config(self, value, parser):
         try:
-            cfg, cfg_path = parse_value_or_config(value)
-            if not isinstance(cfg, dict):
+            cfg = self.resolve_subclass_spec(value)
+            cfg_path = None
+            if cfg is value:
+                cfg, cfg_path = parse_value_or_config(value)
+                cfg = self.resolve_subclass_spec(cfg)
+            if not isinstance(cfg, (dict, Namespace)):
                 raise TypeError(f'Parser key "{self.dest}": Unable to load config "{value}"')
             with load_config_path_context(cfg_path), change_to_path_dir(cfg_path):
                 cfg = parser._apply_actions(cfg, parent_key=self.dest)
             return cfg
+        except SubclassesDisabledError as ex:
+            raise TypeError(f'Parser key "{self.dest}":\n{indent_text(str(ex))}') from ex
         except (TypeError,) + get_loader_exceptions() as ex:
             str_ex = indent_text(f"- {ex}")
             raise TypeError(f'Parser key "{self.dest}":\nUnable to load config {value!r}\n{str_ex}') from ex

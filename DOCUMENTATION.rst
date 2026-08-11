@@ -2370,6 +2370,14 @@ moved around without needing to modify them. Furthermore, :meth:`save
 <.ArgumentParser.save>` with ``multifile=True`` writes back each sub-config to
 its own file, preserving the original structure.
 
+Dataclass-like types, see :ref:`subclasses-disabled`, also accept a sub-config
+file, the difference being that its content are the fields of the type, without
+``class_path`` and ``init_args``. Note that this only applies when the type is
+not added as an argument group, i.e. when it is part of a larger type, e.g.
+``Optional[SomeDataclass]`` or ``list[SomeDataclass]``. When added as a group,
+the group's own config argument accepts the path, e.g. ``--data=data.yaml``,
+independent of ``sub_configs``.
+
 
 .. _instance-factories:
 
@@ -2674,6 +2682,16 @@ with normal classes) ``dataclasses``, attrs' ``define``, pydantic's
 classes technically support subclassing, subclass support can be enabled as
 described below. Subclass support has been kept disabled for these types by
 default to avoid introducing breaking changes.
+
+A type with subclasses disabled is added as an argument group when it is the
+entire type of an argument, such that each of its init args is an individual
+argument, e.g. ``--data.number``. This is not the case when the type is part of
+a larger type, e.g. ``Optional[FinalClass]`` or ``list[FinalClass]``, since then
+a single argument must accept the entire value. Independent of this, the
+accepted values are the same. A subclass spec is accepted, though only with the
+``class_path`` of the type itself, i.e. ``--data={"class_path": "FinalClass",
+"init_args": {"number": 8}}``. The ``class_path`` of a subclass is not accepted,
+unless subclass support is enabled for the type as described next.
 
 
 .. _enable-disable-subclasses:

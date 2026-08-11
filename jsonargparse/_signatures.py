@@ -455,11 +455,12 @@ class SignatureArguments(LoggerProperty):
                 prefix = f"{name}.init_args."
                 nested_skip = {s[len(prefix) :] for s in skip or [] if s.startswith(prefix)}
                 sub_add_kwargs["skip"] = nested_skip
+            # also_closed since dataclass-like types accept a sub-config when not added as a group
             enable_path = sub_configs and (
-                is_subclass_typehint
+                ActionTypeHint.is_subclass_typehint(annotation, all_subtypes=False, also_closed=True)
                 or is_return_subclass_typehint
                 or is_list_pathlike(annotation)
-                or is_subclass_container_typehint(annotation)
+                or is_subclass_container_typehint(annotation, also_closed=True)
             )
             args = ActionTypeHint.prepare_add_argument(
                 args=args,
@@ -588,6 +589,8 @@ class SignatureArguments(LoggerProperty):
             name = obj.__name__ if nested_key is None else nested_key
             group = self.add_argument_group(strip_title(doc_group), name=name)
             if config_load and nested_key is not None:
+                if config_load_type is None and inspect.isclass(obj):
+                    config_load_type = obj
                 group.add_argument("--" + nested_key, action=_ActionConfigLoad(basetype=config_load_type))
             if inspect.isclass(obj) and nested_key is not None and instantiate:
                 group.dest = nested_key.replace("-", "_")

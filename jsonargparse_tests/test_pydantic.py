@@ -552,6 +552,19 @@ def test_model_argument_subclasses_enabled(parser, subtests, enable_subclasses):
         assert dump == expected
 
 
+@pytest.mark.parametrize("optional", [False, True])
+def test_model_argument_symmetry_subclasses_disabled(parser, optional):
+    parser.add_argument("--cat", type=Optional[Cat] if optional else Cat)
+
+    value = {"class_path": f"{__name__}.Cat", "init_args": {"name": "cc", "meows": 2}}
+    cfg = parser.parse_args([f"--cat={json.dumps(value)}"])
+    assert cfg.cat == Namespace(name="cc", meows=2)
+
+    value["class_path"] = f"{__name__}.SpecialCat"
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for Cat"):
+        parser.parse_args([f"--cat={json.dumps(value)}"])
+
+
 def test_convert_to_dict_closed_to_subclasses():
     converted = convert_to_dict(person)
     assert converted == person_expected_dict

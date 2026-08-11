@@ -456,7 +456,8 @@ class ActionTypeHint(Action):
         return supported
 
     @staticmethod
-    def is_subclass_typehint(typehint, all_subtypes=True, also_lists=False):
+    def is_subclass_typehint(typehint, all_subtypes=True, also_lists=False, also_closed=False):
+        """Whether the type expects a class. also_closed includes types that have subclasses disabled."""
         typehint = typehint_from_action(typehint)
         if typehint is None:
             return False
@@ -465,8 +466,10 @@ class ActionTypeHint(Action):
         if typehint_origin == Union or (also_lists and typehint_origin in sequence_origin_types):
             subtypes = [a for a in typehint.__args__ if a != NoneType]
             test = all if all_subtypes else any
-            k = {"also_lists": also_lists}
+            k = {"also_lists": also_lists, "also_closed": also_closed}
             return test(ActionTypeHint.is_subclass_typehint(s, **k) for s in subtypes)
+        if also_closed:
+            return is_single_subclass_or_closed_type(typehint, typehint_origin)
         return is_single_subclass_type(typehint, typehint_origin)
 
     @staticmethod
@@ -830,7 +833,7 @@ def is_list_pathlike(typehint) -> bool:
     return False
 
 
-def is_subclass_container_typehint(typehint) -> bool:
+def is_subclass_container_typehint(typehint, also_closed: bool = False) -> bool:
     """Whether a container type, e.g. list or dict, has classes as items."""
     typehint = get_unaliased_type(typehint)
     subtypehints = getattr(typehint, "__args__", None)
@@ -838,12 +841,12 @@ def is_subclass_container_typehint(typehint) -> bool:
         return False
     typehint_origin = get_typehint_origin(typehint)
     if typehint_origin == Union:
-        return any(is_subclass_container_typehint(s) for s in subtypehints)
+        return any(is_subclass_container_typehint(s, also_closed) for s in subtypehints)
     if typehint_origin in sequence_or_mapping_origin_types:
         return any(
-            ActionTypeHint.is_subclass_typehint(s, all_subtypes=False)
+            ActionTypeHint.is_subclass_typehint(s, all_subtypes=False, also_closed=also_closed)
             or ActionTypeHint.is_return_subclass_typehint(s)
-            or is_subclass_container_typehint(s)
+            or is_subclass_container_typehint(s, also_closed)
             for s in subtypehints
         )
     return False
@@ -1534,6 +1537,12 @@ def adapt_typehints(
                 return val_class  # importable instance
             if is_protocol(val_class):
                 raise_unexpected_value(f"Expected an instantiatable class, but {val['class_path']} is a protocol")
+            if (
+                is_subclasses_disabled(typehint)
+                and inspect.isclass(val_class)
+                and val_class is not get_generic_origin(typehint)
+            ):
+                raise_unexpected_value(subclasses_disabled_message(typehint, val["class_path"]))
             subclass = True
             if not is_subclass_or_implements_protocol(val_class, typehint):
                 subclass = False
@@ -2115,6 +2124,15 @@ def adapt_class_type(
     return _subclasses_disabled_mark(value, typehint)
 
 
+def subclasses_disabled_message(typehint, class_path) -> str:
+    name = getattr(typehint, "__name__", str(typehint))
+    return (
+        f"Subclasses are disabled for {name}, thus {class_path!r} is not accepted as class_path. "
+        f"Only the class_path of {name} itself is accepted, or its init args given directly. "
+        f"To accept subclasses use set_parsing_settings(subclasses_enabled=[{name}])."
+    )
+
+
 def _subclasses_disabled_mark(value, typehint):
     if is_subclasses_disabled(typehint) and value.class_path == get_import_path(typehint):
         value[subclasses_disabled_meta_key] = True
@@ -2135,7 +2153,10 @@ def subclasses_disabled_remove_class_path(value):
             value[key] = tuple(subclasses_disabled_remove_class_path(item) for item in val)
 
     if value.pop(subclasses_disabled_meta_key, False):
-        return Namespace({**value.get("init_args", {}), **value.get("dict_kwargs", {})})
+        init_args = Namespace({**value.get("init_args", {}), **value.get("dict_kwargs", {})})
+        if "__path__" in value:  # the value came from a sub-config file
+            init_args["__path__"] = value["__path__"]
+        return init_args
     return value
 
 
