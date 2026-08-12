@@ -62,6 +62,14 @@ def test_pydantic_secret_str(parser):
     assert "secret" not in parser.dump(cfg)
 
 
+@skip_if_pydantic_v1_on_v2
+def test_pydantic_secret_str_mask_not_parsed(parser):
+    parser.add_argument("--password", type=pydantic.SecretStr)
+    dumped = parser.dump(parser.parse_args(["--password=secret"]))
+    with pytest.raises(ArgumentError, match="Refusing to parse the mask"):
+        parser.parse_string(dumped)
+
+
 if annotated and pydantic_support > 1:
 
     @pydantic.dataclasses.dataclass(frozen=True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import sys
 from pathlib import Path
@@ -241,6 +242,42 @@ def test_add_class_implemented_with_new(parser):
     parser.add_class_arguments(WithNew, "a")
     cfg = parser.parse_args(["--a.a1=4"])
     assert cfg.a == Namespace(a1=4, a2=2.3)
+
+
+def wrap_new(cls):
+    """Decorator like the ones used to mark a class as experimental or deprecated."""
+    original_new = cls.__new__
+
+    @functools.wraps(original_new)
+    def __new__(cls_, /, *args, **kwargs):  # pragma: no cover
+        return original_new(cls_)
+
+    cls.__new__ = staticmethod(__new__)
+    return cls
+
+
+@wrap_new
+class WithWrappedNew:
+    def __init__(self, w1: int = 1, w2: float = 2.3):
+        pass  # pragma: no cover
+
+
+@wrap_new
+class WithWrappedNewSubclass(WithWrappedNew):
+    def __init__(self, w3: str = "x", **kwargs):
+        super().__init__(**kwargs)  # pragma: no cover
+
+
+def test_add_class_decorator_wrapped_new(parser):
+    parser.add_class_arguments(WithWrappedNew, "a")
+    cfg = parser.parse_args(["--a.w1=4"])
+    assert cfg.a == Namespace(w1=4, w2=2.3)
+
+
+def test_add_class_decorator_wrapped_new_subclass(parser):
+    parser.add_class_arguments(WithWrappedNewSubclass, "a")
+    cfg = parser.parse_args(["--a.w3=y"])
+    assert cfg.a == Namespace(w3="y", w1=1, w2=2.3)
 
 
 class RequiredParams:

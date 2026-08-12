@@ -466,6 +466,14 @@ def test_secret_str_parsing(parser):
     assert "secret" not in parser.dump(cfg)
 
 
+def test_secret_str_mask_not_parsed(parser):
+    parser.add_argument("--password", type=SecretStr)
+    cfg = parser.parse_args(["--password=secret"])
+    dumped = parser.dump(cfg)
+    with pytest.raises(ArgumentError, match="Refusing to parse the mask"):
+        parser.parse_string(dumped)
+
+
 def test_top_level_compatibility_not_in_public_api():
     import jsonargparse as ja
 

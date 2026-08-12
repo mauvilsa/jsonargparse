@@ -459,10 +459,13 @@ def group_parameters(params_list: list[ParamList]) -> ParamList:
 
 def has_dunder_new_method(cls, attr_name):
     classes = inspect.getmro(get_generic_origin(cls))[1:]
+    # unwrapped, since a decorator that wraps __new__, e.g. to mark a class as
+    # deprecated or experimental, doesn't change the parameters that it accepts
+    dunder_new = inspect.unwrap(cls.__new__)
     return (
         attr_name == "__init__"
-        and cls.__new__ is not object.__new__
-        and not any(cls.__new__ is c.__new__ for c in classes)
+        and dunder_new is not object.__new__
+        and not any(dunder_new is inspect.unwrap(c.__new__) for c in classes)
     )
 
 

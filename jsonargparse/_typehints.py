@@ -345,6 +345,7 @@ class ActionTypeHint(Action):
             ValueError: If a parameter is invalid.
         """
         if typehint is not None:
+            typehint = replace_type_vars(typehint)
             if not self.is_supported_typehint(typehint, full=True):
                 raise ValueError(f"Unsupported type hint {typehint}.")
             if get_typehint_origin(typehint) == Union:
@@ -358,7 +359,7 @@ class ActionTypeHint(Action):
                     kwargs["logger"].debug(f"Discarding unsupported subtypes {discard} from {typehint}")
                     subtypes = tuple(t for t, s in zip(typehint.__args__, subtype_supported) if s)
                     typehint = Union[subtypes]
-            self._typehint = sort_unions_in_typehint(replace_type_vars_in_type_subtype(typehint))
+            self._typehint = sort_unions_in_typehint(typehint)
             self._enable_path = False if is_pathlike(typehint) else enable_path
         elif "_typehint" not in kwargs:
             raise ValueError("Expected typehint keyword argument.")
@@ -1627,13 +1628,44 @@ def get_protocol_method_signature(class_type, name, logger):
     return (params[1:] if skip_self else params), get_return_type(method, logger)
 
 
+def type_var_wildcard_matches(proto_annotation, value_annotation) -> bool:
+    """Whether two types are equal, a TypeVar in either of them matching any type.
+
+    A generic protocol is written in terms of its own TypeVars and an
+    implementation in terms of its own or of concrete types, so a TypeVar is
+    compared as a wildcard, like a static type checker does. Otherwise a generic
+    protocol could never be implemented.
+    """
+    if isinstance(proto_annotation, TypeVar) or isinstance(value_annotation, TypeVar):
+        return True
+    if proto_annotation == value_annotation:
+        return True
+    proto_origin = get_typehint_origin(proto_annotation)
+    if proto_origin is None or proto_origin != get_typehint_origin(value_annotation):
+        return False
+    proto_args = getattr(proto_annotation, "__args__", None)
+    value_args = getattr(value_annotation, "__args__", None)
+    if not isinstance(proto_args, tuple) or not isinstance(value_args, tuple) or len(proto_args) != len(value_args):
+        return False
+    if proto_origin is Union:
+        # the subtypes of a union are unordered, so each one must match some unmatched other one
+        unmatched = list(value_args)
+        for proto_arg in proto_args:
+            match = next((v for v in unmatched if type_var_wildcard_matches(proto_arg, v)), None)
+            if match is None:
+                return False
+            unmatched.remove(match)
+        return True
+    return all(type_var_wildcard_matches(p, v) for p, v in zip(proto_args, value_args))
+
+
 def protocol_type_matches(proto_annotation, value_annotation, value_any_accepted: bool = False) -> bool:
     """Whether a type in an implementation is accepted for the corresponding type in a protocol."""
     if proto_annotation is inspect.Parameter.empty or proto_annotation == Any:
         return True
     if value_any_accepted and (value_annotation is inspect.Parameter.empty or value_annotation == Any):
         return True
-    return proto_annotation == value_annotation
+    return type_var_wildcard_matches(proto_annotation, value_annotation)
 
 
 def protocol_var_param_matches(proto_param, value_var_param) -> bool:
@@ -2226,14 +2258,42 @@ def union_subtype_sort_key(subtype) -> int:
     return 0
 
 
-def replace_type_vars_in_type_subtype(typehint):
-    """Returns the type hint with the TypeVar subtype of all its type[...] replaced, including nested ones.
+def get_type_var_default(type_var):
+    """Returns the PEP 696 default of a TypeVar, or None when it has none."""
+    if getattr(type_var, "has_default", lambda: False)():
+        default = type_var.__default__
+        if default is not None:
+            return default
+    return None
+
+
+def replace_type_var(type_var, in_type_subtype: bool):
+    """Returns the type that a TypeVar stands for, or the TypeVar when there is none.
+
+    What a TypeVar stands for is given by its PEP 696 default, its constraints
+    or its bound. As the subtype of a ``type[...]`` it additionally stands for
+    ``object``, i.e. any class, since there a TypeVar is always a class.
+    """
+    default = get_type_var_default(type_var)
+    if default is not None:
+        return default
+    if type_var.__constraints__:
+        return Union[type_var.__constraints__]
+    if type_var.__bound__:
+        return type_var.__bound__
+    return object if in_type_subtype else type_var
+
+
+def replace_type_vars(typehint):
+    """Returns the type hint with all its TypeVars replaced, including nested ones.
 
     Done when an argument is added, since a TypeVar can't be used to validate.
-    What a TypeVar stands for is given by its bound or its constraints, and
-    ``object`` when it has neither, i.e. any class. The help then shows what is
-    accepted, e.g. ``type[object]`` instead of ``type[~T]``.
+    The help then shows what is accepted, e.g. ``type[object]`` instead of
+    ``type[~T]``. A TypeVar that stands for nothing is left as is, so that it
+    becomes an ``Unvalidated<...>``.
     """
+    if isinstance(typehint, TypeVar):
+        return replace_type_var(typehint, in_type_subtype=False)
     if get_typehint_origin(typehint) in literal_types:
         return typehint  # the args of a Literal are values, not types
     args = getattr(typehint, "__args__", None)
@@ -2242,12 +2302,9 @@ def replace_type_vars_in_type_subtype(typehint):
     if not isinstance(args, tuple) or not args:
         return typehint
     if get_typehint_origin(typehint) in {Type, type} and isinstance(args[0], TypeVar):
-        if args[0].__constraints__:
-            new_args = (Union[args[0].__constraints__],)
-        else:
-            new_args = (args[0].__bound__ or object,)
+        new_args = (replace_type_var(args[0], in_type_subtype=True),)
     else:
-        new_args = tuple(replace_type_vars_in_type_subtype(a) for a in args)
+        new_args = tuple(replace_type_vars(a) for a in args)
         if all(new is old for new, old in zip(new_args, args)):
             return typehint
     return rebuild_typehint_args(typehint, new_args)

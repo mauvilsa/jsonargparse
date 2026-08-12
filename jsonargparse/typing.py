@@ -648,6 +648,20 @@ def range_deserializer(value):
 register_type(range, serializer=range_serializer, deserializer=range_deserializer)
 
 
+secret_str_mask = "**********"
+
+
+def fail_if_secret_str_mask(value) -> None:
+    """Fails when the value is the mask that secrets serialize to.
+
+    Dumps of secrets don't include the actual value, so parsing back a dump
+    would silently give the mask as the secret. Better to fail so that the mask
+    is replaced by the real secret.
+    """
+    if value == secret_str_mask:
+        raise ValueError(f"Refusing to parse the mask {secret_str_mask!r} as a secret, give the actual value instead")
+
+
 class SecretStr:
     """Holds a secret string that serializes to ``**********``."""
 
@@ -655,7 +669,7 @@ class SecretStr:
         self._value = value
 
     def __str__(self) -> str:
-        return "**********"
+        return secret_str_mask
 
     def __len__(self) -> int:
         return len(self._value)
@@ -671,8 +685,20 @@ class SecretStr:
         return self._value
 
 
-register_type(SecretStr)
-register_type_on_first_use("pydantic.SecretStr")
+def secret_str_deserializer(value) -> SecretStr:
+    fail_if_secret_str_mask(value)
+    return SecretStr(value)
+
+
+def pydantic_secret_str_deserializer(value):
+    from pydantic import SecretStr as PydanticSecretStr
+
+    fail_if_secret_str_mask(value)
+    return PydanticSecretStr(value)
+
+
+register_type(SecretStr, deserializer=secret_str_deserializer)
+register_type_on_first_use("pydantic.SecretStr", deserializer=pydantic_secret_str_deserializer)
 
 
 def pydantic_deserializer(class_type):

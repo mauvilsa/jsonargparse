@@ -584,7 +584,10 @@ Some notes about this support are:
 
 - ``pydantic.SecretStr`` type is supported with the expected behavior of not
   serializing the actual value. There is also ``jsonargparse.typing.SecretStr``
-  to support the same behavior without the need of a dependency.
+  to support the same behavior without the need of a dependency. Since dumps
+  only have the mask ``**********`` instead of the actual secret, parsing this
+  mask as a secret fails, so that a config bootstrapped with ``--print_config``
+  is not used with the mask as the secret.
 
 - ``pydantic.FilePath`` and ``pydantic.DirectoryPath`` types are supported,
   running the corresponding pydantic validation when parsing. Arguments with
@@ -1186,6 +1189,12 @@ Parsing complex-valued points would be:
     >>> parser.add_argument("--point", type=Point2d[complex])  # doctest: +IGNORE_RESULT
     >>> parser.parse_args(["--point.x=(1+2j)"]).point
     Namespace(x=(1+2j), y=0.0)
+
+A ``TypeVar`` can't be used to validate, so when it is used as a type, e.g.
+``options: Optional[OptionsT] = None``, it is replaced by what it stands for:
+its PEP 696 ``default``, its constraints or its bound, in that order. When it
+has none of these, the value is accepted without validation and the help shows
+it as ``Unvalidated<...>``.
 
 
 .. _callable-type:

@@ -354,6 +354,62 @@ def test_type_typehint_constrained_typevar_arg(parser):
     assert f"(type: {expected}, default: null)" in get_parser_help(parser)
 
 
+# typevar as the type itself tests
+
+
+class TypeVarOptions(TypedDict, total=False):
+    temperature: float
+
+
+BoundTypedDictVar = TypeVar("BoundTypedDictVar", bound=TypeVarOptions)
+
+
+def test_typevar_bound_argument(parser):
+    parser.add_argument("--options", type=Optional[BoundTypedDictVar])
+    assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
+    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    assert f"(type: {type_to_str(Optional[TypeVarOptions])}, default: null)" in get_parser_help(parser)
+
+
+def function_typevar_bound(options: Optional[BoundTypedDictVar] = None):
+    pass  # pragma: no cover
+
+
+def test_typevar_bound_signature_parameter(parser):
+    parser.add_function_arguments(function_typevar_bound, "x")
+    assert parser.parse_args(['--x.options={"temperature": 0.5}']).x.options == {"temperature": 0.5}
+    pytest.raises(ArgumentError, lambda: parser.parse_args(['--x.options={"unknown": 1}']))
+    assert "Unvalidated" not in get_parser_help(parser)
+
+
+def test_typevar_constrained_argument(parser):
+    parser.add_argument("--val", type=ConstrainedVar)
+    assert parser.parse_args(["--val=1"]).val == 1
+    assert parser.parse_args(["--val=a"]).val == "a"
+    assert f"(type: {type_to_str(Union[int, str])}, default: null)" in get_parser_help(parser)
+
+
+def function_typevar_unbound(val: Optional[UnboundVar] = None):
+    pass  # pragma: no cover
+
+
+def test_typevar_unbound_signature_parameter(parser):
+    parser.add_function_arguments(function_typevar_unbound, "x")
+    assert parser.parse_args(['--x.val={"any": 1}']).x.val == {"any": 1}
+    assert "Unvalidated<UnboundVar>" in get_parser_help(parser)
+
+
+@pytest.mark.skipif(not typing_extensions_support, reason="typing_extensions package is required")
+def test_typevar_default_argument(parser):
+    from typing_extensions import TypeVar as TypeVarExt
+
+    default_var = TypeVarExt("default_var", bound=Mapping[str, Any], default=TypeVarOptions)
+    parser.add_argument("--options", type=Optional[default_var])
+    assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
+    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    assert f"(type: {type_to_str(Optional[TypeVarOptions])}, default: null)" in get_parser_help(parser)
+
+
 # enum tests
 
 

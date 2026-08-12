@@ -190,7 +190,7 @@ legacy_tox_ini = """
 [tox]
 envlist = py{310,311,312,313,314}-{all-extras,no-extras,argparse},omegaconf,pydantic-v1,without-pyyaml,without-future-annotations
 labels =
-    coverage = py{310,311,312,313,314}-{all-extras,no-extras},pydantic-v1,without-pyyaml,without-future-annotations
+    coverage = py{310,311,312,313,314}-{all-extras,no-extras},omegaconf,pydantic-v1,without-pyyaml,without-future-annotations
 skip_missing_interpreters = true
 
 [testenv]

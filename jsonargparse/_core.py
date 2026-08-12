@@ -95,6 +95,7 @@ from ._subcommands import (
 from ._typehints import (
     ActionTypeHint,
     is_subclass_spec,
+    replace_type_vars,
     strip_required_typehint,
     subclasses_disabled_remove_class_path,
 )
@@ -154,6 +155,7 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
             else:
                 is_required = bool(kwargs.get("required", False))
             kwargs["type"] = strip_required_typehint(kwargs["type"], is_required, f'"{arg_name}"')
+            kwargs["type"] = replace_type_vars(kwargs["type"])
             if is_subclasses_disabled(kwargs["type"]):
                 nested_key = args[0].lstrip("-")
                 self.add_class_arguments(kwargs.pop("type"), nested_key, sub_configs=sub_configs, **kwargs)

@@ -4,6 +4,7 @@ import inspect
 import os
 import textwrap
 import warnings
+import weakref
 from argparse import ArgumentError
 from collections import namedtuple
 from collections.abc import Callable, Iterator
@@ -197,7 +198,11 @@ def import_object(name: str):
             raise ex
         name_module, name_object1 = name_module.rsplit(".", 1)
         parent = getattr(__import__(name_module, fromlist=[name_object1]), name_object1)
-    return getattr(parent, name_object)
+    obj = getattr(parent, name_object)
+    if not (inspect.isclass(obj) or inspect.ismodule(obj)):
+        # an instance doesn't know where it was imported from, so it is remembered to make it serializable
+        resolved_import_paths.add(obj, name)
+    return obj
 
 
 unresolvable_import_paths: dict[Any, str] = {}
@@ -226,8 +231,42 @@ def get_module_var_path(module_path: str, value: Any) -> str | None:
     return None
 
 
+class ResolvedImportPaths:
+    """Remembers the import path that instances were resolved from.
+
+    The import path of an instance can't be derived from the object itself, so
+    without this a value given as an import path to an instance would not be
+    serializable, even though it came from an import path. Entries are keyed by
+    id, weak references being used to discard an entry when its instance is
+    garbage collected, thus avoiding that an id is reused for another object.
+    """
+
+    def __init__(self) -> None:
+        self._paths: dict[int, tuple[Any, str]] = {}
+
+    def add(self, instance: Any, import_path: str) -> None:
+        key = id(instance)
+        try:
+            ref = weakref.ref(instance, lambda _: self._paths.pop(key, None))
+        except TypeError:
+            return  # instance doesn't support weak references
+        self._paths[key] = (ref, import_path)
+
+    def get(self, instance: Any) -> str | None:
+        entry = self._paths.get(id(instance))
+        if entry and entry[0]() is instance:
+            return entry[1]
+        return None
+
+
+resolved_import_paths = ResolvedImportPaths()
+
+
 def get_import_path(value: Any) -> str | None:
     """Returns the shortest dot import path for the given object."""
+    remembered = resolved_import_paths.get(value)
+    if remembered:
+        return remembered
     path = None
     value = get_generic_origin(value)
     if hasattr(value, "__self__") and inspect.isclass(value.__self__) and inspect.ismethod(value):

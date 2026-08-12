@@ -32,6 +32,7 @@ from ._typehints import (
     is_optional,
     is_subclass_container_typehint,
     not_required_types,
+    replace_type_vars,
     replace_unvalidatable_typehints,
     sequence_origin_types,
     strip_required_typehint,
@@ -350,7 +351,8 @@ class SignatureArguments(LoggerProperty):
             return
         unvalidated: list = []
         try:
-            register_pydantic_types(annotation)  # before the check of what can be validated
+            annotation = replace_type_vars(annotation)  # before the check of what can be validated
+            register_pydantic_types(annotation)
             unvalidatable_replaced = replace_unvalidatable_typehints(annotation, unvalidated)
         except Exception as ex:
             raise ValueError(f'Unable to add parameter "{name}" from "{src}": {ex}') from ex

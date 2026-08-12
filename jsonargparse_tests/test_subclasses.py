@@ -7,9 +7,24 @@ import warnings
 from calendar import Calendar
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import partial
 from gzip import GzipFile
 from pathlib import Path
-from typing import Any, Dict, Generic, Iterable, List, Mapping, Optional, Protocol, Type, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 from unittest.mock import patch
 from uuid import NAMESPACE_OID
 
@@ -440,6 +455,37 @@ def test_importable_instances(parser):
     assert cfg.dtype is float32
     dump = json_or_yaml_load(parser.dump(cfg))
     assert dump == {"dtype": f"{__name__}.float32"}
+
+
+calendar_instance = Calendar(firstweekday=3)
+
+
+def test_importable_instance_class_from_another_module(parser):
+    parser.add_argument("--cal", type=Calendar)
+    cfg = parser.parse_args([f"--cal={__name__}.calendar_instance"])
+    assert cfg.cal is calendar_instance
+    dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump == {"cal": f"{__name__}.calendar_instance"}
+    assert parser.parse_string(parser.dump(cfg)).cal is calendar_instance
+
+
+def test_importable_instances_in_list(parser):
+    parser.add_argument("--cals", type=Optional[List[Calendar]])
+    cfg = parser.parse_args([f'--cals=["{__name__}.calendar_instance"]'])
+    assert cfg.cals == [calendar_instance]
+    dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump == {"cals": [f"{__name__}.calendar_instance"]}
+
+
+callable_instance = partial(sorted, reverse=True)
+
+
+def test_importable_callable_instance_dump(parser):
+    parser.add_argument("--fn", type=Optional[Callable])
+    cfg = parser.parse_args([f"--fn={__name__}.callable_instance"])
+    assert cfg.fn is callable_instance
+    dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump == {"fn": f"{__name__}.callable_instance"}
 
 
 # custom instantiation tests
@@ -1878,6 +1924,72 @@ class ExactTypesUnannotatedReturn:
 )
 def test_implements_protocol_type_hints(expected, protocol, value):
     assert implements_protocol(value, protocol) is expected
+
+
+ProtoVar = TypeVar("ProtoVar")
+ProtoVarContra = TypeVar("ProtoVarContra", contravariant=True)
+ImplVar = TypeVar("ImplVar")
+
+
+class GenericInterface(Protocol[ProtoVar]):
+    def run(self, x: Optional[ProtoVar] = None) -> List[ProtoVar]: ...
+
+
+class GenericImplementsOwnTypeVar:
+    def run(self, x: Optional[ImplVar] = None) -> List[ImplVar]:
+        return []  # pragma: no cover
+
+
+class GenericImplementsConcrete:
+    def run(self, x: Optional[int] = None) -> List[int]:
+        return []  # pragma: no cover
+
+
+class GenericNotImplements:
+    def run(self, x: Optional[int] = None) -> int:
+        return 0  # pragma: no cover
+
+
+class GenericNotAcceptsNone:
+    def run(self, x: Union[int, str] = 0) -> List[int]:
+        return []  # pragma: no cover
+
+
+class GenericPairInterface(Protocol[ProtoVarContra]):
+    def run(self, x: Tuple[ProtoVarContra, ProtoVarContra]) -> None: ...
+
+
+class GenericPairImplements:
+    def run(self, x: Tuple[str, str]) -> None: ...
+
+
+class GenericPairNotImplements:
+    def run(self, x: Tuple[int, int, int]) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, GenericInterface, GenericImplementsOwnTypeVar),
+        (True, GenericInterface, GenericImplementsConcrete),
+        (False, GenericInterface, GenericNotImplements),
+        (False, GenericInterface, GenericNotAcceptsNone),
+        (True, GenericPairInterface, GenericPairImplements),
+        (False, GenericPairInterface, GenericPairNotImplements),
+    ],
+)
+def test_implements_generic_protocol(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+
+
+def test_parse_implements_generic_protocol(parser):
+    parser.add_argument("--cls", type=GenericInterface)
+    cfg = parser.parse_args([f"--cls={__name__}.GenericImplementsOwnTypeVar"])
+    assert cfg.cls.class_path == f"{__name__}.GenericImplementsOwnTypeVar"
+    init = parser.instantiate(cfg)
+    assert isinstance(init.cls, GenericImplementsOwnTypeVar)
+    with pytest.raises(ArgumentError, match="does not implement protocol"):
+        parser.parse_args([f"--cls={__name__}.GenericNotImplements"])
 
 
 class MultipleMethodsInterface(Protocol):

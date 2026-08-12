@@ -24,8 +24,8 @@ Added
   e.g. ``dict[str, Any]``. For dicts the spec is only validated, since the value
   is kept as a dict. When disabled (the default), a debug log now informs about
   the ignored invalid subclass spec (`#938
-  <https://github.com/mauvilsa/jsonargparse/pull/938>`__, `#951
-  <https://github.com/mauvilsa/jsonargparse/pull/951>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/938>`__, `#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
 - Items of a list of classes and values of a dict of classes can now be given as
   paths to sub-config files, instead of this only being supported for the value
   of an entire argument (`#940
@@ -51,6 +51,10 @@ Added
 - ``shtab`` completion scripts now include the fields of a dataclass-like type
   that is not added as a group, e.g. ``Optional[SomeDataclass]`` (`#952
   <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
+- A ``TypeVar`` used as the type itself, i.e. not only as the subtype of a
+  ``type[...]``, is now replaced by what it stands for: its PEP 696 ``default``,
+  its constraints or its bound. Previously the value was accepted without any
+  validation (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
 
 Fixed
 ^^^^^
@@ -127,6 +131,25 @@ Fixed
   argument of a subcommand, e.g. ``APP_SUB__DATA='{"p1": 2}'`` failing with
   ``Not a valid subclass of ...`` (`#952
   <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
+- ``dump``, and thus ``--print_config``, not being able to serialize a value
+  that was given as an import path to an instance, unless the instance happened
+  to be defined in the module of its class. Instead of the import path it wrote
+  a message saying that the instance was not serializable, making the dump not
+  round-trippable. Now the import path that a value was resolved from is
+  remembered and dumped back (`#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+- Secrets round-tripping through ``--print_config`` as the mask ``**********``,
+  silently making the mask the actual secret. Now parsing the mask as a
+  ``SecretStr``, both jsonargparse's and pydantic's, fails (`#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+- A generic ``Protocol`` never being implementable, since the ``TypeVar`` of the
+  protocol and the type in the implementation could never be equal. Now a
+  ``TypeVar`` in either of them matches any type, as static type checkers do
+  (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+- Classes having no parameters at all when a decorator wraps ``__new__``, e.g.
+  decorators that mark a class as deprecated or experimental. The parameters
+  were resolved from the wrapper instead of from ``__init__`` (`#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
 
 Changed
 ^^^^^^^
