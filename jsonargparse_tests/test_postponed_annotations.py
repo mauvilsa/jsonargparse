@@ -388,7 +388,7 @@ def test_unresolvable_annotation_help(parser):
     if sys.version_info < (3, 14):
         optional = "Optional[Unvalidated<MisspelledType>]"
     else:
-        optional = "None | Unvalidated<MisspelledType>"
+        optional = "null | Unvalidated<MisspelledType>"
     assert f"--fn.typo TYPO (type: {optional}, default: null)" in help_str
 
 

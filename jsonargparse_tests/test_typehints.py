@@ -17,6 +17,7 @@ from textwrap import dedent
 from types import GenericAlias, MappingProxyType, ModuleType, UnionType
 from typing import (
     AbstractSet,
+    Annotated,
     Any,
     Callable,
     Collection,
@@ -1697,9 +1698,9 @@ unvalidated_type = UnvalidatedType("some.SomeType")
         # object last, since it accepts the import path of any class
         (Union[object, int], "Union[int, object]", "int | object"),
         # None second to last, so that Optional keeps its form
-        (Optional[str], "Optional[str]", "str | None"),
-        (Optional[int], "Optional[int]", "int | None"),
-        (Union[Any, None], "Optional[Any]", "None | Any"),
+        (Optional[str], "Optional[str]", "str | null"),
+        (Optional[int], "Optional[int]", "int | null"),
+        (Union[Any, None], "Optional[Any]", "null | Any"),
         # relative order otherwise kept
         (Union[str, int], "Union[str, int]", "str | int"),
         (Union[float, int], "Union[float, int]", "float | int"),
@@ -1707,7 +1708,7 @@ unvalidated_type = UnvalidatedType("some.SomeType")
         (Union[List[int], Dict[str, int]], "Union[List[int], Dict[str, int]]", "List[int] | Dict[str, int]"),
         # nested unions also reordered
         (Dict[str, Union[Any, int]], "Dict[str, Union[int, Any]]", "Dict[str, int | Any]"),
-        (Optional[List[Union[Any, bool]]], "Optional[List[Union[bool, Any]]]", "List[bool | Any] | None"),
+        (Optional[List[Union[Any, bool]]], "Optional[List[Union[bool, Any]]]", "List[bool | Any] | null"),
         (
             Tuple[Union[Any, int], Union[object, int]],
             "Tuple[Union[int, Any], Union[int, object]]",
@@ -1729,8 +1730,8 @@ def test_union_subtypes_sorted_on_add_argument(parser, typehint, expected, expec
     ["typehint", "expected"],
     [
         (object | int, "int | object"),
-        (int | None, "int | None"),
-        (object | int | None, "int | object | None"),
+        (int | None, "int | null"),
+        (object | int | None, "int | object | null"),
         (list[object | int], "list[int | object]"),
     ],
     ids=str,
@@ -2588,7 +2589,7 @@ def test_unsupported_type_not_required_added(parser):
     if sys.version_info < (3, 14):
         optional = "Optional[Unvalidated<UnsupportedVar>]"
     else:
-        optional = "None | Unvalidated<UnsupportedVar>"
+        optional = "null | Unvalidated<UnsupportedVar>"
     assert f"--fn.p1 P1 (type: {optional}, default: null)" in help_str
 
 
@@ -2635,6 +2636,67 @@ def test_namespace_signature_parameter_fails(parser):
     # deliberate user facing error, not turned into an unvalidated type
     with pytest.raises(ValueError, match="Namespace .* not supported as a type"):
         parser.add_function_arguments(function_namespace_parameter, "fn")
+
+
+# type_to_str tests
+
+
+class Lt:
+    def __init__(self, lt):
+        self.lt = lt
+
+    def __repr__(self):
+        return f"Lt(lt={self.lt})"
+
+
+@pytest.mark.parametrize(
+    ["typehint", "expected", "expected_py314"],
+    [
+        (int, "int", None),
+        (date, "<class 'date'>", None),
+        (Optional[date], "Optional[date]", "date | null"),
+        (date | None, "date | null", None),
+        (Optional[Path_fr], "Optional[Path_fr]", "Path_fr | null"),
+        (List[Optional[int]], "List[Optional[int]]", "List[int | null]"),
+        (list[int | None], "list[int | null]", None),
+        (Dict[str, List[Optional[date]]], "Dict[str, List[Optional[date]]]", "Dict[str, List[date | null]]"),
+        (Tuple[int, ...], "Tuple[int, ...]", None),
+        (Callable[[int], date], "Callable[[int], date]", None),
+        (Type[date], "Type[date]", None),
+        (type[date], "type[date]", None),
+        (Union[int, str], "Union[int, str]", "int | str"),
+        (Union[int, str, None], "Union[int, str, null]", "int | str | null"),
+        # dotted values inside literals must not be mangled
+        (
+            Literal["significant", "4.5", "2.5", "1.0", "all"],
+            "Literal['significant', '4.5', '2.5', '1.0', 'all']",
+            None,
+        ),
+        (Literal["a.b.c", 4.5], "Literal['a.b.c', 4.5]", None),
+        (Literal[1, True, None], "Literal[1, True, null]", None),
+        (Optional[Literal["1.0"]], "Optional[Literal['1.0']]", "Literal['1.0'] | null"),
+        (List[Literal["a.b"]], "List[Literal['a.b']]", None),
+        # float constraints in annotated metadata must not be mangled
+        (Annotated[float, Lt(lt=0.9)], "Annotated[float, Lt(lt=0.9)]", None),
+        (Annotated[float, Lt(lt=10.5)], "Annotated[float, Lt(lt=10.5)]", None),
+        (
+            Optional[Annotated[float, Lt(lt=0.9)]],
+            "Optional[Annotated[float, Lt(lt=0.9)]]",
+            "Annotated[float, Lt(lt=0.9)] | null",
+        ),
+    ],
+    ids=str,
+)
+def test_type_to_str(typehint, expected, expected_py314):
+    if expected_py314 and sys.version_info >= (3, 14):
+        expected = expected_py314
+    assert type_to_str(typehint) == expected
+
+
+def test_type_to_str_literal_dotted_values_help(parser):
+    parser.add_argument("--level", type=Literal["significant", "4.5", "1.0"], default="all")
+    help_str = get_parser_help(parser)
+    assert "type: Literal['significant', '4.5', '1.0']" in help_str
 
 
 # other tests

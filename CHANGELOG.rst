@@ -150,6 +150,15 @@ Fixed
   decorators that mark a class as deprecated or experimental. The parameters
   were resolved from the wrapper instead of from ``__init__`` (`#953
   <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+- Types shown in the help being mangled when they contain a dot, since the
+  stripping of module names was done with a regex over the entire type string.
+  Affected floats in metadata, e.g. ``Annotated[float, Lt(lt=0.9)]`` shown as
+  ``Lt(lt=9)``, ``Literal`` values that have a dot, e.g. ``Literal['4.5']``
+  shown as ``Literal['5']``, and the ellipsis of ``Tuple[int, ...]``, shown as
+  ``Tuple[int, ]`` (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- ``None`` in a PEP 604 union shown as is in the help, e.g. ``date | None``,
+  instead of as ``date | null``, which is what a config file requires (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^
