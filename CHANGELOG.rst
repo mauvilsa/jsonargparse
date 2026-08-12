@@ -155,9 +155,16 @@ Fixed
   Affected floats in metadata, e.g. ``Annotated[float, Lt(lt=0.9)]`` shown as
   ``Lt(lt=9)``, ``Literal`` values that have a dot, e.g. ``Literal['4.5']``
   shown as ``Literal['5']``, and the ellipsis of ``Tuple[int, ...]``, shown as
-  ``Tuple[int, ]`` (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  ``Tuple[int, ]`` (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 - ``None`` in a PEP 604 union shown as is in the help, e.g. ``date | None``,
   instead of as ``date | null``, which is what a config file requires (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- ``dump`` with ``skip_default=True``, i.e. ``--print_config=skip_default``,
+  failing with ``AttributeError: 'NoneType' object has no attribute 'get'`` when
+  a subclass spec is given for an argument whose default is ``None``, e.g. an
+  ``Optional[SomeClass]`` parameter. Now the ``class_path`` is kept in the dump
+  and only the ``init_args`` that are defaults are removed (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed

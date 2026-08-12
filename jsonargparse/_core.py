@@ -887,8 +887,12 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
                 val = subcfg[key]
                 default = subdefaults[key]
                 class_object_val = None
+                same_class_path = True
                 if is_subclass_spec(val):
+                    if not isinstance(default, dict):
+                        default = {}
                     if val["class_path"] != default.get("class_path"):
+                        same_class_path = False
                         with parser_context(parent_parser=self):
                             parser = ActionTypeHint.get_class_parser(val["class_path"])
                         default = {"init_args": parser.get_defaults().as_dict()}
@@ -896,7 +900,10 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
                     val = val.get("init_args")
                     default = default.get("init_args")
                 if val == default:
-                    del subcfg[key]
+                    if class_object_val is not None and not same_class_path:
+                        class_object_val.pop("init_args", None)
+                    else:
+                        del subcfg[key]
                 elif isinstance(val, dict) and isinstance(default, dict):
                     self._dump_delete_default_entries(val, default)
                     if class_object_val and class_object_val.get("init_args") == {}:

@@ -2215,6 +2215,25 @@ def test_subclass_print_config(parser):
     assert "Option 'invalid' is not accepted" in err
 
 
+class PrintConfigOptional:
+    def __init__(self, sub: Optional[BaseC] = None):
+        pass  # pragma: no cover
+
+
+def test_subclass_print_config_skip_default_optional(parser):
+    parser.add_argument("--config", action="config")
+    parser.add_class_arguments(PrintConfigOptional, "g", sub_configs=True)
+
+    out = get_parse_args_stdout(parser, [f"--g.sub={__name__}.BaseC", "--print_config=skip_default"])
+    assert json_or_yaml_load(out) == {"g": {"sub": {"class_path": f"{__name__}.BaseC"}}}
+
+    out = get_parse_args_stdout(parser, [f"--g.sub={__name__}.BaseC", "--g.sub.p=3", "--print_config=skip_default"])
+    assert json_or_yaml_load(out) == {"g": {"sub": {"class_path": f"{__name__}.BaseC", "init_args": {"p": 3}}}}
+
+    out = get_parse_args_stdout(parser, ["--print_config=skip_default"])
+    assert json_or_yaml_load(out) in ({}, None)
+
+
 class PrintConfigRequired:
     def __init__(self, arg1: float):
         pass  # pragma: no cover
