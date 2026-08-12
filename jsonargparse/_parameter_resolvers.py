@@ -802,12 +802,14 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
 
         params_list = []
         removed_params: set[str] = set()
+        pop_or_get_params: set[str] = set()
         kwargs_value = kwargs_name and values_to_find[kwargs_name]
         kwargs_value_dump = kwargs_value and ast.dump(kwargs_value)
         for node, source in [(v, s) for k, v, s in values_found if k == kwargs_name]:
             if isinstance(node, ast.Call):
                 if ast_is_kwargs_pop_or_get(node, kwargs_value_dump):
                     param = self.get_kwargs_pop_or_get_parameter(node, self.component, self.parent, self.doc_params)
+                    pop_or_get_params.add(param.name)
                     params_list.append([param])
                     continue
                 kwarg = ast_get_call_kwarg_with_value(node, kwargs_value)
@@ -840,6 +842,8 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                     self.log_debug(f"unsupported type of assign: {ast_str(node)}")
 
         params = group_parameters(params_list)
+        # a pop/get from kwargs means the parameter is accepted, even if the value is then given explicitly
+        removed_params -= pop_or_get_params
         params = [p for p in params if p.name not in removed_params]
         return split_args_and_kwargs(params)
 

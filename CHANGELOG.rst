@@ -166,6 +166,10 @@ Fixed
   ``Optional[SomeClass]`` parameter. Now the ``class_path`` is kept in the dump
   and only the ``init_args`` that are defaults are removed (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Parameters popped or gotten from ``**kwargs`` disappearing when the value is
+  then forwarded explicitly as a keyword, e.g. ``x = kwargs.pop("x", None)``
+  followed by ``super().__init__(x=x, **kwargs)`` (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

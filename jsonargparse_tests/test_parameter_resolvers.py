@@ -484,6 +484,35 @@ def function_pop_get_conditional(p1: str, **kw):  # pragma: no cover
         kw.get("p3", "y")
 
 
+class ClassPopParent:  # pragma: no cover
+    def __init__(self, pp1: Optional[list] = None, pp2: int = 0):
+        """
+        Args:
+            pp1: help for pp1
+            pp2: help for pp2
+        """
+
+
+class ClassPopForward(ClassPopParent):  # pragma: no cover
+    def __init__(self, pf1: int = 0, **kwargs):
+        """
+        Args:
+            pf1: help for pf1
+            pp1: help for pp1
+        """
+        pp1 = list(kwargs.pop("pp1", None) or [])
+        super().__init__(pp1=pp1, **kwargs)
+
+
+def function_pop_and_forward(**kwargs):  # pragma: no cover
+    """
+    Args:
+        k1: help for k1
+    """
+    k1 = kwargs.pop("k1", 3)
+    return function_with_kwargs(k1=k1, **kwargs)
+
+
 def function_with_bug(**kws):  # pragma: no cover
     return does_not_exist(**kws)  # noqa: F821
 
@@ -861,6 +890,20 @@ def test_get_params_function_pop_get_conditional():
             2: ["function_pop_get_conditional:10", "function_pop_get_conditional:12"],
         },
     )
+
+
+def test_get_params_class_pop_from_kwargs_and_forward():
+    params = get_params(ClassPopForward)
+    assert_params(params, ["pf1", "pp1", "pp2"])
+    assert params[1].annotation is inspect._empty
+    assert params[1].default is None
+
+
+def test_get_params_function_pop_from_kwargs_and_forward():
+    params = get_params(function_pop_and_forward)
+    assert_params(params, ["k1", "pk1", "k2"])
+    assert params[0].annotation is inspect._empty
+    assert params[0].default == 3
 
 
 def test_get_params_function_module_class():
