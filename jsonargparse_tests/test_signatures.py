@@ -4,7 +4,7 @@ import functools
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypedDict, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -562,6 +562,51 @@ def test_add_class_and_action_parser(parser, subparser):
     assert isinstance(init.nested.deep.leaf, LeafClass)
     assert init.nested.deep.leaf.p1 == 2
     assert init.nested.deep.leaf.p2 == "x"
+
+
+class DataTypedDict(TypedDict):
+    """Typed dict short description.
+
+    Args:
+        p1: p1 description
+        p2: p2 description
+    """
+
+    p1: int
+    p2: str
+
+
+class NotTotalTypedDict(TypedDict, total=False):
+    p1: int
+
+
+def test_add_class_typed_dict(parser):
+    added = parser.add_class_arguments(DataTypedDict, "data")
+    assert added == ["data.p1", "data.p2"]
+    cfg = parser.parse_args(["--data.p1=1", "--data.p2=x"])
+    assert cfg.data == Namespace(p1=1, p2="x")
+    assert parser.instantiate(cfg).data == {"p1": 1, "p2": "x"}
+    assert json_or_yaml_load(parser.dump(cfg)) == {"data": {"p1": 1, "p2": "x"}}
+    with pytest.raises(ArgumentError, match="the following arguments are required: data.p1"):
+        parser.parse_args([])
+
+
+def test_add_class_typed_dict_not_total(parser):
+    parser.add_class_arguments(NotTotalTypedDict, "data")
+    cfg = parser.parse_args([])
+    assert "data" not in cfg
+    assert parser.instantiate(cfg).data == {}
+    cfg = parser.parse_args(["--data.p1=2"])
+    assert parser.instantiate(cfg).data == {"p1": 2}
+
+
+@skip_if_docstring_parser_unavailable
+def test_add_class_typed_dict_help(parser):
+    parser.add_class_arguments(DataTypedDict, "data")
+    help_str = get_parser_help(parser)
+    assert "Typed dict short description" in help_str
+    assert "p1 description (required, type: int)" in help_str
+    assert "p2 description (required, type: str)" in help_str
 
 
 # add_method_arguments tests

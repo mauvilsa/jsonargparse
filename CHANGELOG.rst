@@ -55,6 +55,20 @@ Added
   ``type[...]``, is now replaced by what it stands for: its PEP 696 ``default``,
   its constraints or its bound. Previously the value was accepted without any
   validation (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+- Arguments typed as a ``TypedDict`` now have a ``--*.help`` option that shows
+  the keys that are accepted, their types and their descriptions. It receives no
+  value, unless the ``TypedDict`` is in a union with other types that have a
+  help, in which case the value is the name of the typed dict (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- ``add_class_arguments`` now accepts a ``TypedDict``, adding one argument per
+  key, analogous to a dataclass. ``instantiate`` gives the corresponding dict
+  (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Descriptions of ``TypedDict`` keys taken from its docstring are now shown in
+  the help of ``**kwargs: Unpack[SomeTypedDict]`` parameters (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- ``shtab`` completion scripts now include the keys of a ``TypedDict``
+  argument, e.g. ``--data.key``, and the values that these keys accept (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Fixed
 ^^^^^
@@ -173,6 +187,10 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 - Missing deprecation warning for the ``--print_config`` to ``--print_%s``
   change (`#955 <https://github.com/mauvilsa/jsonargparse/pull/955>`__).
+- ``shtab`` completions of ``**kwargs: Unpack[SomeTypedDict]`` parameters
+  showing ``NotRequired[...]`` as the expected type and not completing the
+  values of the keys that are not required (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

@@ -320,7 +320,8 @@ def replace_generic_type_vars(params: ParamList, parent) -> None:
             param.annotation = replace_type_vars(param.annotation)
 
 
-def unpack_typed_dict_kwargs(params: ParamList, kwargs_idx: int, logger=None) -> int:
+def get_typed_dict_params(typed_dict, logger=None, **param_kwargs) -> ParamList:
+    """Parameters that correspond to the keys of a TypedDict."""
     from ._typehints import (
         NotRequired,
         get_typed_dict_annotations,
@@ -328,33 +329,42 @@ def unpack_typed_dict_kwargs(params: ParamList, kwargs_idx: int, logger=None) ->
         not_required_types,
     )
 
+    annotations = get_typed_dict_annotations(typed_dict, logger)
+    required_keys = get_typed_dict_required_keys(typed_dict, annotations)
+    doc_params = parse_docs(typed_dict, None, logger)
+    params = []
+    for name, annotation in annotations.items():
+        if name not in required_keys and get_typehint_origin(annotation) not in not_required_types:
+            # Mark optional keys (e.g. from total=False) as NotRequired so that they
+            # are added as non-required arguments.
+            annotation = NotRequired[annotation]
+        params.append(
+            ParamData(
+                name=name,
+                annotation=annotation,
+                default=inspect._empty,
+                kind=inspect._ParameterKind.KEYWORD_ONLY,
+                doc=doc_params.get(name),
+                **param_kwargs,
+            )
+        )
+    return params
+
+
+def unpack_typed_dict_kwargs(params: ParamList, kwargs_idx: int, logger=None) -> int:
     kwargs = params[kwargs_idx]
     annotation = kwargs.annotation
     if is_unpack_typehint(annotation):
         params.pop(kwargs_idx)
         annotation_args: tuple = getattr(annotation, "__args__", ())
         assert len(annotation_args) == 1, "Unpack requires a single type argument"
-        typed_dict = annotation_args[0]
-        dict_annotations = get_typed_dict_annotations(typed_dict, logger)
-        required_keys = get_typed_dict_required_keys(typed_dict, dict_annotations)
-        new_params = []
-        for nm, annot in dict_annotations.items():
-            if nm not in required_keys and get_typehint_origin(annot) not in not_required_types:
-                # Mark optional keys (e.g. from total=False) as NotRequired so that they
-                # are added as non-required arguments.
-                annot = NotRequired[annot]
-            new_params.append(
-                ParamData(
-                    name=nm,
-                    annotation=annot,
-                    default=inspect._empty,
-                    kind=inspect._ParameterKind.KEYWORD_ONLY,
-                    doc=None,
-                    component=kwargs.component,
-                    parent=kwargs.parent,
-                    origin=kwargs.origin,
-                )
-            )
+        new_params = get_typed_dict_params(
+            annotation_args[0],
+            logger,
+            component=kwargs.component,
+            parent=kwargs.parent,
+            origin=kwargs.origin,
+        )
         # insert in-place
         assert kwargs_idx == len(params), "trailing params should yield a syntax error"
         params.extend(new_params)
@@ -1144,8 +1154,13 @@ def get_signature_parameters(
             the parameters for ``__init__``.
         logger: Useful for debugging. Only logs at ``DEBUG`` level.
     """
-    get_component_and_parent(function_or_class, method_or_property)  # verify input
+    from ._typehints import is_typed_dict
+
     logger = parse_logger(logger, "get_signature_parameters")
+    if method_or_property is None and is_typed_dict(function_or_class):
+        # a typed dict has no signature to inspect, its parameters correspond to its keys
+        return get_typed_dict_params(function_or_class, logger, component=function_or_class)
+    get_component_and_parent(function_or_class, method_or_property)  # verify input
     params = None
     for get_parameters in [
         get_parameters_from_pydantic_or_attrs,

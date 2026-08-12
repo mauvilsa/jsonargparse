@@ -334,12 +334,6 @@ class _ActionConfigLoad(Action):
 class _ActionHelpClassPath(NonParsingAction):
     sub_add_kwargs: dict[str, Any] = {}
 
-    @classmethod
-    def get_help_types(cls, typehint) -> tuple | None:
-        from ._typehints import get_subclass_or_closed_types
-
-        return get_subclass_or_closed_types(typehint=typehint, also_lists=True, callable_return=True)
-
     def __init__(self, typehint=None, **kwargs):
         if typehint is not None:
             self._typehint = typehint
@@ -348,24 +342,33 @@ class _ActionHelpClassPath(NonParsingAction):
             super().__init__(**kwargs)
 
     def update_init_kwargs(self, kwargs):
-        from ._typehints import is_protocol
+        from ._typehints import get_help_types, is_protocol, is_typed_dict
 
         self._typehint = kwargs.pop("_typehint")
-        self._help_types = self.get_help_types(self._typehint)
+        self._help_types = get_help_types(self._typehint)
         assert self._help_types and all(isinstance(b, type) for b in self._help_types)
-        self._single_class = len(self._help_types) == 1 and is_subclasses_disabled(self._help_types[0])
+        typed_dicts = [t for t in self._help_types if is_typed_dict(t)]
+        # a single type means that the help refers to it, so no value is expected
+        single_type = len(self._help_types) == 1 and (is_subclasses_disabled(self._help_types[0]) or bool(typed_dicts))
         self._basename = iter_to_set_str(t.__name__ for t in self._help_types)
 
         if len(self._help_types) == 1:
-            kwargs["nargs"] = 0 if self._single_class else "?"
+            kwargs["nargs"] = 0 if single_type else "?"
 
-        if self._single_class:
+        if single_type:
             msg = ""
         else:
             kwargs["metavar"] = "CLASS_PATH_OR_NAME"
             self._kind = "subclass of"
             if any(is_protocol(b) for b in self._help_types):
                 self._kind = "subclass or implementer of protocol"
+            if typed_dicts:
+                # a typed dict is given by name, since it doesn't accept a class path
+                if len(typed_dicts) == len(self._help_types):
+                    kwargs["metavar"] = "NAME"
+                    self._kind = "typed dict"
+                else:
+                    self._kind = "class or typed dict"
             msg = f"the given {self._kind} "
 
         kwargs["default"] = SUPPRESS
@@ -377,24 +380,31 @@ class _ActionHelpClassPath(NonParsingAction):
             return type(self)(**kwargs)
         return self.print_help(args)
 
+    def resolve_help_type(self, value, option_string):
+        from ._typehints import implements_protocol, is_typed_dict, resolve_class_path_by_name
+
+        if self.nargs == 0 or (self.nargs == "?" and value is None):
+            return self._help_types[0]
+        typed_dict = next((t for t in self._help_types if is_typed_dict(t) and t.__name__ == value), None)
+        if typed_dict:
+            return typed_dict
+        # typed dicts excluded since they don't have subclasses that a class path could refer to
+        class_types = tuple(t for t in self._help_types if not is_typed_dict(t))
+        val_class = None
+        if class_types:
+            try:
+                val_class = import_object(resolve_class_path_by_name(class_types, value))
+            except Exception as ex:
+                raise TypeError(f"{option_string}: {ex}") from ex
+        if not any(is_subclass(val_class, b) or implements_protocol(val_class, b) for b in class_types):
+            raise TypeError(f'{option_string}: "{value}" is not a {self._kind} {self._basename}')
+        return val_class
+
     def print_help(self, call_args):
-        from ._typehints import (
-            adapt_partial_callable_class,
-            implements_protocol,
-            resolve_class_path_by_name,
-        )
+        from ._typehints import adapt_partial_callable_class
 
         parser, _, value, option_string = call_args
-        try:
-            if self.nargs == 0 or (self.nargs == "?" and value is None):
-                val_class = self._help_types[0]
-            else:
-                val_class = import_object(resolve_class_path_by_name(self._help_types, value))
-        except Exception as ex:
-            raise TypeError(f"{option_string}: {ex}") from ex
-
-        if not any(is_subclass(val_class, b) or implements_protocol(val_class, b) for b in self._help_types):
-            raise TypeError(f'{option_string}: Class "{value}" is not a {self._kind} {self._basename}')
+        val_class = self.resolve_help_type(value, option_string)
         dest = re.sub("\\.help$", "", self.dest)
         subparser = type(parser)(description=f"Help for {option_string}={get_import_path(val_class)}")
         val = Namespace(class_path=get_import_path(val_class))

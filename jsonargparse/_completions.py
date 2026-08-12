@@ -27,9 +27,11 @@ from ._typehints import (
     callable_origin_types,
     get_all_subclass_paths,
     get_callable_return_type,
+    get_typed_dict_key_type,
     get_typehint_origin,
     is_single_subclass_or_closed_type,
     is_subclass,
+    is_typed_dict,
     type_to_str,
 )
 from ._util import NoneType, Path, import_object, merge_config, unique
@@ -358,9 +360,11 @@ def get_typehint_choices(typehint, prefix, parser, skip, added_subclasses=None) 
             choices = add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses)
             return choices, True, False
 
-        if is_single_subclass_or_closed_type(typehint, origin) and is_subclasses_disabled(typehint):
-            # a closed type, e.g. a dataclass, only inlined as a group when not in a union,
-            # so its init args need to be added as options for them to be completed
+        if is_typed_dict(typehint) or (
+            is_single_subclass_or_closed_type(typehint, origin) and is_subclasses_disabled(typehint)
+        ):
+            # a dataclass-like type is only inlined as a group when not in a union and a typed
+            # dict never is, so their init args or keys need to be added as options to complete them
             added_subclasses.add(typehint)
             add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses, closed_type=True)
             return [], False, True
@@ -404,7 +408,8 @@ def add_subactions_and_get_subclass_choices(
             params = params[num_skip:]
         for param in params:
             if param.name not in skip:
-                init_args[param.name].append(param.annotation)
+                # the wrappers of typed dict keys only state requiredness, not the type to complete
+                init_args[param.name].append(get_typed_dict_key_type(param.annotation))
                 subclasses[param.name].append(name.rsplit(".", 1)[-1])
 
     if prefix is not None:
@@ -439,6 +444,8 @@ def get_help_class_choices(typehint) -> list[str]:
         for subtype in typehint.__args__:
             if inspect.isclass(subtype):
                 choices.extend(get_help_class_choices(subtype))
+    elif is_typed_dict(typehint):
+        choices = [typehint.__name__]  # typed dicts don't accept a class path, only their name
     else:
         choices = get_all_subclass_paths(typehint)
     return choices

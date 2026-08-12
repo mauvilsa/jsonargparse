@@ -13,7 +13,7 @@ from enum import Enum
 from importlib.util import find_spec
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Any, Callable, Literal, Optional, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +22,7 @@ from jsonargparse import ArgumentError, ArgumentParser, set_parsing_settings
 from jsonargparse._completions import get_shtab_script, norm_name
 from jsonargparse._optionals import pydantic_support
 from jsonargparse._parameter_resolvers import get_signature_parameters
-from jsonargparse._typehints import type_to_str
+from jsonargparse._typehints import Unpack, type_to_str
 from jsonargparse.typing import Path_drw, Path_fr
 from jsonargparse_tests.conftest import capture_logs, get_parse_args_stdout
 
@@ -569,6 +569,78 @@ def test_bash_optional_dataclass_field_types(parser, subtests):
         [
             ("area.latitude", float, "", [], None),
             ("area.radius", float, "5", [], None),
+        ],
+    )
+
+
+class AreaDict(TypedDict):
+    latitude: float
+    longitude: float
+
+
+def test_bash_typed_dict_help_choices(parser):
+    parser.add_argument("--area", type=Union[AreaDict, Base])
+    shtab_script = get_shtab_script(parser, "bash")
+    choices = get_bash_array(shtab_script, "_shtab_tool___area_help_choices")
+    assert choices == ["AreaDict", f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+
+
+class OptionsDict(TypedDict, total=False):
+    verbose: bool
+    mode: AXEnum
+
+
+@pytest.mark.parametrize("options_type", [OptionsDict, Optional[OptionsDict]])
+def test_bash_typed_dict_keys(parser, options_type):
+    parser.add_argument("--opts", type=options_type)
+    shtab_script = get_shtab_script(parser, "bash")
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert {"--opts", "--opts.verbose", "--opts.mode"}.issubset(options)
+
+
+def test_bash_typed_dict_key_types(parser, subtests):
+    parser.add_argument("--opts", type=OptionsDict)
+    assert_bash_typehint_completions(
+        subtests,
+        parser,
+        [
+            ("opts.verbose", bool, "", ["true", "false"], "2/2"),
+            ("opts.mode", AXEnum, "X", ["XY", "XZ"], "2/3"),
+        ],
+    )
+
+
+def test_bash_typed_dict_in_union_key_types(parser, subtests):
+    parser.add_argument("--opts", type=Union[OptionsDict, Base])
+    assert_bash_typehint_completions(
+        subtests,
+        parser,
+        [
+            ("opts.verbose", bool, "", ["true", "false"], "2/2"),
+            ("opts.p1", int, "", [], "Base, SubA, SubB"),
+        ],
+    )
+
+
+if Unpack:
+
+    class UnpackOptionsClass:
+        def __init__(self, **kwargs: Unpack[OptionsDict]):
+            pass  # pragma: no cover
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_bash_unpack_typed_dict_key_types(parser, subtests):
+    parser.add_argument("--cls", type=UnpackOptionsClass)
+    shtab_script = get_shtab_script(parser, "bash")
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert {"--cls", "--cls.verbose", "--cls.mode"}.issubset(options)
+    assert_bash_typehint_completions(
+        subtests,
+        shtab_script,
+        [
+            ("cls.verbose", bool, "", ["true", "false"], "UnpackOptionsClass"),
+            ("cls.mode", AXEnum, "X", ["XY", "XZ"], "UnpackOptionsClass"),
         ],
     )
 

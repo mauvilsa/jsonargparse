@@ -78,6 +78,7 @@ from jsonargparse_tests.conftest import (
     json_or_yaml_dump,
     json_or_yaml_load,
     parser_modes,
+    skip_if_docstring_parser_unavailable,
 )
 
 
@@ -946,6 +947,110 @@ def test_typeddict_with_required_arg(parser):
     ctx.match("Expected a <class 'int'>")
 
 
+# TypedDict --*.help tests
+
+
+class HelpTypedDict(TypedDict):
+    """Data for the help.
+
+    Args:
+        a: the a
+        b: the b
+    """
+
+    a: int
+    b: str
+
+
+class HelpNotTotalTypedDict(TypedDict, total=False):
+    x: float
+
+
+def test_typeddict_help(parser):
+    parser.add_argument("--data", type=HelpTypedDict)
+    help_str = get_parser_help(parser)
+    assert "--data.help" in help_str
+    assert "Show the help for HelpTypedDict and exit" in help_str
+    assert "CLASS_PATH_OR_NAME" not in help_str
+    help_str = get_parse_args_stdout(parser, ["--data.help"])
+    assert f"Help for --data.help={__name__}.HelpTypedDict" in help_str
+    assert "--data.a A" in help_str
+    assert "(required, type: int)" in help_str
+    assert "--data.b B" in help_str
+    assert "(required, type: str)" in help_str
+
+
+@skip_if_docstring_parser_unavailable
+def test_typeddict_help_docstrings(parser):
+    parser.add_argument("--data", type=HelpTypedDict)
+    help_str = get_parse_args_stdout(parser, ["--data.help"])
+    assert "Data for the help:" in help_str
+    assert "the a (required, type: int)" in help_str
+    assert "the b (required, type: str)" in help_str
+
+
+def test_optional_typeddict_help_not_required_keys(parser):
+    parser.add_argument("--data", type=Optional[HelpNotTotalTypedDict])
+    assert "--data.help" in get_parser_help(parser)
+    help_str = get_parse_args_stdout(parser, ["--data.help"])
+    assert f"Help for --data.help={__name__}.HelpNotTotalTypedDict" in help_str
+    assert "--data.x X" in help_str
+    assert "(type: float)" in help_str
+
+
+def test_list_typeddict_help(parser):
+    parser.add_argument("--data", type=List[HelpTypedDict])
+    help_str = get_parse_args_stdout(parser, ["--data.help"])
+    assert f"Help for --data.help={__name__}.HelpTypedDict" in help_str
+    assert "--data.a A" in help_str
+
+
+class HelpTypedDictClass:
+    def __init__(self, data: Optional[HelpTypedDict] = None):
+        pass  # pragma: no cover
+
+
+def test_typeddict_class_parameter_help(parser):
+    parser.add_class_arguments(HelpTypedDictClass, "cls")
+    assert "--cls.data.help" in get_parser_help(parser)
+    help_str = get_parse_args_stdout(parser, ["--cls.data.help"])
+    assert f"Help for --cls.data.help={__name__}.HelpTypedDict" in help_str
+    assert "--cls.data.a A" in help_str
+    assert "--cls.data.b B" in help_str
+
+
+def test_typeddict_union_typeddicts_help(parser):
+    parser.add_argument("--val", type=Union[HelpTypedDict, HelpNotTotalTypedDict])
+    help_str = get_parser_help(parser)
+    assert "--val.help NAME" in help_str
+    assert "Show the help for the given typed dict" in help_str
+    assert "HelpTypedDict" in help_str
+    assert "HelpNotTotalTypedDict" in help_str
+    help_str = get_parse_args_stdout(parser, ["--val.help=HelpNotTotalTypedDict"])
+    assert f"Help for --val.help={__name__}.HelpNotTotalTypedDict" in help_str
+    assert "--val.x X" in help_str
+
+
+def test_typeddict_union_class_help(parser):
+    parser.add_argument("--val", type=Union[HelpTypedDict, BaseC])
+    help_str = get_parser_help(parser)
+    assert "--val.help CLASS_PATH_OR_NAME" in help_str
+    assert "Show the help for the given class or typed dict" in help_str
+    help_str = get_parse_args_stdout(parser, ["--val.help=HelpTypedDict"])
+    assert f"Help for --val.help={__name__}.HelpTypedDict" in help_str
+    assert "--val.a A" in help_str
+    help_str = get_parse_args_stdout(parser, [f"--val.help={__name__}.SubC"])
+    assert f"Help for --val.help={__name__}.SubC" in help_str
+    assert "--val.p P" in help_str
+
+
+def test_typeddict_union_help_unexpected_name(parser):
+    parser.add_argument("--val", type=Union[HelpTypedDict, HelpNotTotalTypedDict])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--val.help=Unexpected"])
+    ctx.match('"Unexpected" is not a typed dict')
+
+
 # type[TypedDict] tests. TypedDicts don't support issubclass, so the check is structural.
 
 
@@ -1405,6 +1510,10 @@ if Unpack:  # and Required and NotRequired
         def __init__(self, **kwargs) -> None:
             super().__init__(**kwargs)  # pragma: no cover
 
+    class UnpackDocumentedClass:
+        def __init__(self, **kwargs: Unpack[HelpTypedDict]) -> None:
+            pass  # pragma: no cover
+
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
 @pytest.mark.parametrize(["init_args"], [({"a": 1},), ({"a": 2, "b": None},), ({"a": 3, "b": 1},)])
@@ -1436,6 +1545,15 @@ def test_unpack_typeddict_wrappers_removed_from_help(parser):
     assert "NotRequired" not in help_str
     assert "(required, type: int)" in help_str
     assert "(type: int)" in help_str
+
+
+@skip_if_docstring_parser_unavailable
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_unpack_typeddict_key_descriptions_in_help(parser):
+    parser.add_class_arguments(UnpackDocumentedClass, "cls")
+    help_str = get_parser_help(parser)
+    assert "the a (required, type: int)" in help_str
+    assert "the b (required, type: str)" in help_str
 
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")

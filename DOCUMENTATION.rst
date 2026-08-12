@@ -531,12 +531,19 @@ Some notes about this support are:
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
   ``OrderedDict``, and ``TypedDict`` are supported but only with ``str`` or
   ``int`` keys. ``Required`` and ``NotRequired`` are also supported for
-  fine-grained specification of required/optional ``TypedDict`` keys.
-  ``Unpack`` is supported with ``TypedDict`` for more precise ``**kwargs``
-  typing as described in PEP `692 <https://peps.python.org/pep-0692/>`__.
-  For more details see :ref:`dict-items`. A ``TypedDict`` can also be used as
-  the argument of ``type``, e.g. ``type[SomeTypedDict]``, in which case the
-  value is an import path to a class. Since ``TypedDict`` classes don't support
+  fine-grained specification of required/optional ``TypedDict`` keys. ``Unpack``
+  is supported with ``TypedDict`` for more precise ``**kwargs`` typing as
+  described in PEP `692 <https://peps.python.org/pep-0692/>`__. For more details
+  see :ref:`dict-items`. The keys that a ``TypedDict`` argument accepts are
+  shown by a ``--*.help`` option, e.g. ``--data.help``. This option receives no
+  value, unless the ``TypedDict`` is in a union with other types that have their
+  own help, in which case the value is the name of the typed dict, e.g.
+  ``--data.help SomeTypedDict``. A ``TypedDict`` is also accepted by
+  :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>`, which adds
+  one argument per key and on :meth:`instantiate <.ArgumentParser.instantiate>`
+  gives the corresponding dict. A ``TypedDict`` can also be used as the argument
+  of ``type``, e.g. ``type[SomeTypedDict]``, in which case the value is an
+  import path to a class. Since ``TypedDict`` classes don't support
   ``issubclass``, the given class is accepted when it is structurally
   compatible, as specified in PEP `589 <https://peps.python.org/pep-0589/>`__,
   i.e. it has all the keys of the expected ``TypedDict``, with the same types
@@ -3382,6 +3389,17 @@ giving as guidance which of the subclasses accepts it. An example would be:
     --cls.param1    --cls.param2
     $ example.py --cls other.module.SubclassA --cls.param2 <TAB><TAB>
     Expected type: int; Accepted by subclasses: SubclassA
+
+Analogously, for dataclass-like types and ``TypedDict``, the fields or keys are
+completed, as well as the values that they accept, e.g.:
+
+.. code-block:: bash
+
+    $ example.py --data.<TAB><TAB>
+    --data.verbose    --data.mode
+    $ example.py --data.verbose <TAB><TAB>
+    Expected type: bool; 2/2 matched choices
+    true  false
 
 argcomplete
 -----------

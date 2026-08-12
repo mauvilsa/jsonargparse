@@ -407,7 +407,7 @@ class ActionTypeHint(Action):
         typehint = kwargs.pop("type")
         if args[0].startswith("--") and ActionTypeHint.supports_append(typehint):
             args = tuple(list(args) + [args[0] + "+"])
-        if get_registered_type(typehint) is None and _ActionHelpClassPath.get_help_types(typehint):
+        if get_registered_type(typehint) is None and get_help_types(typehint):
             help_option = f"--{args[0]}.help" if args[0][0] != "-" else f"{args[0]}.help"
             help_action = container.add_argument(help_option, action=_ActionHelpClassPath(typehint=typehint))
             if sub_add_kwargs:
@@ -1028,6 +1028,10 @@ def resolve_module_annotations(module: str, annotations: dict, global_vars: dict
     return {k: resolve_forward_ref(v, global_vars) for k, v in annotations.items()}
 
 
+def is_typed_dict(typehint) -> bool:
+    return type(typehint) in typed_dict_meta_types
+
+
 def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
     from ._postponed_annotations import get_global_vars, update_module_global_vars
 
@@ -1078,7 +1082,7 @@ def is_typed_dict_subtype(subtype, typed_dict, logger=None) -> bool:
     # TypedDicts don't support issubclass, so as specified in PEP 589 the check is done
     # structurally, i.e. the subtype must have all keys of the typed dict, with the same
     # types and requiredness.
-    if type(subtype) not in typed_dict_meta_types:
+    if not is_typed_dict(subtype):
         return False
     if subtype is typed_dict:
         return True
@@ -1248,7 +1252,7 @@ def adapt_typehints(
             val = import_object(val)
             if typehint in {Type, type}:
                 valid = isinstance(val, type)
-            elif type(subtypehints[0]) in typed_dict_meta_types:
+            elif is_typed_dict(subtypehints[0]):
                 valid = is_typed_dict_subtype(val, subtypehints[0], logger)
             else:
                 valid = is_subclass(val, subtypehints[0])
@@ -1399,7 +1403,7 @@ def adapt_typehints(
                     else:
                         kwargs["prev_val"] = None
                 val[k] = adapt_typehints(v, subtypehints[1], **kwargs)
-        if type(typehint) in typed_dict_meta_types:
+        if is_typed_dict(typehint):
             dict_annotations = get_typed_dict_annotations(typehint, logger)
             required_keys = get_typed_dict_required_keys(typehint, dict_annotations)
             missing_keys = required_keys - val.keys()
@@ -1930,6 +1934,16 @@ def get_subclass_or_closed_types(typehint, also_lists=False, callable_return=Fal
     return types or None
 
 
+def is_single_help_type(typehint, typehint_origin):
+    return is_typed_dict(typehint) or is_single_subclass_or_closed_type(typehint, typehint_origin)
+
+
+def get_help_types(typehint):
+    """Types in a type hint for which a --*.help option shows the accepted arguments."""
+    types = tuple(yield_class_types(typehint, is_single=is_single_help_type, also_lists=True, callable_return=True))
+    return types or None
+
+
 def get_subclass_names(typehint, callable_return=False):
     return tuple(
         t.__name__
@@ -2246,7 +2260,7 @@ def validate_subclass_spec_in_mapping(val, typehint, subtypehints, sub_add_kwarg
     """
     if not get_parsing_setting("validate_subclass_spec_in_any") or not is_subclass_spec(val):
         return
-    if type(typehint) in typed_dict_meta_types:
+    if is_typed_dict(typehint):
         return
     if subtypehints is not None and not (subtypehints[1] == Any or isinstance(subtypehints[1], UnvalidatedType)):
         return
