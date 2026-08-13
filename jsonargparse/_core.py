@@ -900,10 +900,11 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
                     val = val.get("init_args")
                     default = default.get("init_args")
                 if val == default:
-                    if class_object_val is not None and not same_class_path:
-                        class_object_val.pop("init_args", None)
-                    else:
+                    if same_class_path:
                         del subcfg[key]
+                    else:
+                        # only the init_args are defaults, so the class_path is kept
+                        class_object_val.pop("init_args", None)
                 elif isinstance(val, dict) and isinstance(default, dict):
                     self._dump_delete_default_entries(val, default)
                     if class_object_val and class_object_val.get("init_args") == {}:

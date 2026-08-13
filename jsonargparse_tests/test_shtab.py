@@ -323,10 +323,10 @@ def read_from_pty_until(fd, pattern, timeout=10.0):
         if ready:
             try:
                 data = os.read(fd, 65536)
-            except OSError:
+            except OSError:  # pragma: no cover
                 break
             if not data:
-                break
+                break  # pragma: no cover
             out += data
     return out
 
@@ -335,7 +335,7 @@ def read_from_pty_until(fd, pattern, timeout=10.0):
 @pytest.mark.filterwarnings("ignore:.*multi-threaded, use of forkpty.*:DeprecationWarning")
 def test_bash_interactive_no_completions_redraws_prompt(parser, tmp_path):
     if get_bash_major_version() < 4:
-        pytest.skip("test requires bash>=4")
+        pytest.skip("test requires bash>=4")  # pragma: no cover
     import fcntl
     import pty
     import termios

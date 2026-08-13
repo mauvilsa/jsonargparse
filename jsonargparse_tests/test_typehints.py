@@ -2649,11 +2649,18 @@ class Lt:
         return f"Lt(lt={self.lt})"
 
 
+class ConstrainedListValue(list):
+    """Parameterized type that is a class, as created by pydantic v1's conlist, thus not rebuildable from its args."""
+
+    __args__ = (int,)
+
+
 @pytest.mark.parametrize(
     ["typehint", "expected", "expected_py314"],
     [
         (int, "int", None),
         (date, "<class 'date'>", None),
+        (ConstrainedListValue, "<class 'ConstrainedListValue'>", None),
         (Optional[date], "Optional[date]", "date | null"),
         (date | None, "date | null", None),
         (Optional[Path_fr], "Optional[Path_fr]", "Path_fr | null"),

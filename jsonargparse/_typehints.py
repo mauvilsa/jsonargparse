@@ -2439,8 +2439,8 @@ def type_to_str(obj):
         return "ModuleType"
     if obj in type_expression_types:
         return type_expression_types[obj]
-    # in python<=3.10 an Annotated is a subclass of its origin type, so it is excluded here
-    if not hasattr(obj, "__metadata__") and (obj in {bool, tuple} or is_subclass(obj, (int, float, str, Path, Enum))):
+    # is_subclass not used, since in python<3.12 it considers an Annotated a subclass of its origin type
+    if obj in {bool, tuple} or (isinstance(obj, type) and issubclass(obj, (int, float, str, Path, Enum))):
         return obj.__name__
     return typehint_to_str(obj)
 
@@ -2460,48 +2460,43 @@ def typehint_to_str(typehint) -> str:
 
     args = getattr(typehint, "__args__", None)
     if isinstance(args, tuple) and args:
-        subtypes = {}
+        arg_subtypes = {}
         new_args = []
         for num, arg in enumerate(args):
             if arg is NoneType or arg is Ellipsis:
                 new_args.append(arg)
                 continue
             name = f"{type_arg_prefix}{num}"
-            subtypes[name] = subtypehint_to_str(arg)
+            arg_subtypes[name] = subtypehint_to_str(arg)
             new_args.append(type(name, (), {}))
         shallow = replace_typehint_args(typehint, new_args)
         if shallow is not None:
             string = none_type_pattern.sub("null", strip_module_names(str(shallow)))
-            return type_arg_pattern.sub(lambda match: subtypes[match.group()], string)
+            return type_arg_pattern.sub(lambda match: arg_subtypes[match.group()], string)
 
     return none_type_pattern.sub("null", strip_module_names(str(typehint)))
 
 
 def subtypehint_to_str(typehint) -> str:
     if isinstance(typehint, type) and not getattr(typehint, "__args__", None):
-        return strip_module_names(f"{typehint.__module__}.{typehint.__qualname__}")
+        return typehint.__name__  # the str of a class has a <class ...> wrap and the module name
     return typehint_to_str(typehint)
 
 
 def replace_typehint_args(typehint, args):
     """Same type hint but with its subtypes replaced, or None if not possible."""
     if isinstance(typehint, UnionType):
-        union = args[0]
-        for arg in args[1:]:
-            union = union | arg
-        return union
+        return reduce(or_, args)
     if isinstance(typehint, GenericAlias):
         origin = typehint.__origin__
         if origin in callable_origin_types:
             # the input types of a callable are given as a list, e.g. Callable[[int], str]
             return origin[args[0] if args[0] is Ellipsis else list(args[:-1]), args[-1]]
         return GenericAlias(origin, tuple(args))
-    copy_with = getattr(typehint, "copy_with", None)
-    if copy_with is None:
-        return None
     try:
-        return copy_with(tuple(args))
-    except Exception:  # pragma: no cover
+        return typehint.copy_with(tuple(args))
+    except Exception:
+        # no copy_with, e.g. a parameterized type that is a class, or it rejects the given subtypes
         return None
 
 

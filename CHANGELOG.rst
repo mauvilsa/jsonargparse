@@ -152,28 +152,25 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
 - Types shown in the help being mangled when they contain a dot, since the
   stripping of module names was done with a regex over the entire type string.
-  Affected floats in metadata, e.g. ``Annotated[float, Lt(lt=0.9)]`` shown as
-  ``Lt(lt=9)``, ``Literal`` values that have a dot, e.g. ``Literal['4.5']``
-  shown as ``Literal['5']``, and the ellipsis of ``Tuple[int, ...]``, shown as
-  ``Tuple[int, ]`` (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  Affected floats, literals and ellipsis (`#954
+  <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 - ``None`` in a PEP 604 union shown as is in the help, e.g. ``date | None``,
-  instead of as ``date | null``, which is what a config file requires (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  instead of as ``date | null``, which is what parsing requires (`#954
+  <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 - ``dump`` with ``skip_default=True``, i.e. ``--print_config=skip_default``,
   failing with ``AttributeError: 'NoneType' object has no attribute 'get'`` when
   a subclass spec is given for an argument whose default is ``None``, e.g. an
   ``Optional[SomeClass]`` parameter. Now the ``class_path`` is kept in the dump
-  and only the ``init_args`` that are defaults are removed (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  and only the ``init_args`` that are defaults are removed (`#954
+  <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 - Parameters popped or gotten from ``**kwargs`` disappearing when the value is
   then forwarded explicitly as a keyword, e.g. ``x = kwargs.pop("x", None)``
-  followed by ``super().__init__(x=x, **kwargs)`` (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  followed by ``super().__init__(x=x, **kwargs)`` (`#954
+  <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 - ``shtab`` bash completion not redrawing the prompt after printing the type
   guidance message when there are zero completions, leaving the cursor on an
-  empty line, observed since bash 5.3 (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  empty line, observed since bash 5.3 (`#954
+  <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 
 Changed
 ^^^^^^^
