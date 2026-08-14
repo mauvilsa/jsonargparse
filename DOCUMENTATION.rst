@@ -733,13 +733,21 @@ must still be a list, though its items are not validated. Likewise, in a
 ``Union`` only the subtypes that can't be validated accept any value, the others
 are still validated as usual.
 
-Since there is no type to serialize with, a value of one of these parameters
-that a config format can't represent, e.g. a default that is an arbitrary
-object, is serialized in :meth:`dump <.ArgumentParser.dump>` and
-``--print_config`` the same as the instances given for a :ref:`subclass type
-<sub-classes>`. That is, as an import path when the value can be imported back,
-and otherwise as a message that says that it was not serializable, in which case
-a warning is also raised. The same applies to arguments typed as ``Any``.
+Since there is no type to serialize with, in :meth:`dump <.ArgumentParser.dump>`
+and ``--print_config`` a type is derived from the value itself, so that the
+value is serialized the same as it would be for an argument of that type. A
+value of a type that jsonargparse doesn't support, e.g. a default that is an
+arbitrary object, is serialized the same as the instances given for a
+:ref:`subclass type <sub-classes>`. That is, as an import path when the value
+can be imported back, and otherwise as a message that says that it was not
+serializable, in which case a warning is also raised.
+
+Parsing a dump back has no type to validate with either, so only the values that
+the config formats represent round-trip. For instance, a ``set`` is serialized
+as a list and parses back as a list, and an ``Enum`` member is serialized as its
+name and parses back as a string. A warning is raised for each dumped value that
+loses its type this way. All of the above equally applies to arguments typed as
+``Any``.
 
 
 .. _restricted-numbers:

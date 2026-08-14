@@ -12,7 +12,6 @@ from collections import OrderedDict, abc, defaultdict, deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
-from datetime import date, datetime
 from enum import Enum
 from functools import partial, reduce
 from importlib import import_module
@@ -1185,13 +1184,14 @@ def adapt_typehints(
     if typehint == Any or isinstance(typehint, UnvalidatedType):
         type_val = type(val)
         if get_registered_type(type_val) or is_subclass(type_val, Enum):
-            val = adapt_typehints(val, type_val, **adapt_kwargs)
+            if not serialize:  # when serializing this is done by serialize_unvalidated
+                val = adapt_typehints(val, type_val, **adapt_kwargs)
         elif isinstance(val, str):
             with suppress(*get_loader_exceptions()):
                 val, _ = parse_value_or_config(val, enable_path=False, simple_types=True)
         val = adapt_classes_any(val, typehint, serialize, instantiate_classes, sub_add_kwargs, logger)
         if serialize:
-            val = serialize_unvalidated(val)
+            val = serialize_unvalidated(val, adapt_kwargs)
 
     # Literal
     elif typehint_origin in literal_types:
@@ -2568,34 +2568,62 @@ def serialize_class_instance(val):
     return val
 
 
-# The types that the config formats represent natively. Values of any other type require a
-# serializer, which for the types that are not validated there is none, see serialize_unvalidated.
-representable_types = (NoneType, bool, int, float, str, bytes, date, datetime)
+def typehint_from_value(val):
+    """Derives a type hint from a value, so that adapt_typehints is able to serialize it.
+
+    Containers are derived as a type hint of ``Any`` items, so that the items are
+    serialized the same as the value itself. ``None`` is returned for the values
+    that no supported or registered type represents.
+    """
+    if isinstance(val, dict):
+        return Dict[Any, Any]
+    if isinstance(val, list):
+        return List[Any]
+    if isinstance(val, tuple):
+        return Tuple[Any, ...]
+    if isinstance(val, (set, frozenset)):
+        return Set[Any]
+    type_val = type(val)
+    if type_val in leaf_types or get_registered_type(type_val) or is_subclass(type_val, Enum):
+        return type_val
+    return None
 
 
-def serialize_unvalidated(val):
-    """Serializes the class instances in the value of a type that is not validated.
+def serialize_unvalidated(val, adapt_kwargs):
+    """Serializes the value of a type that is not validated.
 
-    Values of an Any or Unvalidated type don't have a serializer, so an instance
-    that a config format can't represent would make dump fail. Instead they are
-    serialized the same as the instances given for a subclass type, i.e. as an
-    import path when the value can be imported back, otherwise as a message that
-    says that it was not serializable.
+    Values of an Any or Unvalidated type don't have a type hint to serialize
+    them with, so one is derived from the value itself and the serialization is
+    delegated to adapt_typehints. Values that no type represents are serialized
+    the same as the instances given for a subclass type, i.e. as an import path
+    when the value can be imported back, otherwise as a message that says that it
+    was not serializable.
+
+    Parsing back has no type hint either, thus a value only round-trips when the
+    config format represents its type. A warning is given when it doesn't.
     """
     if isinstance(val, Namespace):
         # e.g. a subclass spec that adapt_classes_any already serialized
         for key, subval in val.items(branches=True, nested=False):
-            val[key] = serialize_unvalidated(subval)
+            val[key] = serialize_unvalidated(subval, adapt_kwargs)
         return val
+    typehint = typehint_from_value(val)
+    if typehint is None:
+        return serialize_class_instance(val)
     if isinstance(val, dict):
-        return {k: serialize_unvalidated(v) for k, v in val.items()}
-    if isinstance(val, (list, tuple)):
-        return [serialize_unvalidated(v) for v in val]
-    if isinstance(val, (set, frozenset)):
-        return {serialize_unvalidated(v) for v in val}
-    if isinstance(val, representable_types):
-        return val
-    return serialize_class_instance(val)
+        adapt_val = dict(val)  # adapt_typehints serializes the items in place, so give it a copy
+    elif isinstance(val, list):
+        adapt_val = list(val)
+    else:
+        adapt_val = val
+    serialized = adapt_typehints(adapt_val, typehint, **adapt_kwargs)
+    if type(serialized) is not type(val):
+        warning(
+            f"Dump of a value that does not round-trip: a {type(val).__name__} is serialized as "
+            f"{type(serialized).__name__} and, since the type is not validated, parsing it back "
+            f"gives a {type(serialized).__name__}. Value: {val}"
+        )
+    return serialized
 
 
 def callable_instances(cls: type):

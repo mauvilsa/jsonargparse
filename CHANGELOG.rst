@@ -98,11 +98,15 @@ Fixed
 - Signature parameters with a pydantic type nested in a container, e.g.
   ``list[HttpUrl]``, being skipped (`#948
   <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
-- ``dump``, and thus ``--print_config``, failing when the value of an ``Any``
-  typed argument is a class instance that the config format can't represent. Now
-  these values are serialized as an import path, or as a message that says that
-  it was not serializable, see :ref:`unvalidated-types` (`#948
-  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+- ``dump``, and thus ``--print_config``, failing when the value of an ``Any`` or
+  ``Unvalidated<...>`` typed argument is of a type that the config format does
+  not represent, e.g. a class instance, or a ``set`` when the format is json.
+  Now a type is derived from the value and used to serialize it, class instances
+  are serialized as an import path or as a message that says that it was not
+  serializable, and a warning is raised when the dumped value does not
+  round-trip, see :ref:`unvalidated-types` (`#948
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__, `#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 - ``AssertionError`` without a message when adding an argument typed as a
   subscripted user defined generic class, e.g. ``Optional[Strategy[T]]`` (`#950
   <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
