@@ -2194,8 +2194,20 @@ def subclasses_disabled_remove_class_path(value):
     return value
 
 
+def instantiate_subclass_spec_in_any() -> bool:
+    """Whether a subclass spec given as value for a type that accepts any value is instantiated."""
+    setting = get_parsing_setting("instantiate_subclass_spec_in_any")
+    if setting is None:  # remove in v5.0.0, when the setting default becomes False
+        from ._deprecated import unset_instantiate_subclass_spec_in_any
+
+        setting = unset_instantiate_subclass_spec_in_any()
+    return setting
+
+
 def adapt_classes_any(val, typehint, serialize, instantiate_classes, sub_add_kwargs, logger=None):
     if is_subclass_spec(val):
+        if instantiate_classes and not instantiate_subclass_spec_in_any():
+            return val
         orig_val = val
         val = subclass_spec_as_namespace(val)
         init_args = val.get("init_args")

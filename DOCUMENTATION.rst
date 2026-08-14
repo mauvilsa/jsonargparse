@@ -2259,6 +2259,14 @@ be accepted. In this case the config would be like:
     ``class_path`` and ``init_args`` if the corresponding parameter has type
     ``Any``, or when ``fail_untyped=False`` which defaults to type ``Any``.
 
+    The instantiation of these values is deprecated. From v5.0.0 the subclass
+    spec will be kept as is, so that the code that receives it decides whether
+    to instantiate it. Set ``instantiate_subclass_spec_in_any=False`` in
+    :func:`.set_parsing_settings` to get this behavior now and silence the
+    deprecation warning. Setting it to ``True`` keeps the instantiation, but it
+    is discouraged since it means that a config is able to instantiate any
+    class, which can be a security risk.
+
     If a value looks like a subclass spec (has a ``class_path``) but cannot be
     parsed as one, e.g. because the class fails to import, by default it is left
     unchanged and a debug message is logged. Set

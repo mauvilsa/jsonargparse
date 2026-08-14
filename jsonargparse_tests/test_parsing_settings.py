@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
 from unittest.mock import patch
+from warnings import catch_warnings
 
 import pytest
 
@@ -472,7 +473,7 @@ def test_unset_parse_and_print_config(parser):
 
 class AnySubclass:
     def __init__(self, p: int = 0):
-        self.p = p  # pragma: no cover
+        self.p = p
 
 
 def test_set_validate_subclass_spec_in_any_failure():
@@ -610,3 +611,75 @@ def test_validate_subclass_spec_in_any_enabled_union_dict_fails(parser):
         parser.parse_args([f'--union={{"class_path": "{__name__}.AnySubclass", "init_args": {{"nope": 1}}}}'])
     ctx.match("Does not validate against any of the Union subtypes")
     ctx.match("Invalid subclass spec given as value for type Dict")
+
+
+# instantiate_subclass_spec_in_any
+
+
+any_subclass_spec = {"class_path": f"{__name__}.AnySubclass", "init_args": {"p": 3}}
+any_subclass_namespace = Namespace(class_path=f"{__name__}.AnySubclass", init_args=Namespace(p=3))
+
+
+def test_set_instantiate_subclass_spec_in_any_failure():
+    with pytest.raises(ValueError, match="instantiate_subclass_spec_in_any must be a boolean"):
+        set_parsing_settings(instantiate_subclass_spec_in_any="invalid")
+
+
+def test_instantiate_subclass_spec_in_any_default_is_none():
+    assert get_parsing_setting("instantiate_subclass_spec_in_any") is None
+
+
+def test_instantiate_subclass_spec_in_any_enabled(parser):
+    set_parsing_settings(instantiate_subclass_spec_in_any=True)
+    parser.add_argument("--any", type=Any)
+
+    cfg = parser.parse_args([f"--any={json.dumps(any_subclass_spec)}"])
+    assert cfg.any == any_subclass_namespace
+
+    with catch_warnings(record=True) as warns:
+        init = parser.instantiate(cfg)
+    assert warns == []
+    assert isinstance(init.any, AnySubclass)
+    assert init.any.p == 3
+
+
+def test_instantiate_subclass_spec_in_any_disabled(parser):
+    set_parsing_settings(instantiate_subclass_spec_in_any=False)
+    parser.add_argument("--any", type=Any)
+
+    cfg = parser.parse_args([f"--any={json.dumps(any_subclass_spec)}"])
+    assert cfg.any == any_subclass_namespace
+
+    with catch_warnings(record=True) as warns:
+        init = parser.instantiate(cfg)
+    assert warns == []
+    assert init.any == any_subclass_namespace
+
+    assert json_or_yaml_load(parser.dump(cfg)) == {"any": any_subclass_spec}
+
+
+def test_instantiate_subclass_spec_in_any_disabled_nested_in_list_and_dict(parser):
+    set_parsing_settings(instantiate_subclass_spec_in_any=False)
+    parser.add_argument("--any", type=Any)
+
+    cfg = parser.parse_args([f"--any={json.dumps({'k': [any_subclass_spec]})}"])
+    init = parser.instantiate(cfg)
+    assert init.any == {"k": [any_subclass_namespace]}
+
+
+def test_instantiate_subclass_spec_in_any_disabled_unvalidated_type(parser):
+    set_parsing_settings(instantiate_subclass_spec_in_any=False)
+    parser.add_argument("--unvalidated", type=UnvalidatedType("some.SomeType"))
+
+    cfg = parser.parse_args([f"--unvalidated={json.dumps(any_subclass_spec)}"])
+    init = parser.instantiate(cfg)
+    assert init.unvalidated == any_subclass_namespace
+
+
+def test_instantiate_subclass_spec_in_any_disabled_invalid_spec_kept(parser):
+    set_parsing_settings(instantiate_subclass_spec_in_any=False)
+    parser.add_argument("--any", type=Any)
+
+    cfg = parser.parse_args(['--any={"class_path": "nonexistent.Foo"}'])
+    init = parser.instantiate(cfg)
+    assert init.any == {"class_path": "nonexistent.Foo"}

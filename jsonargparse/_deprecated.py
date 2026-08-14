@@ -1068,6 +1068,28 @@ def deprecated_implicit_subcommand(component, subcommand_keys: list[str], subcom
     )
 
 
+instantiate_subclass_spec_in_any_message = """
+    Instantiating a subclass spec given as value for a type that accepts any value, i.e. ``Any`` or
+    ``Unvalidated<...>``, was deprecated in v4.51.0. From v5.0.0 these values will no longer be
+    instantiated, the subclass spec being kept as is, so that the code that receives it decides
+    whether to instantiate it. Set ``instantiate_subclass_spec_in_any=False`` in
+    ``set_parsing_settings`` to get the future behavior now and silence this warning. Setting it to
+    ``True`` keeps the current behavior, but it is discouraged since it means that a config is able
+    to instantiate any class, which can be a security risk.
+"""
+
+
+def unset_instantiate_subclass_spec_in_any() -> bool:
+    """Value used for the ``instantiate_subclass_spec_in_any`` setting when it is unset.
+
+    Remove in v5.0.0, changing the default of the setting from ``None`` to
+    ``False``, and thus making ``_typehints.instantiate_subclass_spec_in_any``
+    only get the setting.
+    """
+    deprecation_warning("instantiate_subclass_spec_in_any", instantiate_subclass_spec_in_any_message)
+    return True
+
+
 def renamed_parameter_warning(renames: dict[str, str], stacklevel: int = 1):
 
     def decorator(func):

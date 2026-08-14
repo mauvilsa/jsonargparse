@@ -172,7 +172,7 @@ Fixed
   empty line, observed since bash 5.3 (`#954
   <https://github.com/mauvilsa/jsonargparse/pull/954>`__).
 - Missing deprecation warning for the ``--print_config`` to ``--print_%s``
-  change (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  change (`#955 <https://github.com/mauvilsa/jsonargparse/pull/955>`__).
 
 Changed
 ^^^^^^^
@@ -212,6 +212,17 @@ Changed
   option 'init_args....'``. Dataclass-like types now accept the same values
   whether or not they are added as a group, see :ref:`subclasses-disabled`
   (`#952 <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
+
+Deprecated
+^^^^^^^^^^
+- Instantiating a subclass spec given as value for a type that accepts any
+  value, i.e. ``Any`` or ``Unvalidated<...>``, is deprecated. From v5.0.0 the
+  subclass spec will be kept as is, so that the code that receives it decides
+  whether to instantiate it. The new ``instantiate_subclass_spec_in_any``
+  setting in ``set_parsing_settings`` allows getting the future behavior now,
+  ``False``, or keeping the current one, ``True``. Enabling it is discouraged
+  since it means that a config is able to instantiate any class, which can be a
+  security risk (`#955 <https://github.com/mauvilsa/jsonargparse/pull/955>`__).
 
 
 v4.50.0 (2026-07-22)

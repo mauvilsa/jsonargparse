@@ -119,6 +119,7 @@ def parser_context(**kwargs):
 parsing_settings: dict = {
     "validate_defaults": False,
     "validate_subclass_spec_in_any": False,
+    "instantiate_subclass_spec_in_any": None,  # v5.0.0: change default to False
     "parse_optionals_as_positionals": False,
     "add_print_completion_argument": False,
     "stubs_resolver_allow_py_files": False,
@@ -139,6 +140,7 @@ def set_parsing_settings(
     *,
     validate_defaults: bool | None = None,
     validate_subclass_spec_in_any: bool | None = None,
+    instantiate_subclass_spec_in_any: bool | None = None,
     config_read_mode_urls_enabled: bool | None = None,
     config_read_mode_fsspec_enabled: bool | None = None,
     docstring_parse_style: "docstring_parser.DocstringStyle | None" = None,
@@ -166,6 +168,14 @@ def set_parsing_settings(
             since the value is kept as a dict. By default, this is ``False``,
             meaning that an invalid subclass spec is ignored (a debug log is
             emitted) and the original value is kept.
+        instantiate_subclass_spec_in_any: Whether ``instantiate`` builds the
+            class when a value for a type that accepts any value, i.e. ``Any``
+            or ``Unvalidated<...>``, is a valid subclass spec. If ``False``, the
+            value is kept as a subclass spec, which the code that receives it
+            can instantiate itself if desired. Currently the default is ``True``
+            and a deprecation warning is emitted, since from v5.0.0 the default
+            will be ``False``. Enabling it is discouraged because it means that
+            any class can be instantiated, so only do it for trusted configs.
         config_read_mode_urls_enabled: Whether to read config files from URLs
             using requests package. Default is ``False``.
         config_read_mode_fsspec_enabled: Whether to read config files from
@@ -216,6 +226,13 @@ def set_parsing_settings(
         parsing_settings["validate_subclass_spec_in_any"] = validate_subclass_spec_in_any
     elif validate_subclass_spec_in_any is not None:
         raise ValueError(f"validate_subclass_spec_in_any must be a boolean, but got {validate_subclass_spec_in_any}.")
+    # instantiate_subclass_spec_in_any
+    if isinstance(instantiate_subclass_spec_in_any, bool):
+        parsing_settings["instantiate_subclass_spec_in_any"] = instantiate_subclass_spec_in_any
+    elif instantiate_subclass_spec_in_any is not None:
+        raise ValueError(
+            f"instantiate_subclass_spec_in_any must be a boolean, but got {instantiate_subclass_spec_in_any}."
+        )
     # config_read_mode
     if config_read_mode_urls_enabled is not None:
         _set_config_read_mode(urls_enabled=config_read_mode_urls_enabled)
