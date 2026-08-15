@@ -9,7 +9,7 @@ import typing
 from collections.abc import Callable
 from textwrap import dedent
 from types import GenericAlias, SimpleNamespace, UnionType
-from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Tuple, Type, TypedDict, Union
+from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Protocol, Tuple, Type, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +26,8 @@ from jsonargparse._postponed_annotations import (
     _enrich_globals_for_string_forward_refs,
     evaluate_postponed_annotations,
     get_global_vars,
+    get_owner_class,
+    get_return_type,
     get_types,
     type_requires_eval,
 )
@@ -592,6 +594,160 @@ def test_get_types_type_checking_dataclass_init_forward_ref():
 
     types = get_types(DataclassForwardRef.__init__)
     assert types == {"p1": int, "p2": Optional[xml.dom.Node], "return": type(None)}
+
+
+class ClassScopeNestedType:
+    @dataclasses.dataclass
+    class Params:
+        temperature: float = 0.0
+
+    def __init__(self, params: Optional[Params] = None):
+        self.params = params  # pragma: no cover
+
+
+def test_get_types_class_scope_nested_class():
+    types = get_types(ClassScopeNestedType.__init__)
+    assert types == {"params": Optional[ClassScopeNestedType.Params]}
+
+
+def test_parser_class_scope_nested_class(parser):
+    parser.add_class_arguments(ClassScopeNestedType, "o", sub_configs=True)
+    cfg = parser.parse_args(['--o.params={"temperature": 0.5}'])
+    assert cfg.o.params == Namespace(temperature=0.5)
+    with pytest.raises(ArgumentError, match="Option 'nonexistent' is not accepted"):
+        parser.parse_args(['--o.params={"nonexistent": 1}'])
+
+
+def test_help_class_scope_nested_class(parser):
+    parser.add_class_arguments(ClassScopeNestedType, "o", sub_configs=True)
+    help_str = get_parser_help(parser)
+    assert "Unvalidated" not in help_str
+    assert f"type: {type_to_str(Optional[ClassScopeNestedType.Params])}" in help_str
+
+
+class ClassScopeNestedTypeBase:
+    @dataclasses.dataclass
+    class Params:
+        temperature: float = 0.0
+
+    def __init__(self, params: Optional[Params] = None):
+        self.params = params  # pragma: no cover
+
+
+class ClassScopeNestedTypeSub(ClassScopeNestedTypeBase):
+    """Inherits the __init__ whose annotations are in the scope of the base's body."""
+
+
+def test_get_params_class_scope_nested_class_inherited():
+    params = get_params(ClassScopeNestedTypeSub)
+    assert [p.name for p in params] == ["params"]
+    assert params[0].annotation == Optional[ClassScopeNestedTypeBase.Params]
+
+
+class ClassScopeOverrideBase:
+    @dataclasses.dataclass
+    class Params:
+        temperature: float = 0.0
+
+
+class ClassScopeOverrideSub(ClassScopeOverrideBase):
+    @dataclasses.dataclass
+    class Params:
+        max_tokens: int = 0
+
+    def __init__(self, params: Optional[Params] = None):
+        self.params = params  # pragma: no cover
+
+
+def test_get_params_class_scope_nested_class_shadows_base():
+    params = get_params(ClassScopeOverrideSub)
+    assert params[0].annotation == Optional[ClassScopeOverrideSub.Params]
+
+
+@dataclasses.dataclass
+class ClassScopeDataclass:
+    Params: "typing.ClassVar[type]" = ClassScopeNestedType.Params
+    params: Optional[Params] = None  # type: ignore[valid-type]
+
+
+def test_get_types_class_scope_dataclass():
+    types = get_types(ClassScopeDataclass)
+    assert types["params"] == Optional[ClassScopeNestedType.Params]
+
+
+class ClassScopeNonTypeAttribute:
+    Path_drw = "not a type"
+
+    def __init__(self, path: Optional[Path_drw] = None):  # type: ignore[valid-type]
+        self.path = path  # pragma: no cover
+
+
+def test_get_types_class_scope_non_type_attribute_does_not_shadow():
+    types = get_types(ClassScopeNonTypeAttribute.__init__)
+    assert types == {"path": Optional[Path_drw]}
+
+
+class ClassScopeTypeVarAttribute:
+    ScopedTypeVar = typing.TypeVar("ScopedTypeVar", bound=int)
+
+    def __init__(self, num: Optional[ScopedTypeVar] = None):
+        self.num = num  # pragma: no cover
+
+
+def test_get_types_class_scope_type_var_attribute():
+    types = get_types(ClassScopeTypeVarAttribute.__init__)
+    assert types == {"num": Optional[ClassScopeTypeVarAttribute.ScopedTypeVar]}
+
+
+class ClassScopeAliasAttribute:
+    ScopedAlias = List["DefinedClass"]
+
+    def __init__(self, items: Optional[ScopedAlias] = None):
+        self.items = items  # pragma: no cover
+
+
+def test_get_types_class_scope_alias_attribute():
+    types = get_types(ClassScopeAliasAttribute.__init__)
+    assert types == {"items": Optional[List[DefinedClass]]}
+
+
+class ClassScopeReturnType:
+    class Result:
+        pass
+
+    def run(self) -> Result:
+        return self.Result()  # pragma: no cover
+
+
+def test_get_return_type_class_scope_nested_class():
+    assert get_return_type(ClassScopeReturnType.run) is ClassScopeReturnType.Result
+
+
+def test_get_owner_class_unresolvable_qualname():
+    def method(p1: "int"):
+        return p1  # pragma: no cover
+
+    method.__qualname__ = "NotInTheModule.method"
+    assert get_owner_class(method) is None
+    assert get_types(method) == {"p1": int}
+
+
+class ClassScopeProtocol(Protocol):
+    class Options:
+        pass
+
+    def run(self, options: Optional[Options] = None) -> Options: ...
+
+
+class ClassScopeProtocolImpl:
+    def run(self, options: Optional[ClassScopeProtocol.Options] = None) -> ClassScopeProtocol.Options:
+        return options or ClassScopeProtocol.Options()  # pragma: no cover
+
+
+def test_protocol_class_scope_nested_class(parser):
+    parser.add_argument("--proto", type=ClassScopeProtocol)
+    cfg = parser.parse_args([f"--proto={__name__}.ClassScopeProtocolImpl"])
+    assert cfg.proto.class_path == f"{__name__}.ClassScopeProtocolImpl"
 
 
 def function_source_unavailable(p1: List["TypeCheckingClass1"]):

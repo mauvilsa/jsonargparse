@@ -195,6 +195,9 @@ Fixed
   showing ``NotRequired[...]`` as the expected type and not completing the
   values of the keys that are not required (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Postponed annotations of a method not resolving names that are defined in the
+  body of its class. Now the namespace of the class that defines the method is
+  used as locals (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

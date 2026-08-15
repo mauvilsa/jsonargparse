@@ -515,7 +515,9 @@ Some notes about this support are:
 - Types that use components imported inside ``TYPE_CHECKING`` blocks are
   supported.
 
-- Resolving of forward references in types is supported.
+- Resolving of forward references in types is supported. This includes names
+  that are only defined in the body of the class that owns the method, e.g. a
+  nested class referred to without qualifying it.
 
 - Fully supported types are: ``str``, ``bool`` (more details in
   :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
