@@ -2301,6 +2301,12 @@ be accepted. In this case the config would be like:
     type a class. The accepted ``init_args`` would be the parameters of that
     function.
 
+.. note::
+
+    Abstract classes, i.e. classes that have abstract methods, are not accepted
+    as ``class_path`` value, since they can't be instantiated. For the same
+    reason they are not included in the known subclasses shown in the help.
+
 
 .. _sub-config-files:
 
@@ -2732,6 +2738,11 @@ accepted values are the same. A subclass spec is accepted, though only with the
 "init_args": {"number": 8}}``. The ``class_path`` of a subclass is not accepted,
 unless subclass support is enabled for the type as described next.
 
+Abstract dataclass-like types are an exception. A class that has abstract
+methods or that inherits from ``abc.ABC`` is not intended to be instantiated
+from its own fields, so for these types subclass support is enabled by default,
+i.e. only the ``class_path`` of an implementation is accepted.
+
 
 .. _enable-disable-subclasses:
 
@@ -2753,7 +2764,8 @@ precedence over those in ``subclasses_disabled``. If a function name is given to
 ``subclasses_enabled``, it must correspond to a function previously registered
 in ``subclasses_disabled``; in this case, the effect is to unregister it. By
 default, the following disabling functions are registered: ``is_pure_dataclass``,
-``is_pydantic_model``, ``is_attrs_class``, and ``is_final_class``.
+``is_pydantic_model``, ``is_attrs_class``, and ``is_final_class``. These
+functions are not applied to abstract classes, see above.
 
 Some examples. Since ``subclasses_enabled`` takes precedence, it is possible to
 keep subclass support disabled for dataclasses, but enable it for a specific

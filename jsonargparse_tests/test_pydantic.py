@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import dataclasses
 import json
 import pathlib
@@ -571,6 +572,97 @@ def test_model_argument_symmetry_subclasses_disabled(parser, optional):
     value["class_path"] = f"{__name__}.SpecialCat"
     with pytest.raises(ArgumentError, match="Subclasses are disabled for Cat"):
         parser.parse_args([f"--cat={json.dumps(value)}"])
+
+
+# abstract models
+
+
+if pydantic_support:
+
+    class AbstractModel(pydantic.BaseModel, abc.ABC):
+        name: str = "n"
+
+        @abc.abstractmethod
+        def run(self): ...
+
+    class AbstractModelImpl(AbstractModel):
+        extra: int = 1
+
+        def run(self):
+            return 1  # pragma: no cover
+
+    class DeclaredAbstractModel(pydantic.BaseModel, abc.ABC):
+        name: str = "n"
+
+    class DeclaredAbstractModelImpl(DeclaredAbstractModel):
+        extra: int = 1
+
+
+def test_abstract_model_subclasses_enabled_by_default(parser, subtests):
+    parser.add_argument("--model", type=AbstractModel)
+
+    with subtests.test("help"):
+        help_str = get_parser_help(parser)
+        assert "--model.help [CLASS_PATH_OR_NAME]" in help_str
+        assert f"known subclasses: {__name__}.AbstractModelImpl" in help_str
+
+    with subtests.test("subclass class_path"):
+        value = {"class_path": f"{__name__}.AbstractModelImpl", "init_args": {"name": "a"}}
+        cfg = parser.parse_args([f"--model={json.dumps(value)}"])
+        init = parser.instantiate(cfg)
+        assert isinstance(init.model, AbstractModelImpl)
+        assert init.model.name == "a"
+
+    with subtests.test("own class_path"):
+        with pytest.raises(ArgumentError, match="Expected an instantiatable class, but .*AbstractModel is abstract"):
+            parser.parse_args([f"--model={__name__}.AbstractModel"])
+
+    with subtests.test("unrelated class_path"):
+        with pytest.raises(ArgumentError, match="does not correspond to a subclass of AbstractModel"):
+            parser.parse_args(["--model=calendar.Calendar"])
+
+
+def test_abstract_model_optional_subclasses_enabled_by_default(parser):
+    parser.add_argument("--model", type=Optional[AbstractModel])
+
+    value = {"class_path": f"{__name__}.AbstractModelImpl", "init_args": {"extra": 2}}
+    cfg = parser.parse_args([f"--model={json.dumps(value)}"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.model, AbstractModelImpl)
+    assert init.model.extra == 2
+    assert parser.parse_args(["--model=null"]).model is None
+
+
+def test_add_subclass_arguments_abstract_model(parser):
+    parser.add_subclass_arguments(AbstractModel, "model")
+
+    cfg = parser.parse_args([f"--model={__name__}.AbstractModelImpl", "--model.extra=4"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.model, AbstractModelImpl)
+    assert init.model.extra == 4
+
+
+def test_abstract_model_subclasses_explicitly_disabled(parser, subclass_behavior):
+    set_parsing_settings(subclasses_disabled=[AbstractModel])
+    parser.add_argument("--model", type=AbstractModel)
+
+    value = {"class_path": f"{__name__}.AbstractModelImpl"}
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for AbstractModel"):
+        parser.parse_args([f"--model={json.dumps(value)}"])
+
+
+def test_abc_declared_model_subclasses_enabled_by_default(parser):
+    parser.add_argument("--model", type=DeclaredAbstractModel)
+
+    value = {"class_path": f"{__name__}.DeclaredAbstractModelImpl", "init_args": {"extra": 2}}
+    cfg = parser.parse_args([f"--model={json.dumps(value)}"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.model, DeclaredAbstractModelImpl)
+    assert init.model.extra == 2
+
+    cfg = parser.parse_args([f"--model={__name__}.DeclaredAbstractModel"])
+    init = parser.instantiate(cfg)
+    assert type(init.model) is DeclaredAbstractModel
 
 
 def test_convert_to_dict_closed_to_subclasses():

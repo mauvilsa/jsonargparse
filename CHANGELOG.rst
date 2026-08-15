@@ -198,6 +198,12 @@ Fixed
 - Postponed annotations of a method not resolving names that are defined in the
   body of its class. Now the namespace of the class that defines the method is
   used as locals (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- The ``class_path`` of an abstract class being accepted for a class typed
+  argument, only to fail on ``instantiate`` with ``TypeError: Can't instantiate
+  abstract class``. Now the parsing fails with ``Expected an instantiatable
+  class, but ... is abstract``, also when the ``class_path`` is implicit, i.e.
+  only init args given, and when the class is given by name (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^
@@ -237,6 +243,12 @@ Changed
   option 'init_args....'``. Dataclass-like types now accept the same values
   whether or not they are added as a group, see :ref:`subclasses-disabled`
   (`#952 <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
+- Dataclass-like types that are abstract, i.e. that have abstract methods or
+  inherit from ``abc.ABC``, now have subclass support enabled by default.
+  Previously such a type was unusable, since the ``class_path`` of an
+  implementation was rejected and giving its fields directly failed on
+  ``instantiate``. See :ref:`subclasses-disabled` (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Deprecated
 ^^^^^^^^^^

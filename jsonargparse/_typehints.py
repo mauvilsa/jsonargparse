@@ -1544,6 +1544,8 @@ def adapt_typehints(
                 return val_class  # importable instance
             if is_protocol(val_class):
                 raise_unexpected_value(f"Expected an instantiatable class, but {val['class_path']} is a protocol")
+            if inspect.isabstract(val_class):
+                raise_unexpected_value(f"Expected an instantiatable class, but {val['class_path']} is abstract")
             if (
                 is_subclasses_disabled(typehint)
                 and inspect.isclass(val_class)
@@ -1974,7 +1976,7 @@ def adapt_partial_callable_class(callable_type, subclass_spec):
     return subclass_spec, partial_skip_args
 
 
-def get_all_subclass_paths(cls: type) -> list[str]:
+def get_all_subclass_paths(cls: type, include_abstract: bool = False) -> list[str]:
     subclass_list = []
 
     def is_local(cl):
@@ -1995,7 +1997,7 @@ def get_all_subclass_paths(cls: type) -> list[str]:
             return
         if is_local(cl) or is_subclass(cl, _LazyInitBaseClass):
             return
-        if not (inspect.isabstract(cl) or is_private(class_path) or is_protocol(cl)):
+        if not ((inspect.isabstract(cl) and not include_abstract) or is_private(class_path) or is_protocol(cl)):
             if class_path in subclass_list:
                 return
             subclass_list.append(class_path)
@@ -2024,10 +2026,18 @@ def resolve_class_path_by_name(cls: type | tuple[type], name: str) -> str:
                 if "." in class_path:
                     break
             return class_path
-        subclass_dict = defaultdict(list)
-        for subclass in get_all_subclass_paths(cls):
-            subclass_name = subclass.rsplit(".", 1)[1]
-            subclass_dict[subclass_name].append(subclass)
+
+        def get_subclass_dict(include_abstract: bool) -> dict:
+            subclass_dict = defaultdict(list)
+            for subclass in get_all_subclass_paths(cls, include_abstract=include_abstract):
+                subclass_name = subclass.rsplit(".", 1)[1]
+                subclass_dict[subclass_name].append(subclass)
+            return subclass_dict
+
+        subclass_dict = get_subclass_dict(include_abstract=False)
+        if name not in subclass_dict:
+            # abstract classes are not valid choices, but resolving them gives a more informative error
+            subclass_dict = get_subclass_dict(include_abstract=True)
         if name in subclass_dict:
             name_subclasses = subclass_dict[name]
             if len(name_subclasses) > 1:

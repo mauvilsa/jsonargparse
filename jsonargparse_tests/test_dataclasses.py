@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import dataclasses
 import json
 import sys
@@ -853,6 +854,35 @@ def test_dataclass_subclasses_disabled(parser):
     config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
     with pytest.raises(ArgumentError, match="Subclasses are disabled for DataMain"):
         parser.parse_args([f"--data={json.dumps(config)}"])
+
+
+@dataclasses.dataclass
+class DataAbstract(abc.ABC):
+    p1: int = 1
+
+    @abc.abstractmethod
+    def run(self): ...
+
+
+@dataclasses.dataclass
+class DataAbstractImpl(DataAbstract):
+    p2: str = "-"
+
+    def run(self):
+        return 1  # pragma: no cover
+
+
+def test_dataclass_abstract_subclasses_enabled(parser):
+    parser.add_argument("--data", type=DataAbstract)
+
+    help_str = get_parser_help(parser)
+    assert "--data.help" in help_str
+    assert f"known subclasses: {__name__}.DataAbstractImpl" in help_str
+
+    config = {"class_path": f"{__name__}.DataAbstractImpl", "init_args": {"p2": "y"}}
+    cfg = parser.parse_args([f"--data={json.dumps(config)}"])
+    init = parser.instantiate(cfg)
+    assert init.data == DataAbstractImpl(p1=1, p2="y")
 
 
 # same capabilities for a dataclass-like type and its optional counterpart

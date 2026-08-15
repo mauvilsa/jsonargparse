@@ -4,6 +4,7 @@ import json
 import os
 import textwrap
 import warnings
+from abc import ABC, abstractmethod
 from calendar import Calendar
 from copy import deepcopy
 from dataclasses import dataclass
@@ -238,6 +239,58 @@ def test_subclass_known_subclasses_multiple_bases(parser):
     help_str = get_parser_help(parser)
     for class_path in [f"{__name__}.BaseC", f"{__name__}.SubA", f"{__name__}.SubB", "gzip.GzipFile"]:
         assert class_path in help_str
+
+
+# abstract class tests
+
+
+class AbstractBase(ABC):
+    def __init__(self, p1: int = 1):
+        self.p1 = p1
+
+    @abstractmethod
+    def method(self): ...
+
+
+class AbstractImpl(AbstractBase):
+    def method(self):
+        return "impl"  # pragma: no cover
+
+
+def test_subclass_abstract_known_subclasses(parser):
+    parser.add_argument("--op", type=AbstractBase)
+    help_str = get_parser_help(parser)
+    assert f"known subclasses: {__name__}.AbstractImpl" in help_str
+    assert f"{__name__}.AbstractBase" not in help_str
+
+
+def test_subclass_abstract_class_path_not_accepted(parser):
+    parser.add_argument("--op", type=AbstractBase)
+    with pytest.raises(ArgumentError, match=f"Expected an instantiatable class, but {__name__}.AbstractBase"):
+        parser.parse_args([f"--op={__name__}.AbstractBase"])
+
+
+def test_subclass_abstract_class_name_not_accepted(parser):
+    parser.add_argument("--op", type=AbstractBase)
+    with pytest.raises(ArgumentError, match="Expected an instantiatable class, but AbstractBase is abstract"):
+        parser.parse_args(["--op=AbstractBase"])
+
+
+def test_subclass_abstract_implicit_class_path_not_accepted(parser):
+    parser.add_argument("--op", type=AbstractBase)
+    with pytest.raises(ArgumentError, match="is abstract"):
+        parser.parse_args(["--op.p1=2"])
+    with pytest.raises(ArgumentError, match="is abstract"):
+        parser.parse_args(['--op={"p1": 2}'])
+
+
+def test_subclass_abstract_concrete_subclass_accepted(parser):
+    parser.add_argument("--op", type=AbstractBase)
+    cfg = parser.parse_args([f"--op={__name__}.AbstractImpl", "--op.p1=2"])
+    assert cfg.op == Namespace(class_path=f"{__name__}.AbstractImpl", init_args=Namespace(p1=2))
+    init = parser.instantiate(cfg)
+    assert isinstance(init.op, AbstractImpl)
+    assert init.op.p1 == 2
 
 
 class UntypedParams:

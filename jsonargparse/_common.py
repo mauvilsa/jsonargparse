@@ -1,3 +1,4 @@
+import abc
 import argparse
 import dataclasses
 import inspect
@@ -360,6 +361,11 @@ def is_final_class(cls) -> bool:
     return getattr(cls, "__final__", False)
 
 
+def is_abstract_class(cls) -> bool:
+    """Checks whether a class has abstract methods or is explicitly declared as an abstract base class."""
+    return inspect.isabstract(cls) or abc.ABC in getattr(cls, "__bases__", ())
+
+
 def is_generic_class(cls) -> bool:
     return isinstance(cls, _GenericAlias) and getattr(cls, "__module__", "") != "typing"
 
@@ -411,7 +417,10 @@ def is_subclasses_disabled(cls) -> bool:
         return is_subclasses_disabled(cls.__origin__)
     if not inspect.isclass(cls):
         return False
-    subclass_disabled = any(selector(cls) for selector in subclasses_disabled_selectors.values())
+    # abstract classes are not intended to be instantiated from their own fields, so only subclasses make sense
+    subclass_disabled = not is_abstract_class(cls) and any(
+        selector(cls) for selector in subclasses_disabled_selectors.values()
+    )
     if not subclass_disabled:
         subclass_disabled = any(issubclass(cls, disable_type) for disable_type in subclasses_disabled_types)
     if subclass_disabled:
