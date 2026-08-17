@@ -6,6 +6,10 @@ This script downloads the test_argparse.py file from the CPython repository,
 transforms it to work with jsonargparse, and marks tests with pytest markers
 to categorize compatibility differences.
 
+The download is done with the GitHub CLI (gh). When gh is not installed, a test
+file that is skipped is generated instead. When gh is installed but not
+authenticated, generation fails.
+
 Usage:
     python -m jsonargparse_tests.argparse_tests_generate [--python_version VERSION] [--output_file FILE]
 
@@ -23,12 +27,12 @@ Configuration:
 """
 
 import ast
+import shutil
+import subprocess  # nosec B404
 import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Union
-from urllib.error import URLError
-from urllib.request import urlopen
 
 # ============================================================================
 # Test Categorization Configuration
@@ -225,6 +229,26 @@ except ImportError:
 """
 
 
+GH_UNAVAILABLE_MESSAGE = (
+    "The GitHub CLI (gh) is required to download CPython's test_argparse.py. "
+    "See https://cli.github.com for how to install it, and run 'gh auth login' "
+    "to authenticate."
+)
+
+# Generated instead of the tests when gh is not installed, such that test runs
+# report a skip instead of failing. A collected test is required because pytest
+# exits with a failure status when no tests are collected.
+GH_UNAVAILABLE_TESTS = f'''"""Placeholder for the argparse compatibility tests, which could not be generated."""
+
+import pytest
+
+
+@pytest.mark.skip(reason={GH_UNAVAILABLE_MESSAGE!r})
+def test_argparse_compatibility_not_generated():
+    pass
+'''
+
+
 # ============================================================================
 # AST Transformation
 # ============================================================================
@@ -345,7 +369,7 @@ class ArgparseTestTransformer(ast.NodeTransformer):
 
 
 def download_test_file(python_version: str, verbose: bool = False) -> str:
-    """Download test_argparse.py from CPython repository.
+    """Download test_argparse.py from CPython repository using the GitHub CLI.
 
     Args:
         python_version: Python version tag (e.g., "3.12.0")
@@ -355,19 +379,24 @@ def download_test_file(python_version: str, verbose: bool = False) -> str:
         Content of test_argparse.py
 
     Raises:
-        RuntimeError: If download fails
+        RuntimeError: If download fails, e.g. gh not authenticated
     """
     tag = f"v{python_version}"
-    url = f"https://raw.githubusercontent.com/python/cpython/{tag}/Lib/test/test_argparse.py"
+    endpoint = f"repos/python/cpython/contents/Lib/test/test_argparse.py?ref={tag}"
+    command = ["gh", "api", endpoint, "--header", "Accept: application/vnd.github.raw"]
 
     if verbose:
-        print(f"Downloading from: {url}")
+        print(f"Downloading with: {' '.join(command)}")
 
     try:
-        with urlopen(url, timeout=30) as response:  # nosec B310
-            return response.read().decode("utf-8")
-    except URLError as ex:
-        raise RuntimeError(f"Failed to download test file: {ex}") from ex
+        process = subprocess.run(command, capture_output=True, check=True, timeout=60)  # nosec B603
+    except subprocess.CalledProcessError as ex:
+        stderr = ex.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"'{' '.join(command)}' failed with status {ex.returncode}: {stderr}") from ex
+    except (OSError, subprocess.SubprocessError) as ex:
+        raise RuntimeError(f"'{' '.join(command)}' failed: {ex}") from ex
+
+    return process.stdout.decode("utf-8")
 
 
 def replace_import_in_ast(tree: ast.Module) -> ast.Module:
@@ -475,12 +504,19 @@ def generate_tests(
         print(f"To regenerate, remove {generated_file} and run this command again.", file=sys.stderr)
         return
 
+    # Without gh there is no way to download, so generate tests that are skipped
+    if not shutil.which("gh"):
+        print(GH_UNAVAILABLE_MESSAGE, file=sys.stderr)
+        print(f"Generating skipped test file: {generated_file}", file=sys.stderr)
+        generated_file.write_text(GH_UNAVAILABLE_TESTS)
+        return
+
     # Download test file
     print_verbose(f"Downloading test_argparse.py for Python {python_version}...")
     try:
         source_code = download_test_file(python_version, verbose=verbose)
     except RuntimeError as ex:
-        print(f"Please check your internet connection: {ex}", file=sys.stderr)
+        print(f"Failed to download test file: {ex}", file=sys.stderr)
         sys.exit(1)
 
     # Normalize the original file by parsing and unparsing through AST

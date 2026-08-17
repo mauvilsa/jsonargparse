@@ -85,6 +85,9 @@ jobs:
           cache: pip
       - run: pip install --require-hashes -r .github/workflows/tox.lock
       - run: tox -e py-argparse
+        env:
+          # Used by the gh CLI to download CPython's test_argparse.py
+          GH_TOKEN: ${{ github.token }}
 
   windows:
     runs-on: windows-latest

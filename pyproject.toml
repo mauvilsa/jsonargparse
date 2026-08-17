@@ -200,7 +200,10 @@ extras =
     argparse: coverage
 changedir = jsonargparse_tests
 allowlist_externals = rm
-passenv = UV_EXCLUDE_NEWER
+passenv =
+    UV_EXCLUDE_NEWER
+    # Used by the gh CLI to download CPython's test_argparse.py
+    GH_TOKEN
 # Ensure uv installs into the tox env even if UV_SYSTEM_PYTHON=1 set outside
 setenv =
     UV_SYSTEM_PYTHON = 0
