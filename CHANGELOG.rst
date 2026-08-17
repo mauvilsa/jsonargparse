@@ -58,17 +58,22 @@ Added
 - Arguments typed as a ``TypedDict`` now have a ``--*.help`` option that shows
   the keys that are accepted, their types and their descriptions. It receives no
   value, unless the ``TypedDict`` is in a union with other types that have a
-  help, in which case the value is the name of the typed dict (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  help, in which case the value is the name of the typed dict (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - ``add_class_arguments`` now accepts a ``TypedDict``, adding one argument per
   key, analogous to a dataclass. ``instantiate`` gives the corresponding dict
-  (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  (`#956 <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - Descriptions of ``TypedDict`` keys taken from its docstring are now shown in
-  the help of ``**kwargs: Unpack[SomeTypedDict]`` parameters (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  the help of ``**kwargs: Unpack[SomeTypedDict]`` parameters (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - ``shtab`` completion scripts now include the keys of a ``TypedDict``
-  argument, e.g. ``--data.key``, and the values that these keys accept (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  argument, e.g. ``--data.key``, and the values that these keys accept (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
+- Pydantic's ``alias`` and ``validation_alias`` and attrs' ``alias`` are now
+  accepted as option and config keys, so that a parser accepts the same names as
+  the class itself. The parsed namespace and dumps use the name that the class
+  accepts, see :ref:`parameter-aliases` (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 
 Fixed
 ^^^^^
@@ -105,8 +110,8 @@ Fixed
   are serialized as an import path or as a message that says that it was not
   serializable, and a warning is raised when the dumped value does not
   round-trip, see :ref:`unvalidated-types` (`#948
-  <https://github.com/mauvilsa/jsonargparse/pull/948>`__, `#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__, `#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - ``AssertionError`` without a message when adding an argument typed as a
   subscripted user defined generic class, e.g. ``Optional[Strategy[T]]`` (`#950
   <https://github.com/mauvilsa/jsonargparse/pull/950>`__).
@@ -193,17 +198,27 @@ Fixed
   change (`#955 <https://github.com/mauvilsa/jsonargparse/pull/955>`__).
 - ``shtab`` completions of ``**kwargs: Unpack[SomeTypedDict]`` parameters
   showing ``NotRequired[...]`` as the expected type and not completing the
-  values of the keys that are not required (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  values of the keys that are not required (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - Postponed annotations of a method not resolving names that are defined in the
   body of its class. Now the namespace of the class that defines the method is
-  used as locals (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  used as locals (`#956 <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - The ``class_path`` of an abstract class being accepted for a class typed
   argument, only to fail on ``instantiate`` with ``TypeError: Can't instantiate
   abstract class``. Now the parsing fails with ``Expected an instantiatable
   class, but ... is abstract``, also when the ``class_path`` is implicit, i.e.
-  only init args given, and when the class is given by name (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  only init args given, and when the class is given by name (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
+- Values silently discarded on instantiation for pydantic fields that have an
+  alias and don't accept the attribute name, i.e. models and dataclasses without
+  ``populate_by_name``. Now the alias is the accepted name, see
+  :ref:`parameter-aliases` (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
+- attrs fields whose ``__init__`` parameter name differs from the attribute
+  name, i.e. an explicit ``alias`` or a private attribute, failing to
+  instantiate with ``TypeError: got an unexpected keyword argument`` or not
+  being configurable at all (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 
 Changed
 ^^^^^^^
@@ -247,8 +262,8 @@ Changed
   inherit from ``abc.ABC``, now have subclass support enabled by default.
   Previously such a type was unusable, since the ``class_path`` of an
   implementation was rejected and giving its fields directly failed on
-  ``instantiate``. See :ref:`subclasses-disabled` (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  ``instantiate``. See :ref:`subclasses-disabled` (`#956
+  <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 
 Deprecated
 ^^^^^^^^^^

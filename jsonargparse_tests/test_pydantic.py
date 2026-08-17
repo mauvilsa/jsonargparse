@@ -20,6 +20,7 @@ from jsonargparse._optionals import (
 )
 from jsonargparse._signatures import convert_to_dict
 from jsonargparse_tests.conftest import (
+    capture_logs,
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_load,
@@ -673,3 +674,203 @@ def test_convert_to_dict_closed_to_subclasses():
 def test_convert_to_dict_subclasses_enabled(enable_subclasses):
     converted = convert_to_dict(person)
     assert converted == person_expected_subclass_dict
+
+
+if pydantic_support > 1:
+
+    class AliasByName(pydantic.BaseModel):
+        """Both the attribute name and the alias are accepted."""
+
+        model_config = pydantic.ConfigDict(populate_by_name=True)
+        attr_name: str = pydantic.Field("", alias="alias_name")
+
+    class AliasOnly(pydantic.BaseModel):
+        """Only the alias is accepted."""
+
+        attr_name: str = pydantic.Field("", alias="alias_name")
+
+    class TakesAliasByName:
+        def __init__(self, model: AliasByName = AliasByName(alias_name="")):
+            self.model = model  # pragma: no cover
+
+    class AliasInner(pydantic.BaseModel):
+        a: int = 1
+
+    class AliasVariants(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(populate_by_name=True)
+        elems: Optional[List[str]] = pydantic.Field(None, alias="el")
+        inner: Optional[AliasInner] = pydantic.Field(None, alias="in_")
+        p1: int = pydantic.Field(1, alias="p2")
+        p2: int = 2
+        nested: AliasByName = pydantic.Field(default_factory=lambda: AliasByName(alias_name=""), alias="nest")
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_as_additional_name(parser, subtests):
+    parser.add_class_arguments(AliasByName, "m", instantiate=True)
+
+    with subtests.test("parse alias"):
+        assert parser.parse_args(["--m.alias_name=abc"]).m == Namespace(attr_name="abc")
+
+    with subtests.test("parse attribute name"):
+        assert parser.parse_args(["--m.attr_name=abc"]).m == Namespace(attr_name="abc")
+
+    with subtests.test("parse config"):
+        assert parser.parse_string('{"m": {"alias_name": "abc"}}').m == Namespace(attr_name="abc")
+
+    with subtests.test("parse object"):
+        assert parser.parse_object({"m": {"alias_name": "abc"}}).m == Namespace(attr_name="abc")
+
+    with subtests.test("instantiate"):
+        init = parser.instantiate(parser.parse_args(["--m.alias_name=abc"]))
+        assert isinstance(init.m, AliasByName)
+        assert init.m.attr_name == "abc"
+
+    with subtests.test("dump uses the attribute name"):
+        dump = json_or_yaml_load(parser.dump(parser.parse_args(["--m.alias_name=abc"])))
+        assert dump == {"m": {"attr_name": "abc"}}
+
+    with subtests.test("help shows both names"):
+        help_str = get_parser_help(parser)
+        assert "--m.attr_name" in help_str
+        assert "--m.alias_name" in help_str
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_env_vars(subtests):
+    parser = ArgumentParser(exit_on_error=False, env_prefix="APP", default_env=True)
+    parser.add_class_arguments(AliasByName, "m")
+
+    with subtests.test("attribute name"):
+        assert parser.parse_env({"APP_M__ATTR_NAME": "abc"}).m == Namespace(attr_name="abc")
+
+    with subtests.test("alias has no env var"):
+        assert parser.parse_env({"APP_M__ALIAS_NAME": "abc"}).m == Namespace(attr_name="")
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_in_signature_parameter(parser, subtests):
+    parser.add_class_arguments(TakesAliasByName, "r")
+    parser.add_argument("--cls", type=TakesAliasByName)
+
+    with subtests.test("class arguments"):
+        assert parser.parse_args(["--r.model.alias_name=abc"]).r.model == Namespace(attr_name="abc")
+
+    with subtests.test("subclass init args"):
+        value = {"class_path": f"{__name__}.TakesAliasByName", "init_args": {"model": {"alias_name": "abc"}}}
+        cfg = parser.parse_args([f"--cls={json.dumps(value)}"])
+        assert cfg.cls.init_args.model == Namespace(attr_name="abc")
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_replaces_name(parser, subtests):
+    parser.add_class_arguments(AliasOnly, "m", instantiate=True)
+
+    with subtests.test("parse alias"):
+        assert parser.parse_args(["--m.alias_name=abc"]).m == Namespace(alias_name="abc")
+
+    with subtests.test("attribute name not accepted"):
+        with pytest.raises(ArgumentError, match="unrecognized arguments: --m.attr_name=abc"):
+            parser.parse_args(["--m.attr_name=abc"])
+
+    with subtests.test("instantiate"):
+        init = parser.instantiate(parser.parse_args(["--m.alias_name=abc"]))
+        assert isinstance(init.m, AliasOnly)
+        assert init.m.attr_name == "abc"
+
+
+@skip_if_pydantic_v1
+def test_pydantic_validation_alias(parser, subtests):
+    Model = pydantic.create_model(
+        "ModelValidationAlias",
+        __config__=pydantic.ConfigDict(populate_by_name=True),
+        p1=(str, pydantic.Field("", validation_alias="v1")),
+        p2=(str, pydantic.Field("", validation_alias=pydantic.AliasChoices("c1", "c2"))),
+    )
+    parser.add_class_arguments(Model, "m")
+
+    with subtests.test("validation_alias string"):
+        assert parser.parse_args(["--m.v1=x"]).m.p1 == "x"
+        assert parser.parse_args(["--m.p1=x"]).m.p1 == "x"
+
+    with subtests.test("validation_alias AliasChoices"):
+        for option in ["--m.c1=x", "--m.c2=x", "--m.p2=x"]:
+            assert parser.parse_args([option]).m.p2 == "x"
+
+
+@skip_if_pydantic_v1
+def test_pydantic_validate_by_alias_false(parser):
+    Model = pydantic.create_model(
+        "ModelValidateByAliasFalse",
+        __config__=pydantic.ConfigDict(validate_by_name=True, validate_by_alias=False),
+        p1=(str, pydantic.Field("", alias="a1")),
+    )
+    parser.add_class_arguments(Model, "m")
+    assert parser.parse_args(["--m.p1=x"]).m == Namespace(p1="x")
+    with pytest.raises(ArgumentError, match="unrecognized arguments: --m.a1=x"):
+        parser.parse_args(["--m.a1=x"])
+
+
+@skip_if_pydantic_v1
+def test_pydantic_dataclass_alias_as_additional_name(parser):
+    @pydantic.dataclasses.dataclass(config=pydantic.ConfigDict(populate_by_name=True))
+    class DataAliasByName:
+        attr_name: str = pydantic.Field("", alias="alias_name")
+
+    parser.add_class_arguments(DataAliasByName, "d", instantiate=True)
+    cfg = parser.parse_args(["--d.alias_name=abc"])
+    assert cfg.d == Namespace(attr_name="abc")
+    assert parser.instantiate(cfg).d.attr_name == "abc"
+
+
+@skip_if_pydantic_v1
+def test_pydantic_dataclass_alias_replaces_name(parser):
+    @pydantic.dataclasses.dataclass
+    class DataAliasOnly:
+        attr_name: str = pydantic.Field("", alias="alias_name")
+
+    parser.add_class_arguments(DataAliasOnly, "d", instantiate=True)
+    cfg = parser.parse_args(["--d.alias_name=abc"])
+    assert cfg.d == Namespace(alias_name="abc")
+    assert parser.instantiate(cfg).d.attr_name == "abc"
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_variants(parser, subtests):
+    parser.add_class_arguments(AliasVariants, "m", sub_configs=True)
+
+    with subtests.test("append to a list through the alias"):
+        cfg = parser.parse_args(['--m.el=["a"]', "--m.el+=b"])
+        assert cfg.m.elems == ["a", "b"]
+
+    with subtests.test("nested arg through the alias"):
+        cfg = parser.parse_args(["--m.in_.a=3"])
+        assert cfg.m.inner == Namespace(a=3)
+
+    with subtests.test("alias equal to another field name is skipped"):
+        cfg = parser.parse_args(["--m.p2=7"])
+        assert cfg.m.p1 == 1
+        assert cfg.m.p2 == 7
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_of_group_field_skipped(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        parser.add_class_arguments(AliasVariants, "m", sub_configs=True)
+    assert 'Skipping aliases of parameter "nested"' in logs.getvalue()
+    assert "not supported for subclasses-disabled types added as a group" in logs.getvalue()
+    assert parser.parse_args(["--m.nested.alias_name=abc"]).m.nested == Namespace(attr_name="abc")
+    with pytest.raises(ArgumentError, match="unrecognized arguments: --m.nest.alias_name=abc"):
+        parser.parse_args(["--m.nest.alias_name=abc"])
+
+
+@skip_if_pydantic_v1
+def test_pydantic_alias_conflicting_with_added_argument_skipped(parser, logger):
+    parser.logger = logger
+    parser.add_argument("--m.el", type=int, default=0)
+    with capture_logs(logger) as logs:
+        parser.add_class_arguments(AliasVariants, "m", sub_configs=True)
+    assert 'Skipping aliases of parameter "elems"' in logs.getvalue()
+    assert "conflicts with an already added argument" in logs.getvalue()
+    assert parser.parse_args(["--m.el=3"]).m.el == 3

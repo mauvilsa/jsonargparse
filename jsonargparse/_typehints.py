@@ -405,7 +405,7 @@ class ActionTypeHint(Action):
             return args
         typehint = kwargs.pop("type")
         if args[0].startswith("--") and ActionTypeHint.supports_append(typehint):
-            args = tuple(list(args) + [args[0] + "+"])
+            args = tuple(list(args) + [f"{a}+" for a in args if a.startswith("--")])
         if get_registered_type(typehint) is None and get_help_types(typehint):
             help_option = f"--{args[0]}.help" if args[0][0] != "-" else f"{args[0]}.help"
             help_action = container.add_argument(help_option, action=_ActionHelpClassPath(typehint=typehint))
@@ -654,13 +654,15 @@ class ActionTypeHint(Action):
             return ActionTypeHint(**kwargs)
         parser, cfg, val, opt_str = args
         if not (self.nargs == "?" and val is None):
-            if isinstance(opt_str, str) and opt_str.startswith(f"--{self.dest}."):
-                if opt_str.startswith(f"--{self.dest}.init_args."):
-                    sub_opt = opt_str[len(f"--{self.dest}.init_args.") :]
+            # the option string can be an alias of the dest, i.e. another accepted name for it
+            option = self.get_option_string_base(opt_str)
+            if option:
+                if opt_str.startswith(f"{option}.init_args."):
+                    sub_opt = opt_str[len(f"{option}.init_args.") :]
                 else:
-                    sub_opt = opt_str[len(f"--{self.dest}.") :]
+                    sub_opt = opt_str[len(f"{option}.") :]
                 val = NestedArg(key=sub_opt, val=val)
-            append = opt_str == f"--{self.dest}+"
+            append = isinstance(opt_str, str) and opt_str.endswith("+") and opt_str[:-1] in self.option_strings
             val = self._check_type_(val, append=append, cfg=cfg, mode=parser.parser_mode)
             if is_subclass_spec(val):
                 prev_val = cfg.get(self.dest)
@@ -672,6 +674,12 @@ class ActionTypeHint(Action):
                     )
         cfg.update(val, self.dest)
         return None
+
+    def get_option_string_base(self, opt_str) -> str | None:
+        """Returns the option string of which opt_str is a sub-option, e.g. '--x' for '--x.y'."""
+        if not isinstance(opt_str, str):
+            return None
+        return next((o for o in self.option_strings if opt_str.startswith(f"{o}.")), None)
 
     def _check_type(self, value, append=False, cfg=None, mode=None):
         islist = _is_action_value_list(self)

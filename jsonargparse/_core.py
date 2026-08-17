@@ -1393,6 +1393,9 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
             if action_dest not in cfg and key.endswith("+"):
                 append = True
                 cfg[action_dest] = cfg.pop(key)
+            elif action_dest != key and key in cfg:
+                # the key is an alias of the action's dest, i.e. another accepted name for it
+                cfg[action_dest] = cfg.pop(key)
             value = cfg[action_dest]
             if skip_fn and skip_fn(value):
                 continue

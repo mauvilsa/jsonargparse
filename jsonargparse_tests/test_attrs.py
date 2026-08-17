@@ -48,6 +48,11 @@ if attrs_support:
         subfield: AttrsSubField
 
     @attrs.define
+    class AttrsAlias:
+        p1: int = attrs.field(default=1, alias="why")
+        _p2: str = "-"
+
+    @attrs.define
     class AttrsAttrDocsBase:
         p1: str = "-"
         """p1 description"""
@@ -107,3 +112,20 @@ class TestAttrs:
         help_str = get_parser_help(parser)
         assert "p1 description (type: str, default: -)" in help_str
         assert "p2 description (type: int, default: 2)" in help_str
+
+    def test_field_alias(self, parser):
+        parser.add_class_arguments(AttrsAlias, "d")
+        help_str = get_parser_help(parser)
+        assert "--d.why" in help_str
+        assert "--d.p1" not in help_str
+        cfg = parser.parse_args(["--d.why=2"])
+        assert cfg.d == Namespace(why=2, p2="-")
+        init = parser.instantiate(cfg)
+        assert init.d == AttrsAlias(2, "-")
+
+    def test_private_attribute_init_name(self, parser):
+        parser.add_class_arguments(AttrsAlias, "d")
+        cfg = parser.parse_args(["--d.p2=x"])
+        assert cfg.d == Namespace(why=1, p2="x")
+        init = parser.instantiate(cfg)
+        assert init.d._p2 == "x"

@@ -2153,6 +2153,46 @@ the stubs. In these cases in the parser help the default is shown as
 ``Unknown<stubs-resolver>`` and not included in :meth:`get_defaults
 <.ArgumentParser.get_defaults>` or the output of ``--print_config``.
 
+.. _parameter-aliases:
+
+Parameter aliases
+^^^^^^^^^^^^^^^^^
+
+Pydantic and attrs allow giving a field a name that is different from the
+attribute name, an alias: pydantic's ``alias``/``validation_alias`` and attrs'
+``alias``. The resolvers take these aliases into account, so that a parser
+accepts the same names as the class itself.
+
+When the framework accepts both names, e.g. a pydantic model with
+``populate_by_name``, the alias is accepted as an additional option and config
+key. The attribute name is the one used in the parsed namespace, in
+``--print_config`` and in dumps:
+
+.. doctest:: parameter_aliases
+
+    >>> from pydantic import BaseModel, ConfigDict, Field
+
+    >>> class Client(BaseModel):
+    ...     model_config = ConfigDict(populate_by_name=True)
+    ...     api_key: str = Field(default="", alias="key")
+    ...
+
+    >>> parser = ArgumentParser()
+    >>> parser.add_class_arguments(Client, "client")  # doctest: +IGNORE_RESULT
+    >>> parser.parse_args(["--client.key=abc"])
+    Namespace(client=Namespace(api_key='abc'))
+
+When the framework only accepts the alias, e.g. the same model without
+``populate_by_name``, the alias is the name used everywhere, since giving the
+attribute name would not instantiate the class as expected.
+
+Aliases are not supported for a parameter whose type is a subclasses-disabled
+type added as a group of arguments, since then the name is a prefix of several
+arguments instead of a single option string. In this case only the attribute
+name is accepted. Enabling subclasses for the type, see
+:ref:`enable-disable-subclasses`, makes it a single argument, and then its alias
+is accepted as well.
+
 
 .. _dependency-injection:
 

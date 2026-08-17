@@ -432,6 +432,8 @@ class SignatureArguments(LoggerProperty):
         subclasses_disabled = is_subclasses_disabled(annotation)
         dest = (nested_key + "." if nested_key else "") + name
         args = [dest if is_required and as_positional and not is_non_positional else "--" + dest]
+        if param.aliases and args[0].startswith("--"):
+            args += self._get_alias_args(param, nested_key, container, subclasses_disabled, src)
         if param.origin:
             parser = container
             if not isinstance(container, ArgumentParser):
@@ -492,6 +494,23 @@ class SignatureArguments(LoggerProperty):
                 "With fail_untyped=True, all mandatory parameters must have a supported"
                 f" type. Parameter '{name}' from '{src}' does not specify a type."
             )
+
+    def _get_alias_args(self, param, nested_key, container, subclasses_disabled, src) -> list[str]:
+        """Option strings for the aliases of a parameter, i.e. other names accepted for it."""
+        skip_message = f'Skipping aliases of parameter "{param.name}" from "{src}" because of: '
+        if subclasses_disabled:
+            self.logger.debug(
+                skip_message + "aliases are not supported for subclasses-disabled types added as a group of arguments."
+            )
+            return []
+        prefix = f"--{nested_key}." if nested_key else "--"
+        alias_args = []
+        for alias in param.aliases:
+            if f"{prefix}{alias}" in container._option_string_actions:
+                self.logger.debug(skip_message + f"alias '{alias}' conflicts with an already added argument.")
+            else:
+                alias_args.append(f"{prefix}{alias}")
+        return alias_args
 
     def add_subclass_arguments(
         self,

@@ -44,6 +44,10 @@ class ParamData:
     component: Callable | type | tuple | None = None
     parent: type | tuple | None = None
     origin: str | tuple | None = None
+    # ``name`` is always the name that the component accepts, i.e. what parsing gives in the
+    # namespace and what instantiation uses. ``aliases`` are additional names that the component
+    # accepts for the same parameter, only used to accept more option and config keys.
+    aliases: tuple[str, ...] | None = None
 
 
 ParamList = list[ParamData]
@@ -998,6 +1002,55 @@ def get_field_data_attrs(field, name, doc_params):
     }
 
 
+# Some frameworks accept for a field a name different from the attribute name, an alias. A
+# get_field_names function receives a field and the attribute name, and returns the name that the
+# component accepts, i.e. the one used in the namespace and for instantiation, and a tuple of
+# additional names accepted for the same field, or None. Frameworks in which an alias replaces the
+# attribute name return the alias as the name and no aliases. Frameworks in which an alias is an
+# additional name return the attribute name and the aliases.
+
+
+def get_field_names_default(field, name, cls) -> tuple[str, tuple[str, ...] | None]:
+    return name, None
+
+
+def to_field_names(name: str, aliases: list[str], name_accepted: bool) -> tuple[str, tuple[str, ...] | None]:
+    aliases = unique(a for a in aliases if isinstance(a, str) and a != name)
+    if not aliases:
+        return name, None
+    if name_accepted:
+        return name, tuple(aliases)
+    return aliases[0], tuple(aliases[1:]) or None
+
+
+def get_field_names_pydantic2_field_info(field_info, name, config) -> tuple[str, tuple[str, ...] | None]:
+    aliases: list = []
+    if config.get("validate_by_alias", True):
+        validation_alias = getattr(field_info, "validation_alias", None)
+        if isinstance(validation_alias, str):
+            aliases = [validation_alias]
+        elif validation_alias is not None:
+            # AliasChoices, its choices can also be AliasPath which is not supported
+            aliases = list(getattr(validation_alias, "choices", []))
+        else:
+            aliases = [field_info.alias]
+    name_accepted = bool(config.get("validate_by_name", config.get("populate_by_name", False)))
+    return to_field_names(name, aliases, name_accepted)
+
+
+def get_field_names_pydantic2_model(field, name, cls) -> tuple[str, tuple[str, ...] | None]:
+    return get_field_names_pydantic2_field_info(field, name, cls.model_config)
+
+
+def get_field_names_pydantic2_dataclass(field, name, cls) -> tuple[str, tuple[str, ...] | None]:
+    return get_field_names_pydantic2_field_info(cls.__pydantic_fields__[name], name, cls.__pydantic_config__)
+
+
+def get_field_names_attrs(field, name, cls) -> tuple[str, tuple[str, ...] | None]:
+    # attrs' alias replaces the name of the parameter in __init__
+    return field.alias or name, None
+
+
 def is_init_field_pydantic2_dataclass(field) -> bool:
     from pydantic.fields import FieldInfo
 
@@ -1023,6 +1076,7 @@ def get_parameters_from_pydantic_or_attrs(
 
     function_or_class = get_unaliased_type(function_or_class)
     fields_iterator = get_field_data = None
+    get_field_names = get_field_names_default
     if pydantic_support:
         pydantic_model = is_pydantic_model(function_or_class)
         if pydantic_model == 1:
@@ -1032,11 +1086,13 @@ def get_parameters_from_pydantic_or_attrs(
         elif pydantic_model > 1:
             fields_iterator = function_or_class.model_fields.items()
             get_field_data = get_field_data_pydantic2_model
+            get_field_names = get_field_names_pydantic2_model
             is_init_field = lambda _: True
         elif dataclasses.is_dataclass(function_or_class) and hasattr(function_or_class, "__pydantic_fields__"):
             fields_iterator = dataclasses.fields(function_or_class)
             fields_iterator = {v.name: v for v in fields_iterator}.items()
             get_field_data = get_field_data_pydantic2_dataclass
+            get_field_names = get_field_names_pydantic2_dataclass
             is_init_field = is_init_field_pydantic2_dataclass
 
     if not fields_iterator and attrs_support:
@@ -1045,12 +1101,14 @@ def get_parameters_from_pydantic_or_attrs(
         if attrs.has(function_or_class):
             fields_iterator = {f.name: f for f in attrs.fields(function_or_class)}.items()
             get_field_data = get_field_data_attrs
+            get_field_names = get_field_names_attrs
             is_init_field = is_init_field_attrs
 
     if not fields_iterator or not get_field_data:
         return None
 
     params = []
+    field_names = []
     doc_params = parse_docs(function_or_class, None, logger)
     for name, field in fields_iterator:
         if is_init_field(field):
@@ -1062,9 +1120,21 @@ def get_parameters_from_pydantic_or_attrs(
                     **get_field_data(field, name, doc_params),
                 )
             )
+            field_names.append(get_field_names(field, name, function_or_class))
+    # after the attribute names have been used to resolve the annotations
     evaluate_postponed_annotations(params, function_or_class, None, logger)
+    set_param_names_and_aliases(params, field_names)
 
     return params
+
+
+def set_param_names_and_aliases(params: ParamList, field_names: list) -> None:
+    names = {name for name, _ in field_names}
+    for param, (name, aliases) in zip(params, field_names):
+        param.name = name
+        if aliases:
+            # an alias that is the name of another field would be ambiguous
+            param.aliases = tuple(a for a in aliases if a not in names) or None
 
 
 def get_parameters_from_ast(
