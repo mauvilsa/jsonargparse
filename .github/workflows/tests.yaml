@@ -241,7 +241,7 @@ jobs:
           enable-cache: true
           cache-suffix: doctest
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install -e .[all,shtab,doc]
+      - run: uv pip install -e .[all,test,shtab,doc]
       - name: Run doc tests
         run: sphinx-build -M doctest sphinx sphinx/_build sphinx/index.rst
 
