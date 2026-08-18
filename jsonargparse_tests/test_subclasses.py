@@ -37,6 +37,7 @@ from jsonargparse import (
     Namespace,
     add_instantiator,
     lazy_instance,
+    set_parsing_settings,
 )
 from jsonargparse._instantiation import _global_class_instantiators
 from jsonargparse._typehints import _cached_class_parsers, implements_protocol, is_instance_or_supports_protocol
@@ -979,7 +980,8 @@ class AnySubclasses:
         self.obj2 = obj2
 
 
-def test_type_any_subclasses(parser):
+def test_type_any_subclasses(parser, parsing_settings_patch):
+    set_parsing_settings(instantiate_subclass_spec_in_any=True)
     parser.add_argument("--any", type=Any)
     value = {
         "class_path": f"{__name__}.AnySubclasses",
@@ -1019,7 +1021,8 @@ def test_type_any_subclasses(parser):
     assert isinstance(cfg.any, dict)
 
 
-def test_type_any_list_of_subclasses(parser):
+def test_type_any_list_of_subclasses(parser, parsing_settings_patch):
+    set_parsing_settings(instantiate_subclass_spec_in_any=True)
     parser.add_argument("--any", type=Any)
     value = [
         {
@@ -1042,7 +1045,8 @@ def test_type_any_list_of_subclasses(parser):
     assert 2 == init.any[1].p
 
 
-def test_type_any_dict_of_subclasses(parser):
+def test_type_any_dict_of_subclasses(parser, parsing_settings_patch):
+    set_parsing_settings(instantiate_subclass_spec_in_any=True)
     parser.add_argument("--any", type=Any)
     value = {
         "k1": {
@@ -2037,6 +2041,31 @@ def test_implements_generic_protocol(expected, protocol, value):
 
 def test_parse_implements_generic_protocol(parser):
     parser.add_argument("--cls", type=GenericInterface)
+    cfg = parser.parse_args([f"--cls={__name__}.GenericImplementsOwnTypeVar"])
+    assert cfg.cls.class_path == f"{__name__}.GenericImplementsOwnTypeVar"
+    init = parser.instantiate(cfg)
+    assert isinstance(init.cls, GenericImplementsOwnTypeVar)
+    with pytest.raises(ArgumentError, match="does not implement protocol"):
+        parser.parse_args([f"--cls={__name__}.GenericNotImplements"])
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, GenericInterface[int], GenericImplementsOwnTypeVar),
+        (True, GenericInterface[int], GenericImplementsConcrete),
+        (False, GenericInterface[int], GenericNotImplements),
+        (False, GenericInterface[str], GenericNotAcceptsNone),
+        (True, GenericPairInterface[str], GenericPairImplements),
+        (False, GenericPairInterface[str], GenericPairNotImplements),
+    ],
+)
+def test_implements_subscripted_generic_protocol(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+
+
+def test_parse_implements_subscripted_generic_protocol(parser):
+    parser.add_argument("--cls", type=GenericInterface[int])
     cfg = parser.parse_args([f"--cls={__name__}.GenericImplementsOwnTypeVar"])
     assert cfg.cls.class_path == f"{__name__}.GenericImplementsOwnTypeVar"
     init = parser.instantiate(cfg)

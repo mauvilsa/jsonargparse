@@ -129,6 +129,7 @@ root_types = {
     float,
     bool,
     Any,
+    object,
     Literal,
     Type,
     type,
@@ -433,6 +434,7 @@ class ActionTypeHint(Action):
             or get_registered_type(typehint) is not None
             or is_subclass(typehint, Enum)
             or is_subclasses_disabled(typehint)
+            or is_typed_dict(typehint)
             or ActionTypeHint.is_subclass_typehint(typehint)
         )
         if full and supported:
@@ -1036,11 +1038,51 @@ def resolve_module_annotations(module: str, annotations: dict, global_vars: dict
 
 
 def is_typed_dict(typehint) -> bool:
-    return type(typehint) in typed_dict_meta_types
+    """Whether a type hint is a TypedDict, including a subscripted generic one."""
+    return type(get_typed_dict_type(typehint)) in typed_dict_meta_types
+
+
+def get_typed_dict_type(typehint):
+    """Returns the TypedDict that a subscripted generic TypedDict stands for, or the type hint unchanged.
+
+    A subscripted generic TypedDict, is a generic alias through which the keys
+    can't be looked up. Its type parameters don't change the keys, only the
+    types of the ones annotated with a TypeVar, see get_typed_dict_type_var_map.
+    """
+    origin = get_typehint_origin(typehint)
+    return origin if type(origin) in typed_dict_meta_types else typehint
+
+
+def get_typed_dict_type_var_map(typehint) -> dict:
+    """Returns the map from the TypeVars of a generic TypedDict to the types it is subscripted with."""
+    typed_dict = get_typed_dict_type(typehint)
+    if typed_dict is typehint:
+        return {}
+    parameters = getattr(typed_dict, "__parameters__", None) or ()
+    args = getattr(typehint, "__args__", None) or ()
+    return dict(zip(parameters, args))
+
+
+def substitute_type_vars(typehint, type_var_map: dict):
+    """Returns the type hint with the given TypeVars replaced by the types that they stand for."""
+    if isinstance(typehint, TypeVar):
+        return type_var_map.get(typehint, typehint)
+    args = getattr(typehint, "__args__", None)
+    # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
+    # class level slot descriptor, which is truthy but not the subtypes of an instance
+    if not isinstance(args, tuple) or not args:
+        return typehint
+    new_args = tuple(substitute_type_vars(a, type_var_map) for a in args)
+    if all(new is old for new, old in zip(new_args, args)):
+        return typehint
+    return rebuild_typehint_args(typehint, new_args)
 
 
 def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
     from ._postponed_annotations import get_global_vars, update_module_global_vars
+
+    type_var_map = get_typed_dict_type_var_map(typed_dict)
+    typed_dict = get_typed_dict_type(typed_dict)
 
     # Keys can be inherited from bases defined in other modules, and each key must resolve
     # with the names of the module in which it was defined, including its TYPE_CHECKING
@@ -1064,10 +1106,13 @@ def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
             global_vars = {}
             update_module_global_vars(module, global_vars, logger)
         annotations.update(resolve_module_annotations(module, module_annotations, global_vars, logger))
+    if type_var_map:
+        annotations = {k: substitute_type_vars(v, type_var_map) for k, v in annotations.items()}
     return {k: annotations[k] for k in typed_dict.__annotations__}
 
 
 def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
+    typed_dict = get_typed_dict_type(typed_dict)
     # The totality of each class (including inheritance) is reflected in __required_keys__,
     # even when the annotations are postponed. Required and NotRequired instead may not be
     # reflected there (e.g. below Python 3.11 or with postponed annotations), so they are
@@ -1186,10 +1231,14 @@ def adapt_typehints(
     }
     subtypehints = getattr(typehint, "__args__", None)
     typehint_origin = get_typehint_origin(typehint) or typehint
+    if type(typehint_origin) in typed_dict_meta_types:
+        # a subscripted generic TypedDict is validated as its unsubscripted form, see get_typed_dict_type
+        subtypehints = None
+        typehint_origin = dict
     unset_sentinel = get_parsing_setting("unset_sentinel")
 
-    # Any and unvalidated, i.e. no validation
-    if typehint == Any or isinstance(typehint, UnvalidatedType):
+    # Any, object and unvalidated, i.e. no validation
+    if typehint is object or typehint == Any or isinstance(typehint, UnvalidatedType):
         type_val = type(val)
         if get_registered_type(type_val) or is_subclass(type_val, Enum):
             if not serialize:  # when serializing this is done by serialize_unvalidated
@@ -1776,6 +1825,7 @@ def protocol_params_match(proto_params, value_params) -> bool:
 def implements_protocol(value, protocol) -> bool:
     if not inspect.isclass(value) or value is object or not is_protocol(protocol):
         return False
+    protocol = get_protocol_origin(protocol)
 
     logger = parse_logger(True, "implements_protocol")
     members = 0
@@ -1802,6 +1852,18 @@ def is_protocol(class_type) -> bool:
     return getattr(class_type, "_is_protocol", False)
 
 
+def get_protocol_origin(protocol):
+    """Returns the protocol that a subscripted generic protocol stands for.
+
+    A subscripted generic protocol, e.g. ``Proto[int]``, is a generic alias
+    through which the members can't be looked up. Its type parameters are not
+    needed either, since the TypeVars of a generic protocol are compared as
+    wildcards, see type_var_wildcard_matches.
+    """
+    origin = get_typehint_origin(protocol)
+    return origin if is_protocol(origin) else protocol
+
+
 def is_subclass_or_implements_protocol(value, class_type) -> bool:
     if is_protocol(class_type):
         return implements_protocol(value, class_type)
@@ -1815,7 +1877,10 @@ def is_instance_or_supports_protocol(value, class_type):
 
 
 def is_instance_factory_protocol(class_type, logger=None):
-    if not is_protocol(class_type) or not callable_instances(class_type):
+    if not is_protocol(class_type):
+        return False
+    class_type = get_protocol_origin(class_type)
+    if not callable_instances(class_type):
         return False
     from ._postponed_annotations import get_return_type
 
@@ -1888,6 +1953,7 @@ def is_single_class_type(typehint, typehint_origin, closed_class):
             or (is_generic_class(typehint) and inspect.isclass(typehint.__origin__))
         )
         and typehint not in leaf_or_root_types
+        and not is_typed_dict(typehint)
         and not get_registered_type(typehint)
         and not is_pydantic_type(typehint)
         and not is_subclass(typehint, (Path, Enum))
@@ -1920,7 +1986,7 @@ def yield_class_types(typehint, is_single, also_lists=False, callable_return=Fal
     if is_single(typehint, typehint_origin):
         # a subscripted user defined generic, e.g. Strategy[T], is yielded as its origin
         # class, since the consumers use the class itself, e.g. to look up its subclasses
-        yield get_generic_origin(typehint)
+        yield get_generic_origin(get_typed_dict_type(typehint))
 
 
 def get_subclass_types(typehint, also_lists=False, callable_return=False):
@@ -2108,7 +2174,7 @@ def adapt_class_type(
 ):
     prev_val = subclass_spec_as_namespace(prev_val)
     value = subclass_spec_as_namespace(value)
-    if is_generic_class(typehint):
+    if is_generic_class(typehint) and not is_protocol(typehint):
         val_class = typehint
     else:
         val_class = import_object(value.class_path)
@@ -2144,14 +2210,17 @@ def adapt_class_type(
             return value
 
         instantiator_fn = get_class_instantiator()
+        # only the top level keys, since a value can be a namespace, e.g. a subclass spec
+        # kept as is for an Any typed parameter, which must not be expanded into kwargs
+        init_kwargs = dict(init_args.items(branches=True, nested=False))
 
         if partial_skip_args:
             return partial(
                 instantiator_fn,
                 val_class,
-                **{**init_args, **dict_kwargs},
+                **{**init_kwargs, **dict_kwargs},
             )
-        return instantiator_fn(val_class, **{**init_args, **dict_kwargs})
+        return instantiator_fn(val_class, **{**init_kwargs, **dict_kwargs})
 
     prev_init_args = prev_val.get("init_args") if isinstance(prev_val, Namespace) else None
 
@@ -2293,22 +2362,40 @@ def union_subtype_sort_key(subtype) -> int:
     of being used. Sorting is stable, thus subtypes with the same rank keep the
     relative order in which they are given.
     """
-    if subtype == Any or isinstance(subtype, UnvalidatedType):
-        return 3  # accept any value, so nothing after them would ever be attempted
+    if subtype is object or subtype == Any or isinstance(subtype, UnvalidatedType):
+        return 2  # accept any value, so nothing after them would ever be attempted
     if subtype is NoneType:
-        return 2  # only accepts null, second to last so that Optional[<type>] reads as in the source code
-    if subtype is object:
-        return 1  # accepts the import path of any class, so no class subtype after it would be attempted
+        return 1  # only accepts null, second to last so that Optional[<type>] reads as in the source code
     return 0
 
 
 def get_type_var_default(type_var):
     """Returns the PEP 696 default of a TypeVar, or None when it has none."""
     if getattr(type_var, "has_default", lambda: False)():
-        default = type_var.__default__
+        default = resolve_type_var_ref(type_var, type_var.__default__)
         if default is not None:
             return default
     return None
+
+
+def resolve_type_var_ref(type_var, ref):
+    """Resolves a forward reference given as bound, constraint or PEP 696 default of a TypeVar.
+
+    The reference is resolved with the names of the module in which the TypeVar
+    is defined, since that is the scope in which it was written. Unresolvable
+    references are returned unchanged, becoming an ``Unvalidated<...>``.
+    """
+    if not isinstance(ref, (str, ForwardRef)):
+        return ref
+    from ._postponed_annotations import get_global_vars
+
+    resolved = ref
+    module = getattr(type_var, "__module__", None)
+    if isinstance(module, str):
+        name = ref.__forward_arg__ if isinstance(ref, ForwardRef) else ref
+        global_vars = get_global_vars(type_var, None)
+        resolved = resolve_module_annotations(module, {"ref": name}, global_vars).get("ref", ref)
+    return ref if isinstance(resolved, (str, ForwardRef)) else resolved
 
 
 def replace_type_var(type_var, in_type_subtype: bool):
@@ -2322,9 +2409,9 @@ def replace_type_var(type_var, in_type_subtype: bool):
     if default is not None:
         return default
     if type_var.__constraints__:
-        return Union[type_var.__constraints__]
+        return Union[tuple(resolve_type_var_ref(type_var, c) for c in type_var.__constraints__)]
     if type_var.__bound__:
-        return type_var.__bound__
+        return resolve_type_var_ref(type_var, type_var.__bound__)
     return object if in_type_subtype else type_var
 
 
@@ -2484,7 +2571,7 @@ def type_to_str(obj):
     if obj in type_expression_types:
         return type_expression_types[obj]
     # is_subclass not used, since in python<3.12 it considers an Annotated a subclass of its origin type
-    if obj in {bool, tuple} or (isinstance(obj, type) and issubclass(obj, (int, float, str, Path, Enum))):
+    if obj in {bool, tuple, object} or (isinstance(obj, type) and issubclass(obj, (int, float, str, Path, Enum))):
         return obj.__name__
     return typehint_to_str(obj)
 

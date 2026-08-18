@@ -523,12 +523,12 @@ Some notes about this support are:
   :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
   ``bytes``/``bytearray`` (Base64 encoding), ``range``, ``list`` (more details
   in :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``,
-  ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``, ``Any``,
-  ``Union``/``Optional`` (more details in :ref:`union-types`), ``Type``,
-  ``Enum``, ``PathLike``, ``UUID``, ``timedelta``, restricted types as explained
-  in sections :ref:`restricted-numbers` and :ref:`restricted-strings` and path
-  and URL types as explained in sections :ref:`parsing-paths` and
-  :ref:`parsing-urls`.
+  ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``,
+  ``Any``/``object``, ``Union``/``Optional`` (more details in
+  :ref:`union-types`), ``Type``, ``Enum``, ``PathLike``, ``UUID``,
+  ``timedelta``, restricted types as explained in sections
+  :ref:`restricted-numbers` and :ref:`restricted-strings` and path and URL types
+  as explained in sections :ref:`parsing-paths` and :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
   ``OrderedDict``, and ``TypedDict`` are supported but only with ``str`` or
@@ -549,7 +549,10 @@ Some notes about this support are:
   ``issubclass``, the given class is accepted when it is structurally
   compatible, as specified in PEP `589 <https://peps.python.org/pep-0589/>`__,
   i.e. it has all the keys of the expected ``TypedDict``, with the same types
-  and requiredness.
+  and requiredness. A generic ``TypedDict`` is supported both unsubscripted and
+  subscripted, e.g. ``Options`` and ``Options[int]``. Subscripting doesn't
+  change which keys are accepted, only the types of the keys annotated with a
+  ``TypeVar``.
 
 - ``tuple``, ``set``, ``frozenset``, ``AbstractSet`` and ``MutableSet`` are
   supported even though they can't be represented in JSON distinguishable from
@@ -576,7 +579,10 @@ Some notes about this support are:
   i.e. the methods must be callable in all the ways that the protocol's methods
   can be called, similar to what static type checkers verify. Parameter and
   return types must match exactly, subtypes are not accepted, except when the
-  protocol has no annotation or ``Any``, which accept any type.
+  protocol has no annotation or ``Any``, which accept any type. A generic
+  protocol is supported both unsubscripted and subscripted, e.g. ``Proto`` and
+  ``Proto[int]``. In both cases a ``TypeVar``, in the protocol or in the
+  implementation, matches any type, as static type checkers do.
 
 - ``dataclasses``, final classes, attrs' ``define``, pydantic's ``dataclass``
   and pydantic's ``BaseModel`` are supported even when nested. By default they
@@ -645,12 +651,11 @@ the argument is added, so that the subtypes that validate get a chance of being
 used. From first to last attempted, the groups are:
 
 1. All types not mentioned below, in the order in which they are written.
-2. ``object``, which accepts the import path of any class, making any class
-   subtype after it unreachable.
-3. ``None``, which only accepts ``null``. It is placed second to last so that
+2. ``None``, which only accepts ``null``. It is placed second to last so that
    ``Optional[<type>]`` reads in the help as it does in the source code.
-4. ``Any`` and the types that can't be validated, see :ref:`unvalidated-types`.
-   These accept any value, so a subtype after them would never be attempted.
+3. ``Any``, ``object`` and the types that can't be validated, see
+   :ref:`unvalidated-types`. These accept any value, so a subtype after them
+   would never be attempted.
 
 The sorting is stable, meaning that subtypes in the same group keep the relative
 order in which they are given. Unions nested inside other types are sorted as
@@ -749,7 +754,7 @@ the config formats represent round-trip. For instance, a ``set`` is serialized
 as a list and parses back as a list, and an ``Enum`` member is serialized as its
 name and parses back as a string. A warning is raised for each dumped value that
 loses its type this way. All of the above equally applies to arguments typed as
-``Any``.
+``Any``/``object``.
 
 
 .. _restricted-numbers:
@@ -1209,9 +1214,12 @@ Parsing complex-valued points would be:
 
 A ``TypeVar`` can't be used to validate, so when it is used as a type, e.g.
 ``options: Optional[OptionsT] = None``, it is replaced by what it stands for:
-its PEP 696 ``default``, its constraints or its bound, in that order. When it
-has none of these, the value is accepted without validation and the help shows
-it as ``Unvalidated<...>``.
+its PEP 696 ``default``, its constraints or its bound, in that order. Any of
+these given as a forward reference, e.g. ``TypeVar("OptionsT",
+default="Options[int]")``, is resolved with the names of the module in which the
+``TypeVar`` is defined. When the ``TypeVar`` has none of these, or the forward
+reference fails to resolve, the value is accepted without validation and the
+help shows it as ``Unvalidated<...>``.
 
 
 .. _callable-type:
@@ -2314,7 +2322,8 @@ be accepted. In this case the config would be like:
 
     Classes will be parsed and instantiated when given as value a dict with
     ``class_path`` and ``init_args`` if the corresponding parameter has type
-    ``Any``, or when ``fail_untyped=False`` which defaults to type ``Any``.
+    ``Any`` or ``object``, or when ``fail_untyped=False`` which defaults to type
+    ``Any``.
 
     The instantiation of these values is deprecated. From v5.0.0 the subclass
     spec will be kept as is, so that the code that receives it decides whether
@@ -2328,8 +2337,9 @@ be accepted. In this case the config would be like:
     parsed as one, e.g. because the class fails to import, by default it is left
     unchanged and a debug message is logged. Set
     ``validate_subclass_spec_in_any=True`` in :func:`.set_parsing_settings` to
-    make the parsing fail instead. Apart from ``Any`` and ``Unvalidated<...>``,
-    this also applies to dicts that don't validate their values, e.g.
+    make the parsing fail instead. Apart from ``Any``, ``object`` and
+    ``Unvalidated<...>``, this also applies to dicts that don't validate their
+    values, e.g.
     ``dict[str, Any]``. For dicts the spec is only validated, since the value is
     kept as a dict, which matters for unions such as ``Union[SomeClass,
     dict[str, Any]]``, where a spec rejected by the class member would otherwise

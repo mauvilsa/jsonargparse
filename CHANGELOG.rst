@@ -20,12 +20,13 @@ Added
 - ``validate_subclass_spec_in_any`` setting in ``set_parsing_settings`` so that
   when a value looks like a subclass spec but is not a valid one, the parsing
   fails instead of silently ignoring it. Applies to types that accept any value,
-  i.e. ``Any``, ``Unvalidated<...>`` and dicts that don't validate their values,
-  e.g. ``dict[str, Any]``. For dicts the spec is only validated, since the value
-  is kept as a dict. When disabled (the default), a debug log now informs about
-  the ignored invalid subclass spec (`#938
+  i.e. ``Any``, ``object``, ``Unvalidated<...>`` and dicts that don't validate
+  their values, e.g. ``dict[str, Any]``. For dicts the spec is only validated,
+  since the value is kept as a dict. When disabled (the default), a debug log
+  now informs about the ignored invalid subclass spec (`#938
   <https://github.com/mauvilsa/jsonargparse/pull/938>`__, `#953
-  <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 - Items of a list of classes and values of a dict of classes can now be given as
   paths to sub-config files, instead of this only being supported for the value
   of an entire argument (`#940
@@ -53,8 +54,11 @@ Added
   <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
 - A ``TypeVar`` used as the type itself, i.e. not only as the subtype of a
   ``type[...]``, is now replaced by what it stands for: its PEP 696 ``default``,
-  its constraints or its bound. Previously the value was accepted without any
-  validation (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+  its constraints or its bound, resolving it when given as a forward reference,
+  e.g. ``TypeVar("OptionsT", default="Options[int]")``. Previously the value was
+  accepted without any validation, see :ref:`generic-types` (`#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 - Arguments typed as a ``TypedDict`` now have a ``--*.help`` option that shows
   the keys that are accepted, their types and their descriptions. It receives no
   value, unless the ``TypedDict`` is in a union with other types that have a
@@ -74,6 +78,10 @@ Added
   the class itself. The parsed namespace and dumps use the name that the class
   accepts, see :ref:`parameter-aliases` (`#956
   <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
+- Support a subscripted ``TypedDict``, e.g. ``Options[int]`` for a ``class
+  Options(TypedDict, Generic[T])``, previously an unsupported type. The type
+  arguments are substituted into the keys annotated with a ``TypeVar`` (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Fixed
 ^^^^^
@@ -167,8 +175,10 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
 - A generic ``Protocol`` never being implementable, since the ``TypeVar`` of the
   protocol and the type in the implementation could never be equal. Now a
-  ``TypeVar`` in either of them matches any type, as static type checkers do
-  (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
+  ``TypeVar`` in either of them matches any type, as static type checkers do,
+  both for the unsubscripted and the subscripted spelling, e.g. ``Proto`` and
+  ``Proto[int]`` (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__,
+  `#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 - Classes having no parameters at all when a decorator wraps ``__new__``, e.g.
   decorators that mark a class as deprecated or experimental. The parameters
   were resolved from the wrapper instead of from ``__init__`` (`#953
@@ -264,17 +274,23 @@ Changed
   implementation was rejected and giving its fields directly failed on
   ``instantiate``. See :ref:`subclasses-disabled` (`#956
   <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
+- ``object`` as a type is now handled exactly like ``Any``, since in standard
+  typing every value is an instance of it. Previously it was treated as a class
+  type, so values were neither parsed nor validated as for ``Any``, and the help
+  showed an inapplicable ``--*.help`` option and ``known subclasses`` listing
+  (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Deprecated
 ^^^^^^^^^^
 - Instantiating a subclass spec given as value for a type that accepts any
-  value, i.e. ``Any`` or ``Unvalidated<...>``, is deprecated. From v5.0.0 the
-  subclass spec will be kept as is, so that the code that receives it decides
-  whether to instantiate it. The new ``instantiate_subclass_spec_in_any``
-  setting in ``set_parsing_settings`` allows getting the future behavior now,
-  ``False``, or keeping the current one, ``True``. Enabling it is discouraged
-  since it means that a config is able to instantiate any class, which can be a
-  security risk (`#955 <https://github.com/mauvilsa/jsonargparse/pull/955>`__).
+  value, i.e. ``Any``, ``object`` or ``Unvalidated<...>``, is deprecated. From
+  v5.0.0 the subclass spec will be kept as is, so that the code that receives it
+  decides whether to instantiate it. The new
+  ``instantiate_subclass_spec_in_any`` setting in ``set_parsing_settings``
+  allows getting the future behavior now, ``False``, or keeping the current one,
+  ``True``. Enabling it is discouraged since it means that a config is able to
+  instantiate any class, which can be a security risk (`#955
+  <https://github.com/mauvilsa/jsonargparse/pull/955>`__).
 
 
 v4.50.0 (2026-07-22)

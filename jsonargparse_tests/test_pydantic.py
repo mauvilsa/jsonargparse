@@ -860,9 +860,16 @@ def test_pydantic_alias_of_group_field_skipped(parser, logger):
         parser.add_class_arguments(AliasVariants, "m", sub_configs=True)
     assert 'Skipping aliases of parameter "nested"' in logs.getvalue()
     assert "not supported for subclasses-disabled types added as a group" in logs.getvalue()
-    assert parser.parse_args(["--m.nested.alias_name=abc"]).m.nested == Namespace(attr_name="abc")
-    with pytest.raises(ArgumentError, match="unrecognized arguments: --m.nest.alias_name=abc"):
-        parser.parse_args(["--m.nest.alias_name=abc"])
+
+    with capture_logs(logger) as logs:
+        cfg = parser.parse_args(["--m.nested.alias_name=abc"])
+    assert cfg.m.nested == Namespace(attr_name="abc")
+    assert "Parsed command line arguments" in logs.getvalue()
+
+    with capture_logs(logger) as logs:
+        with pytest.raises(ArgumentError, match="unrecognized arguments: --m.nest.alias_name=abc"):
+            parser.parse_args(["--m.nest.alias_name=abc"])
+    assert "unrecognized arguments: --m.nest.alias_name=abc" in logs.getvalue()
 
 
 @skip_if_pydantic_v1
@@ -873,4 +880,8 @@ def test_pydantic_alias_conflicting_with_added_argument_skipped(parser, logger):
         parser.add_class_arguments(AliasVariants, "m", sub_configs=True)
     assert 'Skipping aliases of parameter "elems"' in logs.getvalue()
     assert "conflicts with an already added argument" in logs.getvalue()
-    assert parser.parse_args(["--m.el=3"]).m.el == 3
+
+    with capture_logs(logger) as logs:
+        cfg = parser.parse_args(["--m.el=3"])
+    assert cfg.m.el == 3
+    assert "Parsed command line arguments" in logs.getvalue()

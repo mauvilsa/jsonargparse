@@ -13,6 +13,7 @@ from jsonargparse import (
     Namespace,
     add_instantiator,
     lazy_instance,
+    set_parsing_settings,
 )
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse_tests.conftest import get_parse_args_stdout, get_parser_help, json_or_yaml_dump, json_or_yaml_load
@@ -368,7 +369,9 @@ class ClassD:
         """ClassD title"""
 
 
-def test_on_parse_add_subclass_arguments_compute_fn_return_dict(parser):
+def test_on_parse_add_subclass_arguments_compute_fn_return_dict(parser, parsing_settings_patch):
+    set_parsing_settings(instantiate_subclass_spec_in_any=False)
+
     def return_dict(value: dict):
         return value
 
@@ -389,6 +392,7 @@ def test_on_parse_add_subclass_arguments_compute_fn_return_dict(parser):
     cfg = parser.parse_args([f"--d={json.dumps(d_value)}", f"--c={json.dumps(c_value)}"])
     assert cfg.d.init_args.a1 == c_value
     assert cfg.d.init_args.a2 == c_value
+    assert cfg.d.init_args.a3 == Namespace(**{**c_value, "init_args": Namespace(p=3)})
 
     init = parser.instantiate(cfg)
     assert isinstance(init.d, ClassD)
