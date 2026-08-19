@@ -62,6 +62,18 @@ def get_bash_array(shtab_script, name):
     return shlex.split(match.group(1))
 
 
+def get_zsh_completion_actions(shtab_script):
+    """Completion action of each zsh option spec, independent of the message shtab puts in it.
+
+    A zsh option spec is ``"--opt[description]:message:action"``. Older shtab versions use the
+    action's dest as message, newer ones its metavar when there is one.
+    """
+    actions = {}
+    for match in re.finditer(r'^\s*"(--[^\[]+)\[.*\]:([^:]*):(.*)"$', shtab_script, re.MULTILINE):
+        actions[match.group(1)] = match.group(3)
+    return actions
+
+
 def is_positional(dest, parser):
     if parser is not None:
         action = next(a for a in parser._actions if a.dest == dest)
@@ -826,11 +838,12 @@ def test_zsh_script(parser):
     parser.add_argument("--path", type=PathLike)
     parser.add_argument("--cls", type=Base)
     shtab_script = get_shtab_script(parser, "zsh")
-    assert ":enum:(ABC XY XZ null)" in shtab_script
-    assert ":path:_files" in shtab_script
+    actions = get_zsh_completion_actions(shtab_script)
     classes = f"{__name__}.Base {__name__}.SubA {__name__}.SubB"
-    assert f":cls.help:({classes})" in shtab_script
-    assert f":cls:({classes})" in shtab_script
-    assert ":cls.p1:" in shtab_script
-    assert ":cls.p2:(ABC XY XZ)" in shtab_script
-    assert ":cls.p3:" in shtab_script
+    assert actions["--enum"] == "(ABC XY XZ null)"
+    assert actions["--path"] == "_files"
+    assert actions["--cls.help"] == f"({classes})"
+    assert actions["--cls"] == f"({classes})"
+    assert actions["--cls.p1"] == ""
+    assert actions["--cls.p2"] == "(ABC XY XZ)"
+    assert actions["--cls.p3"] == ""
