@@ -240,6 +240,10 @@ Fixed
 - The docstring of a subscripted generic class not being used, so the group
   description and the parameter descriptions were missing in the help (`#958
   <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
+- Signature parameters annotated with a name imported in a ``TYPE_CHECKING``
+  block getting the runtime stand-in as the type, e.g. ``else: Name = Any``. Now
+  the type is resolved from the source, see :ref:`type-hints` (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

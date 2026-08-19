@@ -26,6 +26,7 @@ from jsonargparse._optionals import (
     toml_load_available,
     url_support,
 )
+from jsonargparse._postponed_annotations import _MODULE_TYPE_CHECKING_CACHE
 
 if docstring_parser_support:
     from docstring_parser import DocstringStyle
@@ -253,8 +254,13 @@ def capture_logs(logger: logging.Logger) -> Iterator[StringIO]:
 def source_unavailable(obj=None):
     if obj and obj.__module__ in sys.modules:
         del sys.modules[obj.__module__]
-    with patch("inspect.getsource", side_effect=OSError("mock source code not available")):
-        yield
+    # the results of parsing a module source are cached, so forget them to make the source unavailable
+    _MODULE_TYPE_CHECKING_CACHE.clear()
+    try:
+        with patch("inspect.getsource", side_effect=OSError("mock source code not available")):
+            yield
+    finally:
+        _MODULE_TYPE_CHECKING_CACHE.clear()
 
 
 @pytest.fixture(autouse=True, scope="session")

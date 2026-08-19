@@ -13,6 +13,7 @@ from ._util import get_typehint_origin
 
 _TRIGGER_MODULE_CACHE_MAXSIZE = 1024
 _TRIGGER_MODULE_CACHE: dict[int, dict[str, Any]] = {}
+_MODULE_TYPE_CHECKING_CACHE: dict[str, tuple[dict, dict]] = {}
 
 
 class NamesVisitor(ast.NodeVisitor):
@@ -167,6 +168,17 @@ def type_requires_eval(typehint):
     return isinstance(typehint, (str, ForwardRef))
 
 
+def type_uses_stand_in(typehint, stand_ins: dict) -> bool:
+    """Whether a type was evaluated against a TYPE_CHECKING stand-in, so it must be resolved again."""
+    if not stand_ins:
+        return False
+    if any(typehint is stand_in for stand_in in stand_ins.values()):
+        return True
+    # only a tuple is the subtypes of a type hint, e.g. types.UnionType has __args__ as a slot descriptor
+    subtypes = getattr(typehint, "__args__", None)
+    return isinstance(subtypes, tuple) and any(type_uses_stand_in(a, stand_ins) for a in subtypes)
+
+
 def _collect_string_fwd_ref_names(typehint: Any, result: set[str]) -> None:
     if isinstance(typehint, str):
         result.add(typehint.split(".")[0])
@@ -244,18 +256,59 @@ def _enrich_globals_for_string_forward_refs(global_vars: dict[str, Any]) -> None
         _update_missing_from_module_vars(global_vars, missing, mod_vars)
 
 
+def get_module_type_checking_names(module: str, logger: logging.Logger | None = None) -> tuple[dict, dict]:
+    """Returns the names that the TYPE_CHECKING blocks of a module bind, and the stand-ins of those names.
+
+    A stand-in is the runtime value of a name that a TYPE_CHECKING block binds
+    to a different object, e.g. ``else: Name = Any``. Since the runtime value is
+    only there to make the module importable, a type evaluated against it is
+    silently wrong and must be resolved again from the source.
+
+    Both dicts are empty for a module without TYPE_CHECKING blocks. The result
+    is cached because parsing a module is expensive and neither its source nor
+    its availability change, though not for a module that is not imported,
+    since it could be imported later on.
+    """
+    if module in _MODULE_TYPE_CHECKING_CACHE:
+        return _MODULE_TYPE_CHECKING_CACHE[module]
+    names: dict = {}
+    stand_ins: dict = {}
+    module_obj = sys.modules.get(module)
+    if module_obj is None:
+        return names, stand_ins
+    try:
+        module_source = inspect.getsource(module_obj)
+        if "TYPE_CHECKING" in module_source:
+            module_vars = vars(module_obj)
+            # the block is executed in the namespace of its own module, so that it can use its names
+            aliases = dict(module_vars)
+            TypeCheckingVisitor().update_aliases(module_source, module, aliases, logger)
+            names = {
+                key: value
+                for key, value in aliases.items()
+                if key != "__builtins__" and (key not in module_vars or module_vars[key] is not value)
+            }
+            # the stand-ins are the runtime values, which is what an eager annotation was evaluated with
+            stand_ins = {key: module_vars[key] for key in names if key in module_vars}
+    except Exception as ex:
+        if logger:
+            logger.debug(f"Failed to update aliases for TYPE_CHECKING blocks in {module}", exc_info=ex)
+    _MODULE_TYPE_CHECKING_CACHE[module] = (names, stand_ins)
+    return names, stand_ins
+
+
+def get_type_checking_stand_ins(obj: Any, logger: logging.Logger | None = None) -> dict:
+    """Returns the TYPE_CHECKING stand-ins of the module in which obj is defined."""
+    module = getattr(obj, "__module__", None)
+    return get_module_type_checking_names(module, logger)[1] if module else {}
+
+
 def update_module_global_vars(module: str, global_vars: dict, logger: logging.Logger | None) -> None:
     """Adds to global_vars the names of a module, including those of its TYPE_CHECKING blocks."""
     for key, value in vars(import_module(module)).items():  # needed for pydantic-v1
         if key not in global_vars:
             global_vars[key] = value
-    try:
-        module_source = inspect.getsource(sys.modules[module]) if module in sys.modules else ""
-        if "TYPE_CHECKING" in module_source:
-            TypeCheckingVisitor().update_aliases(module_source, module, global_vars, logger)
-    except Exception as ex:
-        if logger:
-            logger.debug(f"Failed to update aliases for TYPE_CHECKING blocks in {module}", exc_info=ex)
+    global_vars.update(get_module_type_checking_names(module, logger)[0])
 
 
 def get_global_vars(obj: Any, logger: logging.Logger | None) -> dict:
@@ -313,7 +366,12 @@ def get_types(obj: Any, logger: logging.Logger | None = None, parent: Any = None
         types = get_type_hints(obj, global_vars, local_vars)
     except Exception as ex1:
         types = ex1
-    if not isinstance(types, Exception) and all(not type_requires_eval(t) for t in types.values()):
+    stand_ins = get_type_checking_stand_ins(obj, logger)
+
+    def requires_resolve(typehint) -> bool:
+        return type_requires_eval(typehint) or type_uses_stand_in(typehint, stand_ins)
+
+    if not isinstance(types, Exception) and all(not requires_resolve(t) for t in types.values()):
         return types
 
     try:
@@ -335,10 +393,14 @@ def get_types(obj: Any, logger: logging.Logger | None = None, parent: Any = None
         ex = types
         types = {}
 
-    arg_asts = [(a.arg, a.annotation) for a in node.args.args + node.args.kwonlyargs]  # type: ignore[union-attr]
+    if isinstance(node, ast.ClassDef):
+        # dataclass-like, the annotations are the annotated assignments of the class body
+        arg_asts = [(n.target.id, n.annotation) for n in node.body if isinstance(n, ast.AnnAssign)]  # type: ignore[union-attr]
+    else:
+        arg_asts = [(a.arg, a.annotation) for a in node.args.args + node.args.kwonlyargs]
 
     for name, annotation in arg_asts:
-        if annotation and (name not in types or type_requires_eval(types[name])):
+        if annotation and (name not in types or requires_resolve(types[name])):
             try:
                 arg_type = get_arg_type(annotation, aliases)
                 types[name] = resolve_forward_refs(arg_type, aliases, logger)
@@ -352,13 +414,19 @@ def get_types(obj: Any, logger: logging.Logger | None = None, parent: Any = None
 
 
 def evaluate_postponed_annotations(params, component, parent, logger):
-    if not (params and any(type_requires_eval(p.annotation) for p in params)):
+    if not params:
         return
+    if is_dataclass(parent) and getattr(component, "__name__", None) == "__init__":
+        obj, obj_parent = parent, None
+    else:
+        obj, obj_parent = component, parent
+    if not any(type_requires_eval(p.annotation) for p in params):
+        # eagerly evaluated annotations are only wrong if they used a TYPE_CHECKING stand-in
+        stand_ins = get_type_checking_stand_ins(obj, logger)
+        if not any(type_uses_stand_in(p.annotation, stand_ins) for p in params):
+            return
     try:
-        if is_dataclass(parent) and component.__name__ == "__init__":
-            types = get_types(parent, logger)
-        else:
-            types = get_types(component, logger, parent)
+        types = get_types(obj, logger, obj_parent)
     except Exception as ex:
         logger.debug(f"Unable to evaluate types for {component}", exc_info=ex)
         return

@@ -9,7 +9,7 @@ import typing
 from collections.abc import Callable
 from textwrap import dedent
 from types import GenericAlias, SimpleNamespace, UnionType
-from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Protocol, Tuple, Type, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Dict, ForwardRef, List, Optional, Protocol, Tuple, Type, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +19,7 @@ from jsonargparse import _postponed_annotations as postponed_annotations
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse._parameter_resolvers import get_signature_parameters as get_params
 from jsonargparse._postponed_annotations import (
+    _MODULE_TYPE_CHECKING_CACHE,
     _TRIGGER_MODULE_CACHE,
     TypeCheckingVisitor,
     _cache_trigger_bindings,
@@ -26,6 +27,7 @@ from jsonargparse._postponed_annotations import (
     _enrich_globals_for_string_forward_refs,
     evaluate_postponed_annotations,
     get_global_vars,
+    get_module_type_checking_names,
     get_owner_class,
     get_return_type,
     get_types,
@@ -44,6 +46,14 @@ from jsonargparse.typing import Path_drw
 from jsonargparse_tests.conftest import capture_logs, get_parser_help, source_unavailable
 from jsonargparse_tests.different_module_type_checking import DifferentModuleTypeCheckingTypedDict
 from jsonargparse_tests.test_dataclasses import DifferentModuleBaseData
+from jsonargparse_tests.type_checking_classes import CacheHook, Hook, LogHook, Plugin
+from jsonargparse_tests.type_checking_stand_ins import Agent as StandInAgent
+from jsonargparse_tests.type_checking_stand_ins import (
+    AgentConfig,
+    function_genuine_any,
+    function_stand_ins,
+    function_type_expression,
+)
 
 
 def function_pep604(p1: str | None, p2: int | float | bool = 1):
@@ -1034,3 +1044,104 @@ class TestEnrichGlobals:
             global_vars = {"NT": mod.NestedType}
             _enrich_globals_for_string_forward_refs(global_vars)
             assert global_vars["Inner"] is mod.Inner
+
+
+# Annotations evaluated eagerly against a TYPE_CHECKING stand-in, e.g. ``else: Name = Any``,
+# are resolved from the source, so that the type is the one the annotation was written with.
+
+
+stand_ins_module = "jsonargparse_tests.type_checking_stand_ins"
+
+
+def test_type_checking_stand_in_class_parameters():
+    params = get_params(StandInAgent)
+    assert [p.annotation for p in params] == [Optional[list[Hook]], Optional[Plugin]]
+
+
+def test_type_checking_stand_in_function_parameters():
+    params = get_params(function_stand_ins)
+    assert [p.annotation for p in params] == [Optional[LogHook], Optional[CacheHook]]
+
+
+def test_type_checking_stand_in_genuine_any_unchanged():
+    params = get_params(function_genuine_any)
+    assert [p.annotation for p in params] == [Any, Optional[dict[str, Any]]]
+
+
+def test_type_checking_stand_in_type_with_args_slot_descriptor():
+    # UnionType has __args__ as a class level slot descriptor, which is not a tuple of subtypes
+    params = get_params(function_type_expression)
+    assert [p.annotation for p in params] == [Optional[UnionType]]
+
+
+def test_type_checking_stand_in_dataclass_fields():
+    params = get_params(AgentConfig)
+    assert [p.annotation for p in params] == [Optional[Hook], str]
+
+
+def test_type_checking_stand_in_help(parser):
+    parser.add_class_arguments(StandInAgent, "agent")
+    help_str = get_parser_help(parser, strip=True)
+    expected_type = "list[Hook] | null" if sys.version_info >= (3, 14) else "Optional[list[Hook]]"
+    assert "--agent.hooks+" in help_str  # the type is a list, so the append option is added
+    assert f"type: {expected_type}, default: null" in help_str
+    assert "Show the help for the given subclass of Hook and exit." in help_str
+    assert "known subclasses: jsonargparse_tests.type_checking_classes.Plugin" in help_str
+
+
+def test_type_checking_stand_in_parse_and_instantiate(parser):
+    parser.add_class_arguments(StandInAgent, "agent")
+    module = "jsonargparse_tests.type_checking_classes"
+    cache = f'{{"class_path": "{module}.CacheHook", "init_args": {{"size": 2}}}}'
+    hooks = f'["{module}.LogHook", {cache}]'
+    cfg = parser.parse_args([f"--agent.hooks={hooks}", f"--agent.plugin={module}.Plugin"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.agent.hooks[0], LogHook)
+    assert init.agent.hooks[1].size == 2
+    assert isinstance(init.agent.plugin, Plugin)
+
+
+def test_type_checking_stand_in_validates_unrelated_class(parser):
+    parser.add_class_arguments(StandInAgent, "agent")
+    with pytest.raises(ArgumentError, match="does not correspond to a subclass of Hook"):
+        parser.parse_args(['--agent.hooks=["calendar.Calendar"]'])
+
+
+def test_type_checking_names_module_without_type_checking():
+    names, stand_ins = get_module_type_checking_names("jsonargparse_tests.type_checking_classes")
+    assert names == {}
+    assert stand_ins == {}
+
+
+def test_type_checking_names_module_not_imported():
+    with patch.dict(sys.modules):
+        del sys.modules[stand_ins_module]
+        _MODULE_TYPE_CHECKING_CACHE.pop(stand_ins_module, None)
+        assert get_module_type_checking_names(stand_ins_module) == ({}, {})
+        assert stand_ins_module not in _MODULE_TYPE_CHECKING_CACHE
+
+
+def test_type_checking_names_source_unavailable(logger):
+    with source_unavailable(), capture_logs(logger) as logs:
+        names, stand_ins = get_module_type_checking_names(stand_ins_module, logger)
+        params = get_params(StandInAgent, logger=logger)
+    assert (names, stand_ins) == ({}, {})
+    assert "Failed to update aliases for TYPE_CHECKING blocks" in logs.getvalue()
+    # without the source the stand-ins can't be seen and the eager annotation is kept
+    assert params[0].annotation == Optional[list[Any]]
+
+
+def test_type_checking_names_module_parsed_once(monkeypatch):
+    _MODULE_TYPE_CHECKING_CACHE.pop(stand_ins_module, None)
+    calls = []
+    update_aliases = TypeCheckingVisitor.update_aliases
+
+    def counted_update_aliases(self, source, module, aliases, logger=None):
+        calls.append(module)
+        update_aliases(self, source, module, aliases, logger)
+
+    monkeypatch.setattr(TypeCheckingVisitor, "update_aliases", counted_update_aliases)
+    get_params(StandInAgent)
+    get_params(function_stand_ins)
+    get_params(AgentConfig)
+    assert calls == [stand_ins_module]

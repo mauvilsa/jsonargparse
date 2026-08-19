@@ -513,7 +513,11 @@ Some notes about this support are:
   ``Union[<type>, <type>]``).
 
 - Types that use components imported inside ``TYPE_CHECKING`` blocks are
-  supported.
+  supported. This includes the case in which the module binds the name to a
+  stand-in value at runtime, e.g. ``else: Name = Any``, since then the type is
+  resolved from the source instead of taking the value that the annotation was
+  evaluated with. The stand-in must be in the same module as the annotation, so
+  a name imported from a module that binds the stand-in is not recognized.
 
 - Resolving of forward references in types is supported. This includes names
   that are only defined in the body of the class that owns the method, e.g. a
