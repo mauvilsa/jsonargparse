@@ -246,6 +246,11 @@ def get_mro_doc_sources(cls) -> list:
 
 
 def parse_docs(component, parent, logger):
+    from ._common import get_generic_origin
+
+    # a subscripted generic, e.g. Strategy[int], is documented by the class that it stands for
+    component = get_generic_origin(component)
+    parent = get_generic_origin(parent)
     docs = {}
     if docstring_parser_support:
         if inspect.isclass(parent) and component.__name__ == "__init__":
@@ -265,6 +270,9 @@ def parse_docs(component, parent, logger):
 
 
 def get_doc_short_description(function_or_class, method_name=None, logger=None):
+    from ._common import get_generic_origin
+
+    function_or_class = get_generic_origin(function_or_class)  # e.g. Strategy[int] documented by Strategy
     if docstring_parser_support:
         if inspect.isclass(function_or_class) and not method_name:
             # nearest short description in the mro, since a derived class often inherits the constructor

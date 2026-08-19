@@ -504,6 +504,26 @@ def test_add_class_generics(parser):
     assert cfg.p == Namespace(a=5, b=6 + 7j)
 
 
+class WithGenericsDocstring(Generic[X]):
+    """Class with generics.
+
+    Args:
+        a: The a doc.
+    """
+
+    def __init__(self, a: Optional[X] = None):  # pragma: no cover
+        self.a = a
+
+
+@skip_if_docstring_parser_unavailable
+def test_add_class_generics_docstring(parser):
+    parser.add_class_arguments(WithGenericsDocstring[int], "p")
+    # the docstring of a subscripted generic is the one of the class that it stands for
+    help_str = get_parser_help(parser, strip=True)
+    assert "Class with generics:" in help_str
+    assert "--p.a A The a doc. (type:" in help_str
+
+
 class WithGenericsPep604Union(Generic[X]):
     def __init__(self, a: X | None = None, b: int | None = None):  # pragma: no cover
         self.a = a

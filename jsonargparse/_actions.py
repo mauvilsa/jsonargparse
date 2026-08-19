@@ -346,8 +346,9 @@ class _ActionHelpClassPath(NonParsingAction):
 
         self._typehint = kwargs.pop("_typehint")
         self._help_types = get_help_types(self._typehint)
-        assert self._help_types and all(isinstance(b, type) for b in self._help_types)
         typed_dicts = [t for t in self._help_types if is_typed_dict(t)]
+        # a subscripted generic typed dict is a generic alias instead of a class, see get_typed_dict_type
+        assert self._help_types and all(isinstance(b, type) for b in self._help_types if b not in typed_dicts)
         # a single type means that the help refers to it, so no value is expected
         single_type = len(self._help_types) == 1 and (is_subclasses_disabled(self._help_types[0]) or bool(typed_dicts))
         self._basename = iter_to_set_str(t.__name__ for t in self._help_types)

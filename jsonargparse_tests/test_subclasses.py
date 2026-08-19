@@ -2053,10 +2053,14 @@ def test_parse_implements_generic_protocol(parser):
     "expected, protocol, value",
     [
         (True, GenericInterface[int], GenericImplementsOwnTypeVar),
+        (True, GenericInterface[str], GenericImplementsOwnTypeVar),
         (True, GenericInterface[int], GenericImplementsConcrete),
+        # the type arguments are substituted, so an int implementation is not a GenericInterface[str]
+        (False, GenericInterface[str], GenericImplementsConcrete),
         (False, GenericInterface[int], GenericNotImplements),
         (False, GenericInterface[str], GenericNotAcceptsNone),
         (True, GenericPairInterface[str], GenericPairImplements),
+        (False, GenericPairInterface[int], GenericPairImplements),
         (False, GenericPairInterface[str], GenericPairNotImplements),
     ],
 )
@@ -2072,6 +2076,12 @@ def test_parse_implements_subscripted_generic_protocol(parser):
     assert isinstance(init.cls, GenericImplementsOwnTypeVar)
     with pytest.raises(ArgumentError, match="does not implement protocol"):
         parser.parse_args([f"--cls={__name__}.GenericNotImplements"])
+
+
+def test_parse_subscripted_generic_protocol_type_argument_mismatch(parser):
+    parser.add_argument("--cls", type=GenericInterface[str])
+    with pytest.raises(ArgumentError, match="does not implement protocol"):
+        parser.parse_args([f"--cls={__name__}.GenericImplementsConcrete"])
 
 
 class MultipleMethodsInterface(Protocol):

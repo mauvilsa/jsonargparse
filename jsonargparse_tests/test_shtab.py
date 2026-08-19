@@ -13,7 +13,7 @@ from enum import Enum
 from importlib.util import find_spec
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, TypedDict, Union
+from typing import Any, Callable, Generic, Literal, Optional, TypedDict, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -104,6 +104,32 @@ def test_bash_any(parser, subtests):
         parser,
         [
             ("any", Any, "", [], None),
+        ],
+    )
+
+
+def test_bash_object(parser, subtests):
+    parser.add_argument("--obj", type=object)
+    assert_bash_typehint_completions(
+        subtests,
+        parser,
+        [
+            ("obj", object, "", [], None),
+        ],
+    )
+
+
+@pytest.mark.parametrize("any_type", [Any, object])
+def test_bash_union_literal_and_any(parser, any_type, subtests):
+    typehint = Union[Literal["one", "two"], any_type]
+    parser.add_argument("--union", type=typehint)
+    # the choices are not all that is accepted, so a prefix is required to complete them
+    assert_bash_typehint_completions(
+        subtests,
+        parser,
+        [
+            ("union", typehint, "", [], None),
+            ("union", typehint, "t", ["two"], "1/2"),
         ],
     )
 
@@ -583,6 +609,25 @@ def test_bash_typed_dict_help_choices(parser):
     shtab_script = get_shtab_script(parser, "bash")
     choices = get_bash_array(shtab_script, "_shtab_tool___area_help_choices")
     assert choices == ["AreaDict", f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+
+
+PointVar = TypeVar("PointVar")
+
+if sys.version_info >= (3, 11):  # a generic TypedDict requires python 3.11 or later
+
+    class PointDict(TypedDict, Generic[PointVar]):
+        x: PointVar
+        y: PointVar
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="generic TypedDict introduced in python 3.11")
+def test_bash_subscripted_typed_dict_help_choices(parser):
+    parser.add_argument("--point", type=Union[PointDict[int], Base])
+    shtab_script = get_shtab_script(parser, "bash")
+    choices = get_bash_array(shtab_script, "_shtab_tool___point_help_choices")
+    assert choices == ["PointDict", f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+    options = get_bash_array(shtab_script, "_shtab_tool_option_strings")
+    assert {"--point", "--point.x", "--point.y"}.issubset(options)
 
 
 class OptionsDict(TypedDict, total=False):

@@ -25,8 +25,8 @@ Added
   since the value is kept as a dict. When disabled (the default), a debug log
   now informs about the ignored invalid subclass spec (`#938
   <https://github.com/mauvilsa/jsonargparse/pull/938>`__, `#953
-  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 - Items of a list of classes and values of a dict of classes can now be given as
   paths to sub-config files, instead of this only being supported for the value
   of an entire argument (`#940
@@ -54,11 +54,11 @@ Added
   <https://github.com/mauvilsa/jsonargparse/pull/952>`__).
 - A ``TypeVar`` used as the type itself, i.e. not only as the subtype of a
   ``type[...]``, is now replaced by what it stands for: its PEP 696 ``default``,
-  its constraints or its bound, resolving it when given as a forward reference,
-  e.g. ``TypeVar("OptionsT", default="Options[int]")``. Previously the value was
-  accepted without any validation, see :ref:`generic-types` (`#953
-  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  its constraints or its bound, also when given as a forward reference.
+  Previously the value was accepted without any validation, see
+  :ref:`generic-types` (`#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 - Arguments typed as a ``TypedDict`` now have a ``--*.help`` option that shows
   the keys that are accepted, their types and their descriptions. It receives no
   value, unless the ``TypedDict`` is in a union with other types that have a
@@ -78,10 +78,11 @@ Added
   the class itself. The parsed namespace and dumps use the name that the class
   accepts, see :ref:`parameter-aliases` (`#956
   <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
-- Support a subscripted ``TypedDict``, e.g. ``Options[int]`` for a ``class
-  Options(TypedDict, Generic[T])``, previously an unsupported type. The type
-  arguments are substituted into the keys annotated with a ``TypeVar`` (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Support a subscripted generic ``TypedDict``, e.g. ``SomeDict[int]``, and a
+  ``TypedDict`` that inherits from one, e.g. ``class SubDict(SomeDict[int])``,
+  previously unsupported types. The type arguments are substituted into the keys
+  annotated with a ``TypeVar``, see :ref:`type-hints` (`#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 
 Fixed
 ^^^^^
@@ -173,12 +174,12 @@ Fixed
   silently making the mask the actual secret. Now parsing the mask as a
   ``SecretStr``, both jsonargparse's and pydantic's, fails (`#953
   <https://github.com/mauvilsa/jsonargparse/pull/953>`__).
-- A generic ``Protocol`` never being implementable, since the ``TypeVar`` of the
-  protocol and the type in the implementation could never be equal. Now a
-  ``TypeVar`` in either of them matches any type, as static type checkers do,
-  both for the unsubscripted and the subscripted spelling, e.g. ``Proto`` and
-  ``Proto[int]`` (`#953 <https://github.com/mauvilsa/jsonargparse/pull/953>`__,
-  `#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- A generic ``Protocol`` never being implementable, both unsubscripted and
+  subscripted, e.g. ``Proto`` and ``Proto[int]``. Now the type arguments are
+  substituted and a ``TypeVar`` that remains matches any type, as static type
+  checkers do, see :ref:`type-hints` (`#953
+  <https://github.com/mauvilsa/jsonargparse/pull/953>`__, `#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 - Classes having no parameters at all when a decorator wraps ``__new__``, e.g.
   decorators that mark a class as deprecated or experimental. The parameters
   were resolved from the wrapper instead of from ``__init__`` (`#953
@@ -229,17 +230,29 @@ Fixed
   instantiate with ``TypeError: got an unexpected keyword argument`` or not
   being configurable at all (`#956
   <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
+- Internal ``RuntimeError`` when giving a value for a ``TypedDict`` key
+  annotated with a ``TypeVar``, e.g. a generic ``TypedDict``, see
+  :ref:`generic-types` (`#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
+- ``type[Any]`` rejecting every value, instead of accepting any class as
+  ``type`` without an argument does (`#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
+- The docstring of a subscripted generic class not being used, so the group
+  description and the parameter descriptions were missing in the help (`#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 
 Changed
 ^^^^^^^
 - Signature parameters with a type that jsonargparse can't validate are now
-  accepted instead of skipped. Only the parts of the type that can't be
-  validated accept any value, e.g. a ``list[SomeType]`` still requires a list.
-  These parts are shown in the help as ``Unvalidated<...>`` and a debug log
-  states the reason. See the new documentation section :ref:`unvalidated-types`
-  (`#936 <https://github.com/mauvilsa/jsonargparse/pull/936>`__, `#944
+  accepted, instead of the parameter being skipped and the key failing to parse.
+  Only the parts of the type that can't be validated accept any value, e.g. a
+  ``list[SomeType]`` still requires a list. These parts are shown in the help as
+  ``Unvalidated<...>`` and a debug log states the reason. See the new
+  documentation section :ref:`unvalidated-types` (`#936
+  <https://github.com/mauvilsa/jsonargparse/pull/936>`__, `#944
   <https://github.com/mauvilsa/jsonargparse/pull/944>`__, `#948
-  <https://github.com/mauvilsa/jsonargparse/pull/948>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/948>`__, `#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 - ``Required`` and ``NotRequired`` given as the type of an argument are no
   longer shown in the help. Now they must agree with whether the argument is
   required, otherwise adding the argument fails (`#937
@@ -275,10 +288,8 @@ Changed
   ``instantiate``. See :ref:`subclasses-disabled` (`#956
   <https://github.com/mauvilsa/jsonargparse/pull/956>`__).
 - ``object`` as a type is now handled exactly like ``Any``, since in standard
-  typing every value is an instance of it. Previously it was treated as a class
-  type, so values were neither parsed nor validated as for ``Any``, and the help
-  showed an inapplicable ``--*.help`` option and ``known subclasses`` listing
-  (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  typing every value is an instance of it (`#958
+  <https://github.com/mauvilsa/jsonargparse/pull/958>`__).
 
 Deprecated
 ^^^^^^^^^^

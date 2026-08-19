@@ -963,6 +963,11 @@ class UnvalidatedType:
         return hash((UnvalidatedType, self.name))
 
 
+def accepts_any_value(typehint) -> bool:
+    """Whether a type hint accepts any value, i.e. it does not validate."""
+    return typehint is object or typehint == Any or isinstance(typehint, UnvalidatedType)
+
+
 def keep_subtype_as_is(subtype, typehint_origin) -> bool:
     """Whether a subtype is never replaced, mirroring the exceptions that is_supported_typehint makes."""
     return (
@@ -1047,24 +1052,49 @@ def get_typed_dict_type(typehint):
 
     A subscripted generic TypedDict, is a generic alias through which the keys
     can't be looked up. Its type parameters don't change the keys, only the
-    types of the ones annotated with a TypeVar, see get_typed_dict_type_var_map.
+    types of the ones annotated with a TypeVar, see get_typed_dict_type_var_maps.
     """
-    origin = get_typehint_origin(typehint)
+    # __origin__ used directly, since get_typehint_origin is more costly and only
+    # differs for types that are never a TypedDict, e.g. it maps one to dict
+    origin = getattr(typehint, "__origin__", None)
     return origin if type(origin) in typed_dict_meta_types else typehint
 
 
-def get_typed_dict_type_var_map(typehint) -> dict:
-    """Returns the map from the TypeVars of a generic TypedDict to the types it is subscripted with."""
-    typed_dict = get_typed_dict_type(typehint)
-    if typed_dict is typehint:
+def get_type_var_map(typehint, generic) -> dict:
+    """Returns the map from the TypeVars of a generic to the types that it is subscripted with."""
+    if generic is typehint:
         return {}
-    parameters = getattr(typed_dict, "__parameters__", None) or ()
+    parameters = getattr(generic, "__parameters__", None) or ()
     args = getattr(typehint, "__args__", None) or ()
     return dict(zip(parameters, args))
 
 
+def get_typed_dict_type_var_maps(typehint) -> dict:
+    """Returns the map from each key of a generic TypedDict to the TypeVar substitutions that apply to it.
+
+    A key inherited from a base is substituted with what the base is
+    subscripted with, e.g. ``class Sub(Base[int])``, composed with the
+    substitutions of the subclass, e.g. ``class Sub(Base[T])`` used as
+    ``Sub[int]``. Thus, the same TypeVar can stand for a different type
+    depending on the key in which it is used, so a map per key is needed.
+    """
+    typed_dict = get_typed_dict_type(typehint)
+    type_var_map = get_type_var_map(typehint, typed_dict)
+    type_var_maps = {}
+    for base in getattr(typed_dict, "__orig_bases__", ()):
+        if is_typed_dict(base):
+            for key, base_map in get_typed_dict_type_var_maps(base).items():
+                base_map = {var: substitute_type_vars(sub, type_var_map) for var, sub in base_map.items()}
+                type_var_maps[key] = base_map
+    for key in typed_dict.__annotations__:
+        type_var_maps.setdefault(key, type_var_map)
+    return type_var_maps
+
+
 def substitute_type_vars(typehint, type_var_map: dict):
     """Returns the type hint with the given TypeVars replaced by the types that they stand for."""
+    if not type_var_map:
+        return typehint
     if isinstance(typehint, TypeVar):
         return type_var_map.get(typehint, typehint)
     args = getattr(typehint, "__args__", None)
@@ -1081,7 +1111,7 @@ def substitute_type_vars(typehint, type_var_map: dict):
 def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
     from ._postponed_annotations import get_global_vars, update_module_global_vars
 
-    type_var_map = get_typed_dict_type_var_map(typed_dict)
+    type_var_maps = get_typed_dict_type_var_maps(typed_dict)
     typed_dict = get_typed_dict_type(typed_dict)
 
     # Keys can be inherited from bases defined in other modules, and each key must resolve
@@ -1106,9 +1136,18 @@ def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
             global_vars = {}
             update_module_global_vars(module, global_vars, logger)
         annotations.update(resolve_module_annotations(module, module_annotations, global_vars, logger))
-    if type_var_map:
-        annotations = {k: substitute_type_vars(v, type_var_map) for k, v in annotations.items()}
-    return {k: annotations[k] for k in typed_dict.__annotations__}
+    return {k: resolve_typed_dict_key_type_vars(annotations[k], type_var_maps[k]) for k in typed_dict.__annotations__}
+
+
+def resolve_typed_dict_key_type_vars(annotation, type_var_map: dict):
+    """Returns the annotation of a TypedDict key with the TypeVars in it resolved.
+
+    First the TypeVars that the subscript binds are substituted, then the ones
+    that it doesn't are replaced by what they stand for, i.e. their default,
+    constraints or bound. A TypeVar that stands for nothing is left as is, so
+    that it becomes an Unvalidated<...>, the same as for a signature parameter.
+    """
+    return replace_type_vars(substitute_type_vars(annotation, type_var_map))
 
 
 def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
@@ -1238,7 +1277,7 @@ def adapt_typehints(
     unset_sentinel = get_parsing_setting("unset_sentinel")
 
     # Any, object and unvalidated, i.e. no validation
-    if typehint is object or typehint == Any or isinstance(typehint, UnvalidatedType):
+    if accepts_any_value(typehint):
         type_val = type(val)
         if get_registered_type(type_val) or is_subclass(type_val, Enum):
             if not serialize:  # when serializing this is done by serialize_unvalidated
@@ -1307,7 +1346,7 @@ def adapt_typehints(
         elif not serialize and not isinstance(val, type):
             path = val
             val = import_object(val)
-            if typehint in {Type, type}:
+            if typehint in {Type, type} or accepts_any_value(subtypehints[0]):
                 valid = isinstance(val, type)
             elif is_typed_dict(subtypehints[0]):
                 valid = is_typed_dict_subtype(val, subtypehints[0], logger)
@@ -1470,7 +1509,8 @@ def adapt_typehints(
             if extra_keys:
                 raise_unexpected_value(f"Unexpected keys: {extra_keys}", val)
             for k, v in val.items():
-                val[k] = adapt_typehints(v, dict_annotations[k], **adapt_kwargs)
+                # what can't be validated accepts any value, as the help shows it
+                val[k] = adapt_typehints(v, replace_unvalidatable_typehints(dict_annotations[k]), **adapt_kwargs)
         if typehint_origin is MappingProxyType and not serialize:
             val = MappingProxyType(val)
         elif typehint_origin is OrderedDict:
@@ -1825,7 +1865,9 @@ def protocol_params_match(proto_params, value_params) -> bool:
 def implements_protocol(value, protocol) -> bool:
     if not inspect.isclass(value) or value is object or not is_protocol(protocol):
         return False
-    protocol = get_protocol_origin(protocol)
+    origin = get_protocol_origin(protocol)
+    type_var_map = get_type_var_map(protocol, origin)
+    protocol = origin
 
     logger = parse_logger(True, "implements_protocol")
     members = 0
@@ -1841,6 +1883,11 @@ def implements_protocol(value, protocol) -> bool:
         except (ValueError, TypeError):
             return False
         proto_params, proto_return = get_protocol_method_signature(protocol, name, logger)
+        # a subscripted generic protocol is implemented by what its type arguments say,
+        # e.g. Proto[int] by a run(self, x: int), the same as static type checkers do
+        for param in proto_params:
+            param.annotation = substitute_type_vars(param.annotation, type_var_map)
+        proto_return = substitute_type_vars(proto_return, type_var_map)
         if not protocol_params_match(proto_params, value_params):
             return False
         if not protocol_type_matches(proto_return, value_return):
@@ -1856,11 +1903,10 @@ def get_protocol_origin(protocol):
     """Returns the protocol that a subscripted generic protocol stands for.
 
     A subscripted generic protocol, e.g. ``Proto[int]``, is a generic alias
-    through which the members can't be looked up. Its type parameters are not
-    needed either, since the TypeVars of a generic protocol are compared as
-    wildcards, see type_var_wildcard_matches.
+    through which the members can't be looked up. What it is subscripted with
+    is given by get_type_var_map, see implements_protocol.
     """
-    origin = get_typehint_origin(protocol)
+    origin = getattr(protocol, "__origin__", None)
     return origin if is_protocol(origin) else protocol
 
 
@@ -1876,16 +1922,20 @@ def is_instance_or_supports_protocol(value, class_type):
     return is_instance(value, class_type)
 
 
-def is_instance_factory_protocol(class_type, logger=None):
-    if not is_protocol(class_type):
-        return False
-    class_type = get_protocol_origin(class_type)
-    if not callable_instances(class_type):
-        return False
+def get_protocol_call_return_type(protocol, logger=None):
+    """Returns the return type of the ``__call__`` of a protocol, with its TypeVars substituted."""
     from ._postponed_annotations import get_return_type
 
-    return_type = get_return_type(class_type.__call__, logger)
-    return ActionTypeHint.is_subclass_typehint(return_type)
+    origin = get_protocol_origin(protocol)
+    # the __call__ of the origin, since for a subscripted generic protocol the alias has its own
+    return_type = get_return_type(origin.__call__, logger)
+    return substitute_type_vars(return_type, get_type_var_map(protocol, origin))
+
+
+def is_instance_factory_protocol(class_type, logger=None):
+    if not is_protocol(class_type) or not callable_instances(get_protocol_origin(class_type)):
+        return False
+    return ActionTypeHint.is_subclass_typehint(get_protocol_call_return_type(class_type, logger))
 
 
 _subclass_spec_keys = {"class_path", "init_args", "dict_kwargs", "__path__", subclasses_disabled_meta_key}
@@ -1936,9 +1986,7 @@ def subclass_spec_as_namespace(val, prev_val=None):
 def get_callable_return_type(typehint):
     return_type = None
     if is_instance_factory_protocol(typehint):
-        from ._postponed_annotations import get_return_type
-
-        return_type = get_return_type(typehint.__call__)
+        return_type = get_protocol_call_return_type(typehint)
     elif get_typehint_origin(typehint) in callable_origin_types:
         args = getattr(typehint, "__args__", None)
         if isinstance(args, tuple) and len(args) > 0:
@@ -1984,9 +2032,14 @@ def yield_class_types(typehint, is_single, also_lists=False, callable_return=Fal
         for subtype in typehint.__args__:
             yield from yield_class_types(subtype, **kwargs)
     if is_single(typehint, typehint_origin):
-        # a subscripted user defined generic, e.g. Strategy[T], is yielded as its origin
-        # class, since the consumers use the class itself, e.g. to look up its subclasses
-        yield get_generic_origin(get_typed_dict_type(typehint))
+        if is_typed_dict(typehint):
+            # a subscripted generic TypedDict is yielded as is, since its keys are
+            # resolved from it, substituting what it is subscripted with
+            yield typehint
+        else:
+            # a subscripted user defined generic, e.g. Strategy[T], is yielded as its origin
+            # class, since the consumers use the class itself, e.g. to look up its subclasses
+            yield get_generic_origin(typehint)
 
 
 def get_subclass_types(typehint, also_lists=False, callable_return=False):
@@ -2349,7 +2402,7 @@ def validate_subclass_spec_in_mapping(val, typehint, subtypehints, sub_add_kwarg
         return
     if is_typed_dict(typehint):
         return
-    if subtypehints is not None and not (subtypehints[1] == Any or isinstance(subtypehints[1], UnvalidatedType)):
+    if subtypehints is not None and not accepts_any_value(subtypehints[1]):
         return
     adapt_classes_any(deepcopy(val), typehint, False, False, sub_add_kwargs, logger)
 
@@ -2362,7 +2415,7 @@ def union_subtype_sort_key(subtype) -> int:
     of being used. Sorting is stable, thus subtypes with the same rank keep the
     relative order in which they are given.
     """
-    if subtype is object or subtype == Any or isinstance(subtype, UnvalidatedType):
+    if accepts_any_value(subtype):
         return 2  # accept any value, so nothing after them would ever be attempted
     if subtype is NoneType:
         return 1  # only accepts null, second to last so that Optional[<type>] reads as in the source code
@@ -2382,8 +2435,9 @@ def resolve_type_var_ref(type_var, ref):
     """Resolves a forward reference given as bound, constraint or PEP 696 default of a TypeVar.
 
     The reference is resolved with the names of the module in which the TypeVar
-    is defined, since that is the scope in which it was written. Unresolvable
-    references are returned unchanged, becoming an ``Unvalidated<...>``.
+    is defined, since that is the scope in which it was written. An unresolvable
+    reference becomes an ``Unvalidated<...>``, i.e. it accepts any value and the
+    help shows it as in the source code.
     """
     if not isinstance(ref, (str, ForwardRef)):
         return ref
@@ -2395,7 +2449,7 @@ def resolve_type_var_ref(type_var, ref):
         name = ref.__forward_arg__ if isinstance(ref, ForwardRef) else ref
         global_vars = get_global_vars(type_var, None)
         resolved = resolve_module_annotations(module, {"ref": name}, global_vars).get("ref", ref)
-    return ref if isinstance(resolved, (str, ForwardRef)) else resolved
+    return UnvalidatedType(ref) if isinstance(resolved, (str, ForwardRef)) else resolved
 
 
 def replace_type_var(type_var, in_type_subtype: bool):

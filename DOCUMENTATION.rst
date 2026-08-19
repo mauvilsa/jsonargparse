@@ -550,9 +550,10 @@ Some notes about this support are:
   compatible, as specified in PEP `589 <https://peps.python.org/pep-0589/>`__,
   i.e. it has all the keys of the expected ``TypedDict``, with the same types
   and requiredness. A generic ``TypedDict`` is supported both unsubscripted and
-  subscripted, e.g. ``Options`` and ``Options[int]``. Subscripting doesn't
-  change which keys are accepted, only the types of the keys annotated with a
-  ``TypeVar``.
+  subscripted, e.g. ``SomeDict`` and ``SomeDict[int]``, as is a ``TypedDict``
+  that inherits from a subscripted one. Subscripting doesn't change which keys
+  are accepted, only the types of the keys annotated with a ``TypeVar``. A key
+  whose type can't be validated accepts any value, see :ref:`unvalidated-types`.
 
 - ``tuple``, ``set``, ``frozenset``, ``AbstractSet`` and ``MutableSet`` are
   supported even though they can't be represented in JSON distinguishable from
@@ -581,7 +582,9 @@ Some notes about this support are:
   return types must match exactly, subtypes are not accepted, except when the
   protocol has no annotation or ``Any``, which accept any type. A generic
   protocol is supported both unsubscripted and subscripted, e.g. ``Proto`` and
-  ``Proto[int]``. In both cases a ``TypeVar``, in the protocol or in the
+  ``Proto[int]``. Subscripting substitutes the type arguments in the protocol's
+  methods, so ``Proto[int]`` and ``Proto[str]`` accept different
+  implementations. A ``TypeVar`` that remains, in the protocol or in the
   implementation, matches any type, as static type checkers do.
 
 - ``dataclasses``, final classes, attrs' ``define``, pydantic's ``dataclass``
@@ -713,7 +716,8 @@ When arguments are added from a signature, i.e. :meth:`add_function_arguments
 <.ArgumentParser.add_method_arguments>`, :meth:`add_class_arguments
 <.ArgumentParser.add_class_arguments>` or a parameter of a :ref:`subclass type
 <sub-classes>`, there can be parameters with a type that jsonargparse can't
-validate. Instead of skipping these parameters, which would make it impossible
+validate. The same holds for the keys of a ``TypedDict``, however the argument
+is added. Instead of skipping these parameters, which would make it impossible
 to give them in the command line or a config file, the parameter is added with
 only the parts of the type that can't be validated replaced by a type that
 accepts any value. In the help these parts are shown as ``Unvalidated<...>``,
@@ -729,7 +733,8 @@ A type or a part of it can't be validated when:
 
 - It failed to resolve, e.g. a missing import or a typo in a postponed
   annotation.
-- It is not a type that jsonargparse supports.
+- It is not a type that jsonargparse supports, e.g. a ``TypeVar`` that stands
+  for nothing, see :ref:`generic-types`.
 
 To know which of the two it is for a given parameter, enable debut level
 logging, see :ref:`logging`. The debug log states the reason for each of the

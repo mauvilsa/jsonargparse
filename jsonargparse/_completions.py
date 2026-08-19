@@ -347,7 +347,7 @@ def get_typehint_choices(typehint, prefix, parser, skip, added_subclasses=None) 
             has_explicit_choices = False
             has_open_values = False
             for subtype in typehint.__args__:
-                if subtype in added_subclasses or subtype is object:
+                if subtype in added_subclasses:
                     continue
                 subchoices, subexplicit, subopen = get_choices_state(subtype)
                 choices.extend(subchoices)
@@ -442,7 +442,8 @@ def get_help_class_choices(typehint) -> list[str]:
     choices = []
     if get_typehint_origin(typehint) == Union:
         for subtype in typehint.__args__:
-            if inspect.isclass(subtype):
+            # a subscripted generic typed dict is a generic alias instead of a class
+            if inspect.isclass(subtype) or is_typed_dict(subtype):
                 choices.extend(get_help_class_choices(subtype))
     elif is_typed_dict(typehint):
         choices = [typehint.__name__]  # typed dicts don't accept a class path, only their name

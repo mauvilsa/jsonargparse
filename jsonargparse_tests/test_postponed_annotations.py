@@ -331,6 +331,9 @@ def test_typed_dict_unresolvable_key_type(parser):
     parser.add_argument("--opts", type=UnresolvableTypedDict)
     cfg = parser.parse_args(['--opts={"num": 1}'])
     assert cfg.opts == {"num": 1}
+    # being unresolved, the key accepts any value without validation
+    cfg = parser.parse_args(['--opts={"num": 1, "typo": {"x": [1, 2]}}'])
+    assert cfg.opts == {"num": 1, "typo": {"x": [1, 2]}}
 
 
 class UnresolvableTypedDictClass:

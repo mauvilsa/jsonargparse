@@ -400,7 +400,8 @@ def get_unaliased_type(cls):
 
 def is_pure_dataclass(cls) -> bool:
     classes = [c for c in inspect.getmro(cls) if c not in {object, Generic}]
-    return all(dataclasses.is_dataclass(c) for c in classes)
+    # bool(classes) since e.g. object itself has no class in its mro that could be a dataclass
+    return bool(classes) and all(dataclasses.is_dataclass(c) for c in classes)
 
 
 subclasses_enabled_types: set[type] = set()
@@ -416,7 +417,7 @@ subclasses_disabled_selectors: dict[str, Callable[[type], bool | int]] = {
 def is_subclasses_disabled(cls) -> bool:
     if is_generic_class(cls):
         return is_subclasses_disabled(cls.__origin__)
-    if not inspect.isclass(cls) or cls is object:
+    if not inspect.isclass(cls):
         return False
     # abstract classes are not intended to be instantiated from their own fields, so only subclasses make sense
     subclass_disabled = not is_abstract_class(cls) and any(
