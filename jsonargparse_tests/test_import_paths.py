@@ -180,8 +180,8 @@ def test_denied_module_reexported_by_another_module():
     set_parsing_settings(import_path_denylist=[])
     with pytest.raises(ImportDenied, match="'os'"):
         import_object("jsonargparse._util.os")
-    with pytest.raises(ImportDenied, match="'posix'"):
-        import_object("jsonargparse._util.os.system")  # os.system is defined in posix
+    with pytest.raises(ImportDenied, match=f"'{os.system.__module__}'"):
+        import_object("jsonargparse._util.os.system")  # os.system is defined in posix, nt on Windows
 
 
 def test_denied_object_reexported_under_another_name():
@@ -192,8 +192,8 @@ def test_denied_object_reexported_under_another_name():
 
 def test_denied_callable_bound_by_a_partial():
     set_parsing_settings(import_path_denylist=[])
-    with pytest.raises(ImportDenied, match="'posix'"):
-        import_object(f"{__name__}.system_partial")  # partial bound to os.system, defined in posix
+    with pytest.raises(ImportDenied, match=f"'{os.system.__module__}'"):
+        import_object(f"{__name__}.system_partial")  # partial bound to os.system, defined in posix, nt on Windows
 
 
 def test_denied_callable_exposed_by_an_instance():

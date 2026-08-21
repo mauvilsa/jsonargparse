@@ -53,6 +53,13 @@ from jsonargparse_tests.conftest import (
 )
 
 
+@pytest.fixture
+def allow_gzip_import_path():
+    with patch.dict("jsonargparse._common.parsing_settings"):
+        set_parsing_settings(import_path_allowlist=["gzip"])
+        yield
+
+
 class BaseC:
     def __init__(self, p: int = 0):
         self.p = p
@@ -235,7 +242,7 @@ def test_subclass_known_subclasses_ignore_local_class(parser):
     assert "LocalSubC" not in help_str
 
 
-def test_subclass_known_subclasses_multiple_bases(parser):
+def test_subclass_known_subclasses_multiple_bases(parser, allow_gzip_import_path):
     parser.add_argument("--op", type=Union[BaseC, GzipFile, None])
     help_str = get_parser_help(parser)
     for class_path in [f"{__name__}.BaseC", f"{__name__}.SubA", f"{__name__}.SubB", "gzip.GzipFile"]:
@@ -733,7 +740,7 @@ def test_subclass_class_name_parse(parser):
     assert cfg.op.class_path == f"{__name__}.SubA"
 
 
-def test_subclass_class_name_help(parser):
+def test_subclass_class_name_help(parser, allow_gzip_import_path):
     parser.add_argument("--op", type=Union[BaseC, GzipFile, None])
     help_str = get_parse_args_stdout(parser, ["--op.help=GzipFile"])
     assert "Help for --op.help=gzip.GzipFile" in help_str
@@ -774,7 +781,7 @@ def test_subclass_invalid_class_name(parser):
     ctx.match("NotASubclass")
 
 
-def test_subclass_class_name_then_invalid_init_args(parser):
+def test_subclass_class_name_then_invalid_init_args(parser, allow_gzip_import_path):
     parser.add_argument("--op", type=Union[BaseC, GzipFile])
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--op=SubA", "--op=GzipFile", "--op.p=2"])
