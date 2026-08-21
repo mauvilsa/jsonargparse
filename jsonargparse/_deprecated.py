@@ -1090,6 +1090,23 @@ def unset_instantiate_subclass_spec_in_any() -> bool:
     return True
 
 
+def import_paths_not_enforced(path: str, message: str) -> None:
+    """Warns instead of failing when an import path given as a value is denied.
+
+    Remove in v5.0.0, changing the default of the ``import_paths_enforced``
+    setting from ``False`` to ``True``, and thus making
+    ``_common.check_import_path`` always raise.
+    """
+    deprecation_warning(
+        f"import_path_denied:{path}",
+        f"""
+        {message} Currently this only warns, but from v5.0.0 it will fail. To get the future
+        behavior now and silence this warning, call set_parsing_settings with
+        import_path_denylist and/or import_path_allowlist.
+        """,
+    )
+
+
 def renamed_parameter_warning(renames: dict[str, str], stacklevel: int = 1):
 
     def decorator(func):

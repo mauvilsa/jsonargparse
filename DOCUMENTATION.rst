@@ -2352,15 +2352,94 @@ be accepted. In this case the config would be like:
 
 .. note::
 
-    It is also possible to provide to ``class_path`` a function that has as return
-    type a class. The accepted ``init_args`` would be the parameters of that
-    function.
+    It is also possible to provide to ``class_path`` a function that has as
+    return type a class. The accepted ``init_args`` would be the parameters of
+    that function.
 
 .. note::
 
     Abstract classes, i.e. classes that have abstract methods, are not accepted
     as ``class_path`` value, since they can't be instantiated. For the same
     reason they are not included in the known subclasses shown in the help.
+
+
+.. _untrusted-configs:
+
+Untrusted configs
+-----------------
+
+Resolving a ``class_path`` imports the named module and instantiates the named
+class with the given ``init_args``, so a config decides what code runs. When the
+configs come from a trusted source, e.g. the same repository as the code, this
+is not a concern. When they don't, e.g. a config uploaded by a user of a
+service, an import path denylist limits what a config can reach.
+
+Import paths that come from a value, i.e. a ``class_path``, a ``Callable``, a
+``type[...]`` or a ``types.ModuleType`` given in a config file, the command line
+or an environment variable, are checked against a denylist before the import
+happens. Paths that come from code, e.g. type annotations and defaults, are
+never checked. jsonargparse denies a set of paths by default, mostly standard
+library modules that give arbitrary code execution, e.g. ``os``, ``subprocess``,
+``pickle`` and ``importlib``. Two settings adjust the list:
+
+.. testsetup:: import_paths
+
+    saved_import_path_settings = dict(_common.parsing_settings)
+
+.. testcode:: import_paths
+
+    from jsonargparse import set_parsing_settings
+
+    set_parsing_settings(
+        import_path_denylist=["mypackage._internal"],
+        import_path_allowlist=["functools.partial"],
+    )
+
+An entry denies or allows a dot import path and everything under it, so ``os``
+also denies ``os.system``. The most specific entry decides, which is why
+``functools.partial`` above is allowed even though ``functools`` is denied by
+default. An entry given in both lists is allowed, so naming a default entry in
+``import_path_allowlist`` is how to stop denying it.
+
+An object is denied by where it is defined, not only by the path used to reach
+it. Modules commonly import others, e.g. ``import os``, so without this
+``some.module.os.system`` would give the same object as the denied
+``os.system``. This second check can only happen once the object is resolved, so
+it prevents the object from being used, unlike the check on the given path,
+which prevents the import from happening at all.
+
+Entries given are added to the ones denied by default, they don't replace them.
+For configs that are entirely untrusted, prefer denying everything and allowing
+only what the application expects. The ``*`` entry is only accepted in
+``import_path_denylist``:
+
+.. testcode:: import_paths
+
+    set_parsing_settings(
+        import_path_denylist=["*"],
+        import_path_allowlist=["mypackage.tools"],
+    )
+
+.. testcleanup:: import_paths
+
+    _common.parsing_settings.clear()
+    _common.parsing_settings.update(saved_import_path_settings)
+
+.. note::
+
+    A denylist is a mitigation, not a sandbox. A large enough set of installed
+    dependencies is likely to contain something that reaches a denied capability
+    without naming a denied path, e.g. a class that runs a command given to it.
+    Only ``*`` plus a narrow allowlist gives a bound on what a config can
+    import.
+
+.. note::
+
+    Until v5.0.0 a denied import path only gives a deprecation warning and the
+    import proceeds, so that existing configs don't break. Giving a value to
+    ``import_path_denylist`` or ``import_path_allowlist``, an empty list
+    included, makes denied import paths fail instead. From v5.0.0 they always
+    fail.
 
 
 .. _sub-config-files:

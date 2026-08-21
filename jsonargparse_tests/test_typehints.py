@@ -2576,6 +2576,66 @@ def test_callable_protocol_instance_factory(parser, subtests):
         assert "--optimizer.params" not in help_str
 
 
+@pytest.mark.parametrize(
+    "typehint",
+    [
+        Callable[[List[float]], Optimizer],
+        Callable[..., Optimizer],
+        OptimizerFactory,
+    ],
+    ids=["callable_args", "callable_ellipsis", "protocol"],
+)
+def test_callable_return_type_bounds_the_accepted_class(parser, typehint):
+    parser.add_argument("--optimizer", type=typehint)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--optimizer={__name__}.CallableClassPath"])
+    ctx.match(f"Expected '{__name__}.CallableClassPath' to be a subclass of .*Optimizer")
+
+
+class NoArgsOptimizerFactory(Protocol):
+    def __call__(self) -> Optimizer: ...
+
+
+def test_callable_protocol_instance_factory_without_parameters(parser):
+    parser.add_argument("--optimizer", type=NoArgsOptimizerFactory)
+    cfg = parser.parse_args(["--optimizer=Adam", "--optimizer.params=[1.2]", "--optimizer.lr=0.01"])
+    assert cfg.optimizer.class_path == f"{__name__}.Adam"
+    init = parser.instantiate(cfg)
+    # nothing to skip, so instantiate still gives a factory, not the instance
+    optimizer = init.optimizer()
+    assert isinstance(optimizer, Adam)
+    assert optimizer.params == [1.2]
+    assert optimizer.lr == 0.01
+
+
+def optimizer_factory(params: List[float]) -> Optimizer:
+    return SGD(params)  # pragma: no cover
+
+
+def test_callable_return_type_bounds_the_accepted_function(parser):
+    parser.add_argument("--optimizer", type=Callable[[List[float]], Optimizer])
+    cfg = parser.parse_args([f"--optimizer={__name__}.optimizer_factory"])
+    assert cfg.optimizer is optimizer_factory
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["calendar.month", "time.time"],
+    ids=["return type not annotated", "signature not inspectable"],
+)
+def test_callable_return_type_rejects_function(parser, path):
+    parser.add_argument("--optimizer", type=Callable[[List[float]], Optimizer])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--optimizer={path}"])
+    ctx.match(f"Expected '{path}' to be a function that returns .*Optimizer")
+
+
+def test_callable_without_return_type_accepts_any_function(parser):
+    parser.add_argument("--optimizer", type=Callable)
+    cfg = parser.parse_args(["--optimizer=calendar.month"])
+    assert cfg.optimizer is calendar.month
+
+
 OptimizerVar = TypeVar("OptimizerVar", covariant=True)
 
 

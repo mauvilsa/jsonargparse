@@ -1,5 +1,6 @@
 """Collection of general functions and classes."""
 
+import functools
 import inspect
 import os
 import textwrap
@@ -19,6 +20,7 @@ from typing import (
 )
 
 from ._common import (
+    check_import_path,
     get_generic_origin,
     parser_capture,
     parser_context,
@@ -184,12 +186,18 @@ def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bo
     return value, cfg_path
 
 
-def import_object(name: str):
-    """Returns an object in a module given its dot import path."""
+def import_object(name: str, check_path: bool = True):
+    """Returns an object in a module given its dot import path.
+
+    ``check_path`` must only be false when the path comes from code, e.g. a type
+    annotation, instead of from a parsed value.
+    """
     if not isinstance(name, str) or "." not in name:
         raise ValueError(f"Expected a dot import path string: {name}")
     if not all(x.isidentifier() for x in name.split(".")):
         raise ValueError(f"Unexpected import path format: {name}")
+    if check_path:
+        check_import_path(name)
     name_module, name_object = name.rsplit(".", 1)
     try:
         parent = __import__(name_module, fromlist=[name_object])
@@ -199,10 +207,55 @@ def import_object(name: str):
         name_module, name_object1 = name_module.rsplit(".", 1)
         parent = getattr(__import__(name_module, fromlist=[name_object1]), name_object1)
     obj = getattr(parent, name_object)
+    if check_path:
+        for canonical in canonical_import_paths(obj):
+            if canonical != name:
+                check_import_path(canonical)
     if not (inspect.isclass(obj) or inspect.ismodule(obj)):
         # an instance doesn't know where it was imported from, so it is remembered to make it serializable
         resolved_import_paths.add(obj, name)
     return obj
+
+
+def canonical_import_path(obj) -> str | None:
+    """Returns where an object is defined, which can differ from the path used to import it.
+
+    Modules commonly import others, e.g. ``import os``, so ``some.module.os.system``
+    imports and gives the same object as ``os.system``. Not ``get_import_path``
+    because that gives the shortest path, which can be a re-export that hides where
+    the object is defined, and it fails for objects that have no import path.
+    """
+    if inspect.ismodule(obj):
+        return obj.__name__
+    if not (inspect.isclass(obj) or inspect.isroutine(obj)):
+        return None
+    module = getattr(obj, "__module__", None)
+    qualname = getattr(obj, "__qualname__", None)
+    return f"{module}.{qualname}" if module and qualname else None
+
+
+def canonical_import_paths(obj) -> set:
+    """Returns the canonical paths that must be allowed for an object to be usable.
+
+    A class, routine or module has a single defining path. An object that instead
+    wraps or exposes a callable without an import path of its own, e.g. a
+    ``functools.partial`` or a callable instance, is denied by the callable it
+    reaches: the bound function for a partial and the defining class for an
+    instance. Otherwise binding or instancing a denied callable under an allowed
+    name would evade the denylist.
+    """
+    paths: set = set()
+    stack = [obj]
+    while stack:
+        current = stack.pop()
+        canonical = canonical_import_path(current)
+        if canonical:
+            paths.add(canonical)
+        if isinstance(current, functools.partial):
+            stack.append(current.func)  # a partial is denied by the callable it binds
+        elif not (inspect.isclass(current) or inspect.ismodule(current) or inspect.isroutine(current)):
+            stack.append(type(current))  # a callable instance is denied by its class
+    return paths
 
 
 unresolvable_import_paths: dict[Any, str] = {}
@@ -313,7 +366,7 @@ def get_import_path(value: Any) -> str | None:
 def object_path_serializer(value):
     try:
         path = get_import_path(value)
-        reimported = import_object(path)
+        reimported = import_object(path, check_path=False)
         if value is not reimported:
             raise ValueError
         return path

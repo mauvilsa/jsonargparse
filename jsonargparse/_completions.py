@@ -398,7 +398,7 @@ def add_subactions_and_get_subclass_choices(
         if isinstance(class_or_path, str):
             choices.append(class_or_path)
         try:
-            cls = import_object(class_or_path) if isinstance(class_or_path, str) else class_or_path
+            cls = import_object(class_or_path, check_path=False) if isinstance(class_or_path, str) else class_or_path
             params = get_signature_parameters(cls, None, parser._logger)
         except Exception as ex:
             parser._logger.debug(f"Unable to get signature parameters for '{name}': {ex}")

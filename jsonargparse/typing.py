@@ -510,7 +510,7 @@ def register_type(
 
 def register_type_on_first_use(import_path: str, *args, **kwargs):
     registration_pending[import_path] = lambda: register_type(
-        import_object(import_path),
+        import_object(import_path, check_path=False),
         *args,
         **kwargs,
     )

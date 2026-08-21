@@ -57,6 +57,8 @@ from ._actions import (
     remove_actions,
 )
 from ._common import (
+    ImportDenied,
+    check_import_path,
     get_generic_origin,
     get_parsing_setting,
     get_unaliased_type,
@@ -1360,10 +1362,13 @@ def adapt_typehints(
         if isinstance(val, ModuleType):
             if serialize:
                 val = val.__name__
-        elif not is_importable_module_path(val):
-            raise_unexpected_value("Expected an import path corresponding to a module", val)
-        elif instantiate_classes:
-            val = import_module(val)
+        else:
+            if isinstance(val, str):
+                check_import_path(val)
+            if not is_importable_module_path(val):
+                raise_unexpected_value("Expected an import path corresponding to a module", val)
+            elif instantiate_classes:
+                val = import_module(val)
 
     # UnionType and GenericAlias
     elif typehint in type_expression_types:
@@ -1374,6 +1379,8 @@ def adapt_typehints(
             expected = f"Expected a string with a {type_expression_types[typehint]} type expression"
             try:
                 type_expression = str_to_type_expression(val)
+            except ImportDenied:
+                raise
             except Exception as ex:
                 raise_unexpected_value(expected, val, ex)
             if not isinstance(type_expression, typehint):
@@ -1548,6 +1555,11 @@ def adapt_typehints(
                     if inspect.isclass(val_obj):
                         val = Namespace(class_path=class_path)
                     elif callable(val_obj):
+                        subclass_types = get_subclass_types(return_type)
+                        if subclass_types and not function_returns_subclass(val_obj, subclass_types, logger):
+                            raise ImportError(
+                                f"Expected '{class_path}' to be a function that returns {type_to_str(return_type)}."
+                            )
                         val = val_obj
                     else:
                         raise ImportError(f"Unexpected import object {val_obj}")
@@ -1564,12 +1576,18 @@ def adapt_typehints(
                         )
                     val, partial_skip_args = adapt_partial_callable_class(typehint, val)
                     val_class = import_object(val["class_path"])
-                    if inspect.isclass(val_class) and not (partial_skip_args or callable_instances(val_class)):
-                        base_type = get_callable_return_type(typehint) or typehint
-                        raise ImportError(
-                            f"Expected '{val['class_path']}' to be a class that instantiates into callable "
-                            f"or a subclass of {base_type}."
-                        )
+                    if inspect.isclass(val_class) and partial_skip_args is None:
+                        # partial_skip_args is only None when not a subclass of the return type
+                        return_type = get_callable_return_type(typehint)
+                        if get_subclass_types(return_type):
+                            raise ImportError(
+                                f"Expected '{val['class_path']}' to be a subclass of {type_to_str(return_type)}."
+                            )
+                        if not callable_instances(val_class):
+                            raise ImportError(
+                                f"Expected '{val['class_path']}' to be a class that instantiates into callable "
+                                f"or a subclass of {return_type or typehint}."
+                            )
                     val["class_path"] = get_import_path(val_class)
                     val = adapt_class_type(
                         val,
@@ -2080,6 +2098,17 @@ def get_subclass_names(typehint, callable_return=False):
     )
 
 
+def function_returns_subclass(function, subclass_types, logger) -> bool:
+    """Whether the return type of a function is a subclass of the given types."""
+    from ._postponed_annotations import get_return_type
+
+    try:
+        return_type = get_return_type(function, logger)
+    except ValueError:
+        return False  # e.g. a builtin that doesn't have an inspectable signature
+    return is_subclass(return_type, subclass_types)
+
+
 def adapt_partial_callable_class(callable_type, subclass_spec):
     partial_skip_args = None
     return_type = get_callable_return_type(callable_type)
@@ -2267,7 +2296,7 @@ def adapt_class_type(
         # kept as is for an Any typed parameter, which must not be expanded into kwargs
         init_kwargs = dict(init_args.items(branches=True, nested=False))
 
-        if partial_skip_args:
+        if partial_skip_args is not None:  # an empty set for a factory that takes no arguments
             return partial(
                 instantiator_fn,
                 val_class,
@@ -2720,7 +2749,7 @@ def typehint_metavar(typehint):
 def serialize_class_instance(val):
     with suppress(Exception):
         import_path = get_import_path(val)
-        if import_path and import_object(import_path) is val:
+        if import_path and import_object(import_path, check_path=False) is val:
             return import_path
     val = f"Unable to serialize instance {val}"
     warning(val)

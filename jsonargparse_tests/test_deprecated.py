@@ -30,8 +30,10 @@ from jsonargparse import (
     get_config_read_mode,
     set_config_read_mode,
     set_docstring_parse_options,
+    set_parsing_settings,
     set_url_support,
 )
+from jsonargparse._common import ImportDenied
 from jsonargparse._deprecated import (
     ActionEnum,
     ActionJsonnetExtVars,
@@ -57,11 +59,12 @@ from jsonargparse._optionals import (
     ruamel_support,
     url_support,
 )
-from jsonargparse._util import argument_error
+from jsonargparse._util import argument_error, import_object
 from jsonargparse.typing import Path
 from jsonargparse_tests.conftest import (
     get_parser_help,
     is_posix,
+    patch_parsing_settings,
     responses_activate,
     skip_if_docstring_parser_unavailable,
     skip_if_fsspec_unavailable,
@@ -1448,3 +1451,44 @@ def test_instantiate_subclass_spec_in_any_deprecation(parser):
         init = parser.instantiate(cfg)
     assert isinstance(init.any, Calendar)
     assert w == []
+
+
+# denied import paths only warn deprecation tests
+
+
+@patch_parsing_settings
+def test_denied_import_path_not_enforced_warns_and_imports():
+    shown_deprecation_warnings.clear()
+    with catch_warnings(record=True) as w:
+        assert import_object("subprocess.Popen") is not None
+    assert len(w) == 2
+    assert "subprocess.Popen" in str(w[-1].message)
+    assert "from v5.0.0 it will fail" in str(w[-1].message)
+
+
+@patch_parsing_settings
+def test_denied_import_path_warns_once_per_path():
+    shown_deprecation_warnings.clear()
+    with catch_warnings(record=True) as w:
+        import_object("subprocess.Popen")
+        import_object("subprocess.Popen")
+        import_object("subprocess.run")
+    assert len(w) == 3
+    assert "subprocess.Popen" in str(w[1].message)
+    assert "subprocess.run" in str(w[2].message)
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"import_path_denylist": []},
+        {"import_path_allowlist": []},
+        {"import_path_denylist": ["calendar"]},
+        {"import_path_allowlist": ["calendar"]},
+    ],
+)
+@patch_parsing_settings
+def test_denied_import_path_enforced_when_setting_given(settings):
+    set_parsing_settings(**settings)
+    with pytest.raises(ImportDenied):
+        import_object("subprocess.Popen")

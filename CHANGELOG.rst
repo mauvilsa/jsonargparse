@@ -12,6 +12,40 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
+v4.52.0 (unreleased)
+--------------------
+
+Added
+^^^^^
+- New ``import_path_denylist`` and ``import_path_allowlist`` settings in
+  ``set_parsing_settings`` that limit which import paths a value is allowed to
+  name, so that configs from an untrusted source can't reach arbitrary code. A
+  set of standard library paths that give code execution, e.g. ``os``,
+  ``subprocess`` and ``pickle``, is denied by default, see
+  :ref:`untrusted-configs` (`#959
+  <https://github.com/mauvilsa/jsonargparse/pull/959>`__).
+
+Fixed
+^^^^^
+- ``Callable`` types that have a class as return type, e.g. ``Callable[...,
+  Model]``, and instance factory protocols, accepted any class whose instances
+  are callable and any function, instead of only subclasses of the return type
+  and functions that return it (`#959
+  <https://github.com/mauvilsa/jsonargparse/pull/959>`__).
+- Instance factory protocols with a ``__call__`` that takes no parameters
+  instantiated the class instead of giving a factory (`#959
+  <https://github.com/mauvilsa/jsonargparse/pull/959>`__).
+
+Deprecated
+^^^^^^^^^^
+- Values that name a denied import path, e.g. a ``class_path`` of
+  ``subprocess.Popen``, currently only emit a deprecation warning and the import
+  proceeds. From v5.0.0 they will fail. Give a value to ``import_path_denylist``
+  or ``import_path_allowlist`` in ``set_parsing_settings``, an empty list
+  included, to get the future behavior now and silence the warning (`#959
+  <https://github.com/mauvilsa/jsonargparse/pull/959>`__).
+
+
 v4.51.0 (2026-08-20)
 --------------------
 

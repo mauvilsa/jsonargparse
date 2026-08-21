@@ -9,7 +9,15 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
-from ._common import Action, NonParsingAction, get_parsing_setting, is_subclass, is_subclasses_disabled, parser_context
+from ._common import (
+    Action,
+    ImportDenied,
+    NonParsingAction,
+    get_parsing_setting,
+    is_subclass,
+    is_subclasses_disabled,
+    parser_context,
+)
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._namespace import Namespace
 from ._optionals import _get_config_read_mode, ruamel_support
@@ -288,6 +296,8 @@ class _ActionConfigLoad(Action):
         def resolve_class(class_path):
             try:
                 return import_object(resolve_class_path_by_name(self.basetype, class_path))
+            except ImportDenied:
+                raise
             except Exception:
                 return None
 
@@ -321,7 +331,7 @@ class _ActionConfigLoad(Action):
             with load_config_path_context(cfg_path), change_to_path_dir(cfg_path):
                 cfg = parser._apply_actions(cfg, parent_key=self.dest)
             return cfg
-        except SubclassesDisabledError as ex:
+        except (SubclassesDisabledError, ImportDenied) as ex:
             raise TypeError(f'Parser key "{self.dest}":\n{indent_text(str(ex))}') from ex
         except (TypeError,) + get_loader_exceptions() as ex:
             str_ex = indent_text(f"- {ex}")
@@ -560,7 +570,7 @@ class ActionParser:
             ValueError: If the parser parameter is invalid.
         """
         self._parser = parser
-        if not isinstance(self._parser, import_object("jsonargparse.ArgumentParser")):
+        if not isinstance(self._parser, import_object("jsonargparse.ArgumentParser", check_path=False)):
             raise ValueError("Expected parser keyword argument to be an ArgumentParser.")
 
     @staticmethod
