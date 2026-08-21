@@ -23,7 +23,8 @@ Added
   set of standard library paths that give code execution, e.g. ``os``,
   ``subprocess`` and ``pickle``, is denied by default, see
   :ref:`untrusted-configs` (`#959
-  <https://github.com/mauvilsa/jsonargparse/pull/959>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/959>`__, `#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Fixed
 ^^^^^

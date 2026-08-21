@@ -135,6 +135,10 @@ class ImportDenied(ImportError, ValueError):
 # that exposes them and both are needed, since a pure Python implementation is
 # used when the C one is unavailable.
 default_import_path_denylist = (
+    # Policy self-modification. Naming jsonargparse itself would give a value a
+    # way to change the settings that decide what values are allowed, which is
+    # why it is also not accepted in import_path_allowlist.
+    "jsonargparse",
     # Command and code execution. Instantiation is the execution, so a class
     # path plus init_args suffices to run arbitrary code or shell commands.
     "builtins.eval",
@@ -158,7 +162,11 @@ default_import_path_denylist = (
     "timeit",
     "pdb",
     "bdb",
+    "builtins.breakpoint",
     "trace",
+    "cProfile",
+    "profile",
+    "doctest",
     # Untrusted deserialization. Loading attacker influenced bytes is execution,
     # and only a loader plus a file path is needed, not the payload itself.
     "pickle",
@@ -169,16 +177,22 @@ default_import_path_denylist = (
     # Import machinery and package installation. Resolve or install code by name
     # at runtime, which would reopen everything the other groups deny.
     "importlib",
+    "_frozen_importlib",
+    "_frozen_importlib_external",
     "_imp",
     "pkgutil",
     "zipimport",
     "pydoc",
+    "builtins.help",
+    "unittest",
     "sys",
     "site",
     "pip",
+    "pkg_resources",
     "setuptools",
     "distutils",
     "venv",
+    "ensurepip",
     "sysconfig",
     # Callable adapters and reflection. Wrap or synthesize a callable so that the
     # call happens later in code that receives it, where no type check applies.
@@ -191,6 +205,11 @@ default_import_path_denylist = (
     "ast",
     "py_compile",
     "compileall",
+    "builtins.getattr",
+    "builtins.setattr",
+    "builtins.delattr",
+    "builtins.vars",
+    "builtins.globals",
     # Filesystem and process lifetime. Destructive or disruptive instead of
     # executing, e.g. deleting trees, signals or deferring a call to exit.
     "shutil",
@@ -200,11 +219,17 @@ default_import_path_denylist = (
     "_signal",
     "atexit",
     "gc",
+    "resource",
+    "faulthandler",
+    "builtins.exit",
+    "builtins.quit",
+    "_sitebuiltins",
     # File access. Opening a path for writing truncates or creates it, and the
     # archive and database openers do the same, so only a path is needed to
     # destroy or plant a file, not any payload. builtins.open and the io classes
     # are the primitives, the rest wrap them.
     "builtins.open",
+    "codecs.open",
     "io",
     "_io",
     "fileinput",
@@ -220,6 +245,7 @@ default_import_path_denylist = (
     "logging.config",
     "logging.handlers",
     "logging.FileHandler",
+    "winreg",
     # Network and external launch. Exfiltration primitives and launching an
     # external program with an argument that the config decides. The client and
     # server modules connect or listen with a destination the config decides.
@@ -227,6 +253,7 @@ default_import_path_denylist = (
     "_socket",
     "ssl",
     "webbrowser",
+    "antigravity",
     "asyncio",
     "urllib",
     "http",
@@ -237,6 +264,7 @@ default_import_path_denylist = (
     "nntplib",
     "telnetlib",
     "socketserver",
+    "xml",
     "xmlrpc",
     "wsgiref",
 )
@@ -272,6 +300,11 @@ def set_import_path_verdicts(denylist: list[str] | None, allowlist: list[str] | 
                 raise ValueError("'*' is only accepted in import_path_denylist, to deny all not allowed paths.")
             if not isinstance(entry, str) or (entry != "*" and not all(p.isidentifier() for p in entry.split("."))):
                 raise ValueError(f"Expected import path entries to be dot import paths or '*', but got {entry!r}.")
+            if allowed and (entry == "jsonargparse" or entry.startswith("jsonargparse.")):
+                raise ValueError(
+                    "Import paths under 'jsonargparse' can't be allowed, since a value that names them "
+                    "would be able to change the import path policy itself."
+                )
             previous = verdicts.get(entry)
             verdicts[entry] = allowed
             if previous is None:
@@ -409,7 +442,9 @@ def set_parsing_settings(
         import_path_allowlist: Import paths that a value is allowed to name,
             taking precedence over the denylist for the same entry. The most
             specific entry decides, so ``functools.partial`` here allows only
-            that path out of a denied ``functools``.
+            that path out of a denied ``functools``. Paths under ``jsonargparse``
+            are not accepted, since a value that names them would be able to
+            change these settings.
     """
     # validate_defaults
     if isinstance(validate_defaults, bool):

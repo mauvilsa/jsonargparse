@@ -269,14 +269,15 @@ deps = -e ./jsonargparse_tests
 allowlist_externals = sh
 commands =
     sh -c "\
-        rm -rf /tmp/_without_future_annotations; \
-        mkdir /tmp/_without_future_annotations; \
-        cp *.py /tmp/_without_future_annotations; \
-        sed -i -e '/^from __future__ import annotations$/d' /tmp/_without_future_annotations/*.py; \
+        rm -rf {envtmpdir}/without_future_annotations; \
+        mkdir -p {envtmpdir}/without_future_annotations; \
+        cp *.py {envtmpdir}/without_future_annotations; \
+        sed -i.bak -e '/^from __future__ import annotations$/d' {envtmpdir}/without_future_annotations/*.py; \
+        rm -f {envtmpdir}/without_future_annotations/*.bak; \
     "
-    python -m pytest /tmp/_without_future_annotations {posargs}
+    python -m pytest {envtmpdir}/without_future_annotations {posargs}
 commands_post =
-    sh -c "rm -rf /tmp/_without_future_annotations"
+    sh -c "rm -rf {envtmpdir}/without_future_annotations"
 
 [testenv:coverage-report]
 skip_install = true

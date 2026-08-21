@@ -114,12 +114,72 @@ def test_star_denies_everything_not_allowed():
         check_import_path("json.JSONEncoder")
 
 
-def test_only_builtins_code_execution_names_denied():
+def test_jsonargparse_denied_by_default():
     set_parsing_settings(import_path_denylist=[])
-    check_import_path("builtins.print")
-    for name in ["eval", "exec", "compile", "__import__"]:
+    with pytest.raises(ImportDenied, match="'jsonargparse'"):
+        check_import_path("jsonargparse.set_parsing_settings")
+
+
+@pytest.mark.parametrize("entry", ["jsonargparse", "jsonargparse._common.parsing_settings"])
+def test_jsonargparse_not_accepted_in_allowlist(entry):
+    set_parsing_settings(import_path_denylist=[])
+    with pytest.raises(ValueError, match="Import paths under 'jsonargparse' can't be allowed"):
+        set_parsing_settings(import_path_allowlist=[entry])
+    with pytest.raises(ImportDenied, match="'jsonargparse'"):
+        check_import_path("jsonargparse.set_parsing_settings")
+
+
+def test_allowlist_accepts_package_named_after_jsonargparse():
+    set_parsing_settings(import_path_denylist=["*"], import_path_allowlist=["jsonargparse_tests"])
+    check_import_path("jsonargparse_tests.test_import_paths.Data")
+
+
+denied_builtins = [
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+    "breakpoint",  # enters pdb
+    "help",  # instance that runs pydoc
+    "exit",  # instance that raises SystemExit
+    "quit",
+    "getattr",  # reflection, the builtins counterparts of the denied inspect and operator
+    "setattr",
+    "delattr",
+    "vars",
+    "globals",
+]
+
+
+def test_only_dangerous_builtins_denied():
+    set_parsing_settings(import_path_denylist=[])
+    for name in ["print", "int", "sorted"]:
+        check_import_path(f"builtins.{name}")
+    for name in denied_builtins:
         with pytest.raises(ImportDenied):
             check_import_path(f"builtins.{name}")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "cProfile.run",
+        "profile.Profile.runctx",
+        "doctest.testfile",
+        "_frozen_importlib.__import__",
+        "_frozen_importlib_external.SourceFileLoader",
+        "pkg_resources.load_entry_point",
+        "ensurepip.bootstrap",
+        "unittest.mock.patch",
+        "_sitebuiltins.Quitter",
+        "resource.setrlimit",
+        "faulthandler.dump_traceback_later",
+    ],
+)
+def test_execution_and_disruption_paths_denied_by_default(path):
+    set_parsing_settings(import_path_denylist=[])
+    with pytest.raises(ImportDenied):
+        check_import_path(path)
 
 
 @pytest.mark.parametrize(
@@ -139,6 +199,10 @@ def test_only_builtins_code_execution_names_denied():
         "socketserver.TCPServer",
         "xmlrpc.client.ServerProxy",
         "asyncio.create_subprocess_shell",
+        "codecs.open",
+        "winreg.SetValueEx",
+        "xml.sax.parse",
+        "antigravity",
     ],
 )
 def test_file_and_network_paths_denied_by_default(path):
@@ -179,9 +243,9 @@ def test_denied_before_the_module_is_imported():
 def test_denied_module_reexported_by_another_module():
     set_parsing_settings(import_path_denylist=[])
     with pytest.raises(ImportDenied, match="'os'"):
-        import_object("jsonargparse._util.os")
+        import_object(f"{__name__}.os")
     with pytest.raises(ImportDenied, match=f"'{os.system.__module__}'"):
-        import_object("jsonargparse._util.os.system")  # os.system is defined in posix, nt on Windows
+        import_object(f"{__name__}.os.system")  # os.system is defined in posix, nt on Windows
 
 
 def test_denied_object_reexported_under_another_name():
@@ -200,6 +264,12 @@ def test_denied_callable_exposed_by_an_instance():
     set_parsing_settings(import_path_denylist=[])
     with pytest.raises(ImportDenied, match="'operator'"):
         import_object(f"{__name__}.attr_getter")  # instance of the denied operator.attrgetter
+
+
+def test_denied_instance_by_its_defining_class():
+    set_parsing_settings(import_path_allowlist=["builtins.help"])
+    with pytest.raises(ImportDenied, match="'_sitebuiltins'"):
+        import_object("builtins.help")  # instance of _sitebuiltins._Helper, which reaches pydoc
 
 
 def test_object_without_canonical_path_is_not_rechecked():
@@ -268,6 +338,16 @@ def test_star_callable_bound_to_denied_callable_denied(parser):
     parser.add_argument("--fn", type=Callable)
     with pytest.raises(ArgumentError, match="not allowed"):
         parser.parse_args([f"--fn={__name__}.system_partial"])
+
+
+def test_parsing_settings_class_path_denied(parser):
+    set_parsing_settings(import_path_denylist=[])
+    parser.add_argument("--fn", type=Callable)
+    spec = json.dumps(
+        {"class_path": "jsonargparse.set_parsing_settings", "init_args": {"import_path_allowlist": ["os"]}}
+    )
+    with pytest.raises(ArgumentError, match="not allowed"):
+        parser.parse_args([f"--fn={spec}"])
 
 
 def test_any_type_class_path_denied(parser):

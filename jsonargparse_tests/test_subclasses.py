@@ -2384,15 +2384,15 @@ def test_subclass_multifile_save(parser, tmp_cwd):
 def test_subclass_error_not_subclass(parser):
     parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(['--op={"class_path": "jsonargparse.ArgumentParser"}'])
+        parser.parse_args(['--op={"class_path": "calendar.Calendar"}'])
     ctx.match("does not correspond to a subclass")
 
 
 def test_subclass_error_undefined_attribute(parser):
     parser.add_argument("--op", type=BaseC)
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(['--op={"class_path": "jsonargparse.DoesNotExist"}'])
-    ctx.match("module 'jsonargparse' has no attribute 'DoesNotExist'")
+        parser.parse_args(['--op={"class_path": "calendar.DoesNotExist"}'])
+    ctx.match("module 'calendar' has no attribute 'DoesNotExist'")
 
 
 def test_subclass_error_undefined_module(parser):

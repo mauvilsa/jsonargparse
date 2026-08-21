@@ -2399,14 +2399,20 @@ An entry denies or allows a dot import path and everything under it, so ``os``
 also denies ``os.system``. The most specific entry decides, which is why
 ``functools.partial`` above is allowed even though ``functools`` is denied by
 default. An entry given in both lists is allowed, so naming a default entry in
-``import_path_allowlist`` is how to stop denying it.
+``import_path_allowlist`` is how to stop denying it. The one exception is
+``jsonargparse`` itself, which is denied by default and not accepted in
+``import_path_allowlist``, since a value that names it would be able to call
+:func:`.set_parsing_settings` and thus change the policy that is checking it.
 
 An object is denied by where it is defined, not only by the path used to reach
 it. Modules commonly import others, e.g. ``import os``, so without this
 ``some.module.os.system`` would give the same object as the denied
 ``os.system``. This second check can only happen once the object is resolved, so
 it prevents the object from being used, unlike the check on the given path,
-which prevents the import from happening at all.
+which prevents the import from happening at all. An object that has no defining
+path of its own is denied by the callable it reaches, i.e. the bound function
+for a ``functools.partial`` and the defining class for an instance, e.g.
+``builtins.help`` is an instance of the ``_sitebuiltins._Helper`` class.
 
 Entries given are added to the ones denied by default, they don't replace them.
 For configs that are entirely untrusted, prefer denying everything and allowing
@@ -2425,6 +2431,16 @@ only what the application expects. The ``*`` entry is only accepted in
     _common.parsing_settings.clear()
     _common.parsing_settings.update(saved_import_path_settings)
 
+The denylist is not the only thing that limits what a config can reach. Type
+hints do as well, since a ``class_path`` is only accepted where the annotation
+allows one, and must name a subclass of the annotated type. The exceptions are
+``Any`` and ``object``, which accept a subclass spec of any class, see
+:ref:`sub-classes`. Setting ``instantiate_subclass_spec_in_any=False``, which is
+the default from v5.0.0, keeps these values as plain dicts, so nothing is
+imported or instantiated and the code that receives the dict decides what to do
+with it. The denylist still applies when ``validate_subclass_spec_in_any=True``,
+since validating a spec requires importing the class it names.
+
 .. note::
 
     A denylist is a mitigation, not a sandbox. A large enough set of installed
@@ -2432,6 +2448,15 @@ only what the application expects. The ``*`` entry is only accepted in
     without naming a denied path, e.g. a class that runs a command given to it.
     Only ``*`` plus a narrow allowlist gives a bound on what a config can
     import.
+
+.. note::
+
+    The ``omegaconf`` parser modes, see :ref:`omegaconf-interpolation`, give a
+    config access to OmegaConf's resolvers, which the import path denylist does
+    not check. The built-in ``oc.env`` resolver reads environment variables, so
+    a value of ``${oc.env:AWS_SECRET_ACCESS_KEY}`` puts that variable's value
+    into the config, and the resolvers that the application registers are
+    equally reachable. Avoid these parser modes for untrusted configs.
 
 .. note::
 
@@ -3049,6 +3074,8 @@ This link would imply that :meth:`instantiate <.ArgumentParser.instantiate>`
 instantiates ``Data`` first, then use the ``num_classes`` attribute to
 instantiate ``Model``.
 
+
+.. _omegaconf-interpolation:
 
 OmegaConf variable interpolation
 ================================

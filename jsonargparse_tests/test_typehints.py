@@ -2319,7 +2319,7 @@ def test_callable_function_path(parser):
     assert "(type: Callable, default: time.time)" in help_str
 
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(["--callable=jsonargparse.not_exist"])
+        parser.parse_args(["--callable=calendar.not_exist"])
     ctx.match("Callable expects a function or a callable class")
 
 
@@ -2330,7 +2330,7 @@ def test_callable_list_of_function_paths(parser):
     assert [random.randint, time.time] == cfg.callables
 
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(['--callables=["jsonargparse.not_exist"]'])
+        parser.parse_args(['--callables=["calendar.not_exist"]'])
     ctx.match("Callable expects a function or a callable class")
 
 
@@ -2377,7 +2377,7 @@ def test_callable_class_path_simple(parser):
     assert 2 == init.callable()
 
     pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable={}"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable=jsonargparse.SUPPRESS"]))
+    pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable=time.timezone"]))
     pytest.raises(ArgumentError, lambda: parser.parse_args([f"--callable={__name__}.BaseC"]))
     value = {"class_path": f"{__name__}.CallableClassPath", "key": "val"}
     pytest.raises(ArgumentError, lambda: parser.parse_args([f"--callable={json.dumps(value)}"]))
