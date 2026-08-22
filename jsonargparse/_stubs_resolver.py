@@ -272,5 +272,5 @@ def get_stub_types(params, component, parent, logger) -> dict[str, Any] | None:
                     f"Failed to parse type stub for {component.__qualname__!r} parameter {name!r}", exc_info=ex
                 )
                 if name not in known_params:
-                    types[name] = inspect._empty  # pragma: no cover
+                    types[name] = inspect._empty
     return types

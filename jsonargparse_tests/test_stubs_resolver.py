@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import sys
+from asyncio.subprocess import create_subprocess_exec
 from calendar import Calendar, TextCalendar
 from contextlib import contextmanager
 from email.headerregistry import DateHeader
@@ -239,6 +240,25 @@ def test_get_params_non_unique_alias(logger):
             params = get_params(uuid5, logger=logger)
         assert [("namespace", inspect._empty), ("name", name_type)] == get_param_types(params)
         assert "non-unique alias 'UUID': problem (module)" in logs.getvalue()
+
+
+def test_get_params_stub_only_param_with_unresolvable_type(parser, logger):
+    # create_subprocess_exec accepts **kwds, so the stub has keyword-only params not in its
+    # signature. The type of env fails to resolve because subprocess._ENV only exists in stubs.
+    with capture_logs(logger) as logs:
+        params = get_params(create_subprocess_exec, logger=logger)
+    assert "Failed to parse type stub for 'create_subprocess_exec' parameter 'env'" in logs.getvalue()
+    param_types = dict(get_param_types(params))
+    assert param_types["creationflags"] is int
+    assert param_types["env"] is inspect._empty
+    env = next(p for p in params if p.name == "env")
+    assert env.kind is inspect.Parameter.KEYWORD_ONLY
+    assert str(env.default) == "Unknown<stubs-resolver>"
+
+    parser.add_function_arguments(create_subprocess_exec, fail_untyped=False)
+    help_str = get_parser_help(parser)
+    assert "--creationflags CREATIONFLAGS" in help_str
+    assert "--env ENV" in help_str
 
 
 @skip_if_requests_unavailable
