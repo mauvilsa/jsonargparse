@@ -36,6 +36,9 @@ Fixed
 - Instance factory protocols with a ``__call__`` that takes no parameters
   instantiated the class instead of giving a factory (`#959
   <https://github.com/mauvilsa/jsonargparse/pull/959>`__).
+- ``Literal`` with arguments that are attributes of the class in whose body the
+  method is defined failed to resolve when annotations are postponed (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Deprecated
 ^^^^^^^^^^

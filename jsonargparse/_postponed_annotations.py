@@ -4,11 +4,12 @@ import logging
 import sys
 import textwrap
 from dataclasses import is_dataclass
+from enum import Enum
 from importlib import import_module
 from types import UnionType
 from typing import Any, ForwardRef, TypeAlias, TypeVar, Union, get_type_hints
 
-from ._typehints import mapping_origin_types, sequence_origin_types, tuple_set_origin_types
+from ._typehints import literal_types, mapping_origin_types, sequence_origin_types, tuple_set_origin_types
 from ._util import get_typehint_origin
 
 _TRIGGER_MODULE_CACHE_MAXSIZE = 1024
@@ -304,11 +305,49 @@ def get_local_vars(owner: Any) -> dict:
     return {key: value for key, value in vars(owner).items() if is_type_like(value)}
 
 
+literal_value_types = (bool, bytes, int, str, Enum)
+
+
+def get_local_literal_values(owner: Any) -> dict:
+    """Returns the names defined in the body of a class whose value is valid as a Literal argument."""
+    if not inspect.isclass(owner):  # None when the method has no owner, i.e. a plain function
+        return {}
+    return {key: value for key, value in vars(owner).items() if isinstance(value, literal_value_types)}
+
+
+def is_literal_ast(node: ast.AST, aliases: dict) -> bool:
+    """Whether an ast node in the position of the value of a subscript is a Literal."""
+    value = None
+    if isinstance(node, ast.Name):
+        value = aliases.get(node.id)
+    elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        value = getattr(aliases.get(node.value.id), node.attr, None)
+    return any(value is literal_type for literal_type in literal_types)
+
+
+def add_literal_value_aliases(arg_ast: ast.AST, aliases: dict, literal_values: dict) -> dict:
+    """Adds to the aliases the class attributes used as arguments of a Literal.
+
+    Strictly a Literal is invalid when its arguments are variables. Still, it is written, e.g.
+    ``Literal[TRAIN_SET, VALIDATION_SET]`` referencing attributes of the class in whose body the
+    method is defined. Since these are values and not types, they are only added for the names in
+    the subscript of a Literal, so that a class attribute never shadows a global in a type position.
+    """
+    names: set[str] = set()
+    if literal_values:
+        for node in ast.walk(arg_ast):
+            if isinstance(node, ast.Subscript) and is_literal_ast(node.value, aliases):
+                names.update(NamesVisitor().find(node.slice))
+    values = {name: literal_values[name] for name in names if name in literal_values}
+    return {**aliases, **values} if values else aliases
+
+
 def get_types(obj: Any, logger: logging.Logger | None = None, parent: Any = None) -> dict:
     global_vars = get_global_vars(obj, logger)
     # Locals are only needed for methods. For a class get_type_hints already uses as locals
     # the namespace of each of the bases that the annotations come from.
-    local_vars = None if inspect.isclass(obj) else get_local_vars(get_owner_class(obj) or parent)
+    owner = None if inspect.isclass(obj) else get_owner_class(obj) or parent
+    local_vars = None if inspect.isclass(obj) else get_local_vars(owner)
     try:
         types = get_type_hints(obj, global_vars, local_vars)
     except Exception as ex1:
@@ -337,11 +376,14 @@ def get_types(obj: Any, logger: logging.Logger | None = None, parent: Any = None
 
     arg_asts = [(a.arg, a.annotation) for a in node.args.args + node.args.kwonlyargs]  # type: ignore[union-attr]
 
+    literal_values = get_local_literal_values(owner)
+
     for name, annotation in arg_asts:
         if annotation and (name not in types or type_requires_eval(types[name])):
+            arg_aliases = add_literal_value_aliases(annotation, aliases, literal_values)
             try:
-                arg_type = get_arg_type(annotation, aliases)
-                types[name] = resolve_forward_refs(arg_type, aliases, logger)
+                arg_type = get_arg_type(annotation, arg_aliases)
+                types[name] = resolve_forward_refs(arg_type, arg_aliases, logger)
             except Exception as ex3:
                 types[name] = ex3
 

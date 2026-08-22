@@ -9,7 +9,19 @@ import typing
 from collections.abc import Callable
 from textwrap import dedent
 from types import GenericAlias, SimpleNamespace, UnionType
-from typing import TYPE_CHECKING, Dict, ForwardRef, List, Optional, Protocol, Tuple, Type, TypedDict, Union
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    ForwardRef,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypedDict,
+    Union,
+)
 from unittest.mock import patch
 
 import pytest
@@ -688,6 +700,42 @@ class ClassScopeNonTypeAttribute:
 def test_get_types_class_scope_non_type_attribute_does_not_shadow():
     types = get_types(ClassScopeNonTypeAttribute.__init__)
     assert types == {"path": Optional[Path_drw]}
+
+
+LITERAL_MODULE_VALUE = "module"
+LITERAL_SHADOWED_VALUE = "global"
+
+
+class ClassScopeLiteralValues:
+    TRAIN_SET = "train"
+    VALIDATION_SET = "validation"
+    LITERAL_SHADOWED_VALUE = "class"
+
+    def __init__(
+        self,
+        example_set: Literal[TRAIN_SET, VALIDATION_SET] = VALIDATION_SET,  # type: ignore[valid-type]
+        qualified: typing.Literal[TRAIN_SET] = TRAIN_SET,  # type: ignore[valid-type]
+        mixed: Optional[Literal[TRAIN_SET, LITERAL_MODULE_VALUE]] = None,  # type: ignore[valid-type]
+        shadowed: Literal[LITERAL_SHADOWED_VALUE] = LITERAL_SHADOWED_VALUE,  # type: ignore[valid-type]
+    ):
+        self.example_set = example_set  # pragma: no cover
+
+
+def test_get_types_class_scope_literal_values():
+    types = get_types(ClassScopeLiteralValues.__init__)
+    assert types == {
+        "example_set": Literal["train", "validation"],
+        "qualified": Literal["train"],
+        "mixed": Optional[Literal["train", "module"]],
+        "shadowed": Literal["class"],
+    }
+
+
+def test_parse_class_scope_literal_values(parser):
+    parser.add_class_arguments(ClassScopeLiteralValues, "s")
+    assert parser.parse_args(["--s.example_set=train"]).s.example_set == "train"
+    with pytest.raises(ArgumentError, match=r"Expected a typing.Literal\['train', 'validation']"):
+        parser.parse_args(["--s.example_set=test"])
 
 
 class ClassScopeTypeVarAttribute:
