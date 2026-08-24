@@ -3449,39 +3449,166 @@ function to provide an instance of the parser to :class:`.ActionParser`.
 
 
 .. _tab-completion:
+.. _completion-scripts:
 
-Tab completion
-==============
+Completion scripts
+==================
 
-Tab completion is available for jsonargparse parsers by using either the `shtab
-<https://pypi.org/project/shtab/>`__ package or the `argcomplete
-<https://pypi.org/project/argcomplete/>`__ package.
+From a parser, jsonargparse can generate artifacts that describe what the parser
+accepts, so that other tools can validate and complete configs and command
+lines. The supported completion types are:
+
+- ``jsonschema``: a JSON Schema that describes the config files that the parser
+  accepts. Always available.
+- ``shtab-*``: a completion script for a given shell, e.g. ``shtab-bash``.
+  Available when the `shtab <https://pypi.org/project/shtab/>`__ package is
+  installed.
+
+Both are generated with the :meth:`.ArgumentParser.get_completion_script`
+method, or from the command line, see :ref:`print-completion-argument`.
+
+Covered further down is completion at runtime in the shell, which jsonargparse
+supports through the `argcomplete <https://pypi.org/project/argcomplete/>`__
+package, see :ref:`argcomplete`. It does not involve any generated artifact.
+
+
+.. _print-completion-argument:
+
+The --print_completion argument
+-------------------------------
+
+To enable generation of completion scripts via the command line, use
+:func:`.set_parsing_settings` with ``add_print_completion_argument=True``. This
+adds a ``--print_completion`` argument to top-level parsers (not subparsers),
+which accepts the completion types listed above.
+
+.. testcode::
+
+    from jsonargparse import set_parsing_settings
+
+    set_parsing_settings(add_print_completion_argument=True)
+
+Without changing python code, it is also possible to add the
+``--print_completion`` argument by setting the environment variable
+``JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT=true``.
+
+
+jsonschema
+----------
+
+The ``jsonschema`` completion type gives a `JSON Schema
+<https://json-schema.org/>`__ (draft 2020-12) that describes the config files
+accepted by the parser.
+
+.. testcode::
+
+    parser = ArgumentParser(prog="example")
+    parser.add_argument("--bool", type=bool)
+
+    schema = parser.get_completion_script("jsonschema")
+    # schema now contains the JSON schema
+
+The equivalent from the command line is:
+
+.. code-block:: bash
+
+    $ example.py --print_completion=jsonschema > schema.json
+
+This schema is useful as a machine-readable interface for tools. For example:
+
+- IDE/editor assistance (autocompletion, hints, and inline validation).
+- Config contract checks in CI pipelines.
+- Generating documentation from parser structure.
+
+To get validation and autocompletion for a config file in an editor such as
+`Visual Studio Code
+<https://code.visualstudio.com/docs/languages/json#_json-schemas-and-settings>`__,
+the config can point to the generated schema with a ``$schema`` key:
+
+.. code-block:: json
+
+    {
+      "$schema": "./schema.json",
+      "bool": true
+    }
+
+Since the schema describes complete configs, this key is only accepted at the
+root of the configs that a parser loads as a whole, i.e. the value of an
+``action="config"`` argument, a ``default_config_files`` entry, and
+:meth:`parse_path <.ArgumentParser.parse_path>` and :meth:`parse_string
+<.ArgumentParser.parse_string>`. It is not accepted in :ref:`sub-config-files`.
+The key is removed before parsing, so it never becomes part of the parsed
+namespace.
+
+The schema is derived from the same information that the ``--help`` output is
+based on, so it includes:
+
+- The structure of nested keys, i.e. argument groups and subclasses-disabled
+  types become objects, and which of their keys are required.
+- The accepted types, including unions, literals, enums, containers and the
+  restrictions of types such as :class:`.PositiveInt` and :class:`.Email`. For
+  the plain argparse actions, which have no type hint, this is what the action
+  gives, e.g. a boolean for ``store_true``, an integer for ``count``, the
+  possible values for ``store_const`` and an array for ``append``.
+- The defaults of the arguments, except for the required ones, the ones whose
+  default is ``argparse.SUPPRESS``, since not giving those leaves no key, and the
+  unset ones, see :ref:`unset-values`. Without ``unset_sentinel``, a ``None``
+  default is unset, so ``null`` is never described as a default. With it, an
+  explicit ``default=None`` is described, as long as the type accepts ``null``.
+- Descriptions taken from the docstrings of the classes and functions that the
+  arguments come from, or from the ``help`` given to ``add_argument``.
+- For subclass types, one entry per known subclass, each with a ``class_path``
+  fixed to that subclass and an ``init_args`` object describing the accepted
+  init parameters of that specific class.
+- For parsers with subcommands, one object per subcommand and a ``subcommand``
+  key. This key is optional, since a config that has a single subcommand block
+  implies it, and when a config has several blocks the subcommand can be given
+  as a command line argument.
+
+Subclasses and types that are used in more than one place are added once to
+``$defs`` and referenced with ``$ref``, which also makes recursive types work.
+
+The schema is intended to accept exactly what the parser accepts. For subclass
+types this means that all of the following are valid: a class path given
+directly as a string, an object with only ``class_path``, ``init_args``
+(mandatory only for the subclasses that have a required init parameter),
+``dict_kwargs``, and a ``class_path`` that is not among the known subclasses, in
+which case its ``init_args`` are not described and anything is accepted.
+
+A union with a subtype that accepts anything, i.e. ``Any`` or an unvalidated
+type, is kept as ``{"anyOf": [..., {}]}`` instead of the equivalent ``{}``, so
+that tools still have the other subschemas to describe and complete against. The
+exception is when another subtype constrains the keys of an object, e.g. a
+subclass, dataclass or typed dict. Then the subschemas that accept any object,
+i.e. from ``Any``, ``dict`` and unvalidated types, are excluded, making the
+schema stricter than the parser, but in exchange mistakes in the keys are
+pointed out instead of going unnoticed.
+
+.. note::
+
+    The subclasses of a type that the schema includes are the ones known to
+    python at the time the schema is generated, i.e. only those whose modules
+    happen to have been imported.
+
+.. note::
+
+    The ``jsonschema`` completion type is experimental. The details of the
+    generated schema might change in non-major releases.
+
 
 shtab
 -----
 
+The ``shtab-*`` completion types give a shell completion script, using
+``shtab-`` followed by the shell name, e.g. ``shtab-bash`` or ``shtab-zsh``.
+
 For ``shtab`` to work, there is no need to set ``complete``/``choices`` to the
 parser actions, and no need to call `shtab.add_argument_to
-<https://docs.iterative.ai/shtab/ref/#add_argument_to>`__. This is done
-automatically by :meth:`parse_args <.ArgumentParser.parse_args>`. The only
+<https://docs.iterative.ai/shtab/ref/#add_argument_to>`__. The only
 requirement is to install shtab either directly or by installing jsonargparse
 with the ``shtab`` extra as explained in section :ref:`installation`.
 
-There are two ways to generate shell completion scripts when ``shtab`` is
-installed: via the :meth:`.ArgumentParser.get_completion_script` method or by
-enabling a command-line argument.
-
-Programmatic generation
-^^^^^^^^^^^^^^^^^^^^^^^
-
-The :meth:`.ArgumentParser.get_completion_script` method can be used to
-generate completion scripts programmatically. The method accepts a
-``completion_type`` parameter that specifies the shell. For shtab, use
-``shtab-`` followed by the shell name (e.g., ``shtab-bash``, ``shtab-zsh``).
-
 .. testcode::
-
-    from jsonargparse import ArgumentParser
 
     parser = ArgumentParser(prog="example")
     parser.add_argument("--bool", type=bool)
@@ -3491,25 +3618,12 @@ generate completion scripts programmatically. The method accepts a
 
 .. warning::
 
-    After calling :meth:`.get_completion_script`, the parser instance is
-    invalidated and cannot be used for parsing arguments. Create a new parser
-    instance if you need to parse arguments afterward.
+    After calling :meth:`.get_completion_script` for an ``shtab-*`` completion
+    type, the parser instance is invalidated and cannot be used for parsing
+    arguments.
 
-Command-line argument
-^^^^^^^^^^^^^^^^^^^^^
-
-To enable generation of completion scripts via a command-line argument, use
-:func:`.set_parsing_settings` with ``add_print_completion_argument=True``. This
-adds a ``--print_completion`` argument to top-level parsers (not subparsers).
-
-.. testcode::
-
-    from jsonargparse import set_parsing_settings
-
-    set_parsing_settings(add_print_completion_argument=True)
-
-With this setting enabled, completion scripts can be generated from the command
-line. For example, in Linux to enable bash completions for all users, as root:
+From the command line, for example in Linux to enable bash completions for all
+users, as root:
 
 .. code-block:: bash
 
@@ -3521,10 +3635,6 @@ them:
 .. code-block:: bash
 
     $ eval "$(example.py --print_completion=shtab-bash)"
-
-Without changing python code, it is also possible to add the ``--print_completion``
-argument by setting the environment variable
-``JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT=true``.
 
 Completion behavior
 ^^^^^^^^^^^^^^^^^^^
@@ -3586,6 +3696,8 @@ completed, as well as the values that they accept, e.g.:
     Expected type: bool; 2/2 matched choices
     true  false
 
+.. _argcomplete:
+
 argcomplete
 -----------
 
@@ -3593,16 +3705,16 @@ For ``argcomplete`` to work, there is no need to implement completer functions
 or to call `argcomplete.autocomplete
 <https://kislyuk.github.io/argcomplete/#argcomplete.autocomplete>`__ since this
 is done automatically by :meth:`parse_args <.ArgumentParser.parse_args>`. The
-only requirement to enable tab completion is to install argcomplete either
+only requirement to enable shell completion is to install argcomplete either
 directly or by installing jsonargparse with the ``argcomplete`` extra as
 explained in section :ref:`installation`.
 
-The tab completion can be enabled `globally
+The shell completion can be enabled `globally
 <https://kislyuk.github.io/argcomplete/#global-completion>`__ for all
 argcomplete compatible tools or for each `individual
 <https://kislyuk.github.io/argcomplete/#synopsis>`__ tool.
 
-Using the same ``bool`` example as shown above, activate tab completion and use
+Using the same ``bool`` example as shown above, activate completion and use
 it as follows:
 
 .. code-block:: bash

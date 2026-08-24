@@ -270,6 +270,10 @@ default_import_path_denylist = (
 )
 
 
+# key that configs may have to point to a JSON Schema, only for editor support, so ignored when parsing
+config_schema_key = "$schema"
+
+
 parsing_settings: dict = {
     "validate_defaults": False,
     "validate_subclass_spec_in_any": False,
@@ -410,8 +414,9 @@ def set_parsing_settings(
             positionals are applied to optionals in the order that they were
             added to the parser. By default, this is ``False``.
         add_print_completion_argument: If ``True``, top-level parsers
-            automatically include ``--print_completion`` argument when
-            ``shtab`` is installed.
+            automatically include a ``--print_completion`` argument. Its
+            accepted values are ``jsonschema`` and, when ``shtab`` is installed,
+            one ``shtab-*`` value per supported shell.
         stubs_resolver_allow_py_files: Whether the stubs resolver should search
             in ``.py`` files in addition to ``.pyi`` files.
         omegaconf_absolute_to_relative_paths: If ``True``, when loading configs

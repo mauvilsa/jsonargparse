@@ -1,4 +1,5 @@
 import argparse
+import json
 import locale
 import os
 import re
@@ -43,7 +44,7 @@ def handle_completions(parser):
 
 
 def add_print_completion_argument(parser):
-    if getattr(parser, "parent_parser", None) or not find_spec("shtab"):
+    if getattr(parser, "parent_parser", None):
         return
     print_completion_argument = get_parsing_setting("add_print_completion_argument")
     if not print_completion_argument and "--print_shtab" not in parser._option_string_actions:
@@ -128,14 +129,17 @@ class PrintCompletionAction(NonParsingAction):
         default=argparse.SUPPRESS,
         **kwargs,
     ):
-        import shtab
+        choices = ["jsonschema"]
+        if find_spec("shtab"):
+            import shtab
 
+            choices.extend(f"shtab-{shell}" for shell in shtab.SUPPORTED_SHELLS)
         super().__init__(
             option_strings=option_strings,
             dest=dest,
             default=default,
-            choices=[f"shtab-{shell}" for shell in shtab.SUPPORTED_SHELLS],
-            help="Print shell completion script.",
+            choices=choices,
+            help="Print completion script.",
         )
 
     def __call__(self, parser, namespace, completion_type, option_string=None):
@@ -144,11 +148,17 @@ class PrintCompletionAction(NonParsingAction):
 
 
 def get_completion_script(parser, completion_type: str, **kwargs) -> str:
+    if completion_type == "jsonschema":
+        from ._completions_jsonschema import config_jsonschema
+
+        return json.dumps(config_jsonschema(parser), indent=2)  # doesn't modify the parser
     if not completion_type.startswith("shtab-"):
         raise ValueError(f"Unsupported completion_type: {completion_type}.")
     if not find_spec("shtab"):
         raise ValueError(f"shtab package is required for completion type '{completion_type}'.")
-    return get_shtab_script(parser, completion_type[len("shtab-") :], **kwargs)
+    script = get_shtab_script(parser, completion_type[len("shtab-") :], **kwargs)
+    parser._invalidate_by_completion_script()
+    return script
 
 
 def get_shtab_script(parser, shell: str, preambles: list[str] | None = None) -> str:

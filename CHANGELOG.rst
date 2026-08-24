@@ -29,6 +29,15 @@ Added
   ``dict[str, SomeBaseClass]``, now have a ``--*.help`` option, and subclasses
   in any container are now included in the known subclasses shown in the help
   (`#960 <https://github.com/mauvilsa/jsonargparse/pull/960>`__).
+- New ``jsonschema`` completion type, i.e. ``--print_completion=jsonschema`` and
+  ``parser.get_completion_script("jsonschema")``, which generates a JSON Schema
+  (draft 2020-12) that describes the config files accepted by the parser,
+  including descriptions from docstrings, defaults, required keys, type
+  restrictions, the types that the plain argparse actions give and one entry per
+  known subclass of subclass types. Configs can point to a schema with a
+  ``$schema`` key in their root, which is ignored when parsing. This feature is
+  experimental, so the details of the generated schema might change in non-major
+  releases (`#961 <https://github.com/mauvilsa/jsonargparse/pull/961>`__).
 
 Fixed
 ^^^^^
