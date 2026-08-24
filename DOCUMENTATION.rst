@@ -594,8 +594,10 @@ Some notes about this support are:
   subclass of the return type of the callable. For these cases running
   :meth:`instantiate <.ArgumentParser.instantiate>` will instantiate the class
   or provide a function that returns the instance of the class. For more details
-  see :ref:`callable-type`. Currently the callable's argument and return types
-  are not validated.
+  see :ref:`callable-type`. A function given by import path must have a return
+  annotation, or a return type in a stub file (see :ref:`stubs-resolver`), that
+  is the callable's return type or a subclass of it. Argument types are not
+  validated.
 
 - ``types.ModuleType`` is supported by giving the dot import path of a module,
   and on ``instantiate`` is replaced by the imported module object.

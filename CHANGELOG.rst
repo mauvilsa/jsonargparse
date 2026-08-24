@@ -59,6 +59,11 @@ Fixed
   type is nested in a container or optional, e.g. ``builtins.NoneType`` for
   ``Optional[list[SomeBaseClass]]`` (`#960
   <https://github.com/mauvilsa/jsonargparse/pull/960>`__).
+- Functions without a return annotation at runtime, e.g. C-implemented ones like
+  ``time.localtime``, were rejected for ``Callable`` types with a class return
+  type, even when a stub file gives the return type. Now with the stubs resolver
+  the return type from the ``.pyi`` is used (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Deprecated
 ^^^^^^^^^^

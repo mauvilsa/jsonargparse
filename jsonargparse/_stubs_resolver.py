@@ -274,3 +274,19 @@ def get_stub_types(params, component, parent, logger) -> dict[str, Any] | None:
                 if name not in known_params:
                     types[name] = inspect._empty
     return types
+
+
+def get_stub_return_type(function, logger) -> Any:
+    """Returns the return type of a function from its stub, or None if not found."""
+    if not typeshed_client_support:
+        return None
+    resolver = get_stubs_resolver()
+    stub_import = resolver.get_component_imported_info(function, None)
+    if not stub_import or not stub_import.info.ast.returns:
+        return None
+    try:
+        return get_arg_type(stub_import.info.ast.returns, resolver.get_aliases(stub_import))
+    except Exception as ex:
+        if logger:
+            logger.debug(f"Failed to parse type stub for {function.__qualname__!r} return type", exc_info=ex)
+        return None

@@ -2118,11 +2118,14 @@ def get_subclass_names(typehint, callable_return=False):
 def function_returns_subclass(function, subclass_types, logger) -> bool:
     """Whether the return type of a function is a subclass of the given types."""
     from ._postponed_annotations import get_return_type
+    from ._stubs_resolver import get_stub_return_type
 
     try:
         return_type = get_return_type(function, logger)
     except ValueError:
-        return False  # e.g. a builtin that doesn't have an inspectable signature
+        return_type = None  # e.g. a builtin that doesn't have an inspectable signature
+    if return_type in {None, inspect._empty}:
+        return_type = get_stub_return_type(function, logger)
     return is_subclass(return_type, subclass_types)
 
 

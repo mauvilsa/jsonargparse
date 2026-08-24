@@ -11,12 +11,14 @@ from importlib.util import find_spec
 from ipaddress import ip_network
 from random import Random, SystemRandom, uniform
 from tarfile import TarFile
+from time import localtime, struct_time
+from typing import Callable
 from unittest.mock import patch
 from uuid import UUID, uuid5
 
 import pytest
 
-from jsonargparse import set_parsing_settings
+from jsonargparse import ArgumentError, set_parsing_settings
 from jsonargparse._parameter_resolvers import get_signature_parameters as get_params
 from jsonargparse._stubs_resolver import get_arg_type, get_mro_method_parent, get_stubs_resolver
 from jsonargparse_tests.conftest import (
@@ -56,8 +58,8 @@ def mock_stubs_missing_types():
 
 
 @contextmanager
-def mock_stubs_missing_resolver():
-    with patch("jsonargparse._parameter_resolvers.get_stubs_resolver") as mock_instance:
+def mock_stubs_missing_resolver(module="jsonargparse._parameter_resolvers"):
+    with patch(f"{module}.get_stubs_resolver") as mock_instance:
         mock_instance.return_value.get_component_imported_info.return_value = None
         yield
 
@@ -352,3 +354,39 @@ def test_get_params_inspect_signature_failure_missing_type(logger):
     assert "int | str | bytes | ipaddress.IPv4Address | " in str(params[0].annotation)
     assert "get_parameters_from_ast failed" in logs.getvalue()
     assert "get_parameters_by_assumptions failed" not in logs.getvalue()
+
+
+# callable return type from stubs
+
+
+def test_callable_return_class_function_return_type_from_stubs(parser):
+    parser.add_argument("--fn", type=Callable[[float], struct_time])
+    cfg = parser.parse_args(["--fn=time.localtime"])
+    assert cfg.fn is localtime
+    assert localtime(0.0).tm_year == cfg.fn(0.0).tm_year
+
+
+def test_callable_return_class_function_return_type_from_stubs_mismatch(parser):
+    parser.add_argument("--fn", type=Callable[[float], struct_time])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--fn=time.time"])
+    ctx.match("Expected 'time.time' to be a function that returns .*struct_time")
+
+
+def test_callable_return_class_function_return_type_from_stubs_not_found(parser):
+    parser.add_argument("--fn", type=Callable[[float], struct_time])
+    with mock_stubs_missing_resolver("jsonargparse._stubs_resolver"):
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(["--fn=time.localtime"])
+    ctx.match("Expected 'time.localtime' to be a function that returns .*struct_time")
+
+
+def test_callable_return_class_function_return_type_from_stubs_failure(parser, logger):
+    parser.logger = logger
+    parser.add_argument("--fn", type=Callable[[float], struct_time])
+    with patch("jsonargparse._stubs_resolver.get_arg_type", side_effect=Exception("bad")):
+        with capture_logs(logger) as logs:
+            with pytest.raises(ArgumentError) as ctx:
+                parser.parse_args(["--fn=time.localtime"])
+    ctx.match("Expected 'time.localtime' to be a function that returns .*struct_time")
+    assert "Failed to parse type stub for 'localtime' return type" in logs.getvalue()
