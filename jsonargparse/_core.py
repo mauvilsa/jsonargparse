@@ -750,7 +750,6 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
             raise TypeError(f"Problems parsing config: {ex}") from ex
         if not isinstance(cfg_dict, dict):
             raise TypeError(f"Unexpected config: {content}")
-        cfg_dict.pop(config_schema_key, None)  # only meant for editors, see completion type jsonschema
         return self._apply_actions(cfg_dict, prev_cfg=prev_cfg)
 
     ## Methods for adding to the parser ##
@@ -1377,6 +1376,10 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
                     continue
 
             num += 1
+
+            if action is None and key.rsplit(".", 1)[-1] == config_schema_key:
+                cfg.pop(key)  # only meant for editors, see completion type jsonschema
+                continue
 
             if action is None or isinstance(action, ActionSubCommands):
                 value = cfg[key]

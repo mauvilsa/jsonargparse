@@ -35,7 +35,7 @@ Added
   including descriptions from docstrings, defaults, required keys, type
   restrictions, the types that the plain argparse actions give and one entry per
   known subclass of subclass types. Configs can point to a schema with a
-  ``$schema`` key in their root, which is ignored when parsing. This feature is
+  ``$schema`` key, which is ignored when parsing. This feature is
   experimental, so the details of the generated schema might change in non-major
   releases (`#961 <https://github.com/mauvilsa/jsonargparse/pull/961>`__).
 

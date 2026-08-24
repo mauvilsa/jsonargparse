@@ -59,6 +59,7 @@ from ._actions import (
 from ._common import (
     ImportDenied,
     check_import_path,
+    config_schema_key,
     get_generic_origin,
     get_parsing_setting,
     get_unaliased_type,
@@ -1986,6 +1987,7 @@ def subclass_spec_as_namespace(val, prev_val=None):
             prev_val = Namespace(class_path=prev_val)
     if isinstance(val, dict):
         val = Namespace(val)
+    val.pop(config_schema_key, None)  # only meant for editors, see completion type jsonschema
     if "init_args" in val and isinstance(val["init_args"], dict):
         val["init_args"] = Namespace(val["init_args"])
     if not is_subclass_spec(val) and isinstance(prev_val, (Namespace, dict)) and "class_path" in prev_val:

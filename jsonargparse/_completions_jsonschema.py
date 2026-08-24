@@ -92,11 +92,12 @@ def config_jsonschema(parser) -> dict:
     return ParserJsonschema().generate(parser)
 
 
-def new_object(description: Optional[str] = None) -> dict:
+def new_object(description: Optional[str] = None, schema_key: bool = True) -> dict:
+    """A config object, which accepts the schema key unless it describes a value, e.g. a typed dict."""
     schema: dict = {"type": "object", "additionalProperties": False}
     if description:
         schema["description"] = description
-    schema["properties"] = {}
+    schema["properties"] = {config_schema_key: dict(config_schema_key_schema)} if schema_key else {}
     return schema
 
 
@@ -191,6 +192,7 @@ def get_action_description(action) -> Optional[str]:
         try:
             help_string = help_string % params
         except (KeyError, TypeError, ValueError):
+            # Keep the original help text if interpolation fails
             pass
     return help_string
 
@@ -267,7 +269,6 @@ class ParserJsonschema:
 
     def generate(self, parser) -> dict:
         schema = new_object(parser.description)
-        schema["properties"][config_schema_key] = dict(config_schema_key_schema)
         with restore_suppressed_required(), parser_context(parent_parser=parser):
             self.add_properties(parser, schema)
         defs = self.reachable_defs(schema)
@@ -467,7 +468,7 @@ class ParserJsonschema:
     def typed_dict_schema(self, typehint, action) -> dict:
         annotations = get_typed_dict_annotations(typehint)
         required_keys = get_typed_dict_required_keys(typehint, annotations)
-        schema = new_object(get_doc_short_description(typehint))
+        schema = new_object(get_doc_short_description(typehint), schema_key=False)
         for key, annotation in annotations.items():
             schema["properties"][key] = self.typehint_schema(annotation, action)
             if key in required_keys:
@@ -499,33 +500,37 @@ class ParserJsonschema:
         """Describes all forms accepted for a subclass: a class path string or a subclass spec."""
         class_paths = get_all_subclass_paths(class_type)
         schemas: list = [{"type": "string"}]  # a class path or a path to a sub-config file
-        schemas += [self.class_path_schema(path, action) for path in class_paths]
-        schemas.append(self.unknown_class_path_schema(class_paths))
+        if class_paths:
+            # an object that accepts any class_path would keep tools from suggesting and validating the known ones
+            schemas += [self.class_path_schema(path, action) for path in class_paths]
+        else:  # no known subclass, so any class path is accepted without describing its init args
+            schemas.append(self.unknown_class_path_schema())
         return anyof_schema(schemas)
 
     def class_path_schema(self, class_path: str, action) -> dict:
         schema = new_object(get_doc_short_description(import_object(class_path)))
         init_args_schema = self.class_parser_schema(class_path, action)
-        schema["properties"] = {
-            "class_path": {"const": class_path},
-            "init_args": init_args_schema,
-            "dict_kwargs": {"type": "object"},
-        }
+        schema["properties"].update(
+            {
+                "class_path": {"const": class_path},
+                "init_args": init_args_schema,
+                "dict_kwargs": {"type": "object"},
+            }
+        )
         # init_args can only be omitted when none of the init parameters is required
         schema["required"] = ["class_path"] + (["init_args"] if init_args_schema.get("required") else [])
         return schema
 
-    def unknown_class_path_schema(self, known_class_paths: list) -> dict:
+    def unknown_class_path_schema(self) -> dict:
         """Accepts subclasses whose module is not imported, without describing their init args."""
-        class_path_schema: dict = {"type": "string"}
-        if known_class_paths:
-            class_path_schema["not"] = {"enum": known_class_paths}
         schema = new_object()
-        schema["properties"] = {
-            "class_path": class_path_schema,
-            "init_args": {"type": "object"},
-            "dict_kwargs": {"type": "object"},
-        }
+        schema["properties"].update(
+            {
+                "class_path": {"type": "string"},
+                "init_args": {"type": "object"},
+                "dict_kwargs": {"type": "object"},
+            }
+        )
         schema["required"] = ["class_path"]
         return schema
 

@@ -15,7 +15,15 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import SUPPRESS, ActionParser, ActionYesNo, ArgumentParser, lazy_instance, set_parsing_settings
+from jsonargparse import (
+    SUPPRESS,
+    ActionParser,
+    ActionYesNo,
+    ArgumentParser,
+    Namespace,
+    lazy_instance,
+    set_parsing_settings,
+)
 from jsonargparse._typehints import NotRequired
 from jsonargparse.typing import (
     ClosedUnitInterval,
@@ -111,10 +119,23 @@ def test_schema_key_in_root(parser):
     assert "editors" in properties["$schema"]["description"]
 
 
-def test_schema_key_only_in_root(parser):
+def test_schema_key_in_config_objects(parser, subparser):
     parser.add_argument("--group.num", type=int)
+    parser.add_argument("--cls", type=Base)
+    subparser.add_argument("--num", type=int)
+    parser.add_subcommands().add_subcommand("cmd", subparser)
     schema = get_schema(parser)
-    assert list(schema["properties"]["group"]["properties"]) == ["num"]
+    assert "$schema" in schema["properties"]["group"]["properties"]
+    assert "$schema" in schema["properties"]["cmd"]["properties"]
+    entry = class_path_entries(schema["$defs"]["Base"])[f"{__name__}.Base"]
+    assert "$schema" in entry["properties"]
+    assert "$schema" in entry["properties"]["init_args"]["properties"]
+
+
+def test_schema_key_not_in_typed_dict(parser):
+    # a typed dict is a value, not a config, so the parser does not ignore the key in it
+    parser.add_argument("--movie", type=Movie)
+    assert "$schema" not in get_schema(parser)["properties"]["movie"]["properties"]
 
 
 @skip_if_jsonschema_unavailable
@@ -131,6 +152,64 @@ def test_schema_key_ignored_when_parsing(parser):
     cfg = parser.parse_args(['--cfg={"$schema": "./schema.json", "num": 1}'])
     assert cfg.num == 1
     assert "$schema" not in cfg
+
+
+def test_schema_key_ignored_in_group_subconfig(parser, tmp_cwd):
+    (tmp_cwd / "group.json").write_text(json.dumps({"$schema": "./schema.json", "num": 2}))
+    parser.add_argument("--group", type=Data)
+    cfg = parser.parse_args(["--group=group.json"])
+    assert cfg.group.num == 2
+    assert "$schema" not in cfg.group
+
+
+def test_schema_key_ignored_in_subclass_subconfig(parser, tmp_cwd):
+    spec = {"$schema": "./schema.json", "class_path": f"{__name__}.Sub", "init_args": {"sub": 3}}
+    (tmp_cwd / "cls.json").write_text(json.dumps(spec))
+    parser.add_argument("--cls", type=Base, sub_configs=True)
+    cfg = parser.parse_args(["--cls=cls.json"])
+    assert cfg.cls.class_path == f"{__name__}.Sub"
+    assert cfg.cls.init_args == Namespace(sub=3)
+    assert "$schema" not in cfg.cls
+
+
+def test_schema_key_ignored_in_list_item_subconfigs(parser, tmp_cwd):
+    (tmp_cwd / "cls.json").write_text(json.dumps({"$schema": "./schema.json", "class_path": f"{__name__}.Sub"}))
+    (tmp_cwd / "data.json").write_text(json.dumps({"$schema": "./schema.json", "num": 4}))
+    parser.add_argument("--vals", type=List[Union[Base, Data]], sub_configs=True)
+    cfg = parser.parse_args(['--vals=["cls.json", "data.json"]'])
+    assert cfg.vals[0].class_path == f"{__name__}.Sub"
+    assert "$schema" not in cfg.vals[0]
+    assert cfg.vals[1].num == 4
+    assert "$schema" not in cfg.vals[1]
+
+
+def test_schema_key_ignored_in_subcommand_config(parser, subparser):
+    subparser.add_argument("--num", type=int)
+    parser.add_argument("--cfg", action="config")
+    parser.add_subcommands().add_subcommand("cmd", subparser)
+    cfg = parser.parse_args(['--cfg={"$schema": "./s.json", "cmd": {"$schema": "./s.json", "num": 5}}'])
+    assert cfg.cmd.num == 5
+    assert "$schema" not in cfg
+    assert "$schema" not in cfg.cmd
+
+
+def test_schema_key_not_ignored_when_parser_accepts_it(parser):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--$schema", type=str)
+    cfg = parser.parse_args(['--cfg={"$schema": "value"}'])
+    assert cfg["$schema"] == "value"
+
+
+def test_schema_key_as_argument(parser):
+    parser.add_argument("--$schema", type=int)
+    assert get_schema(parser)["properties"]["$schema"] == {"type": "integer"}
+
+
+def test_schema_key_not_ignored_in_dict_value(parser, tmp_cwd):
+    (tmp_cwd / "dict.json").write_text(json.dumps({"$schema": "./schema.json", "num": "6"}))
+    parser.add_argument("--dic", type=Dict[str, str], sub_configs=True)
+    cfg = parser.parse_args(["--dic=dict.json"])
+    assert cfg.dic["$schema"] == "./schema.json"
 
 
 def test_required_argument_has_no_default(parser):
@@ -385,14 +464,11 @@ def test_dataclass_as_type(parser):
     parser.add_argument("--data", type=Optional[Data])
     schema = get_schema(parser)
     assert schema["properties"]["data"] == {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/Data"}]}
-    assert schema["$defs"]["Data"] == {
-        "type": "object",
-        "additionalProperties": False,
-        "description": "A dataclass.",
-        "properties": {
-            "num": {"type": "integer", "description": "Description of num.", "default": 1},
-            "name": {"type": "string", "default": "x"},
-        },
+    assert schema["$defs"]["Data"]["description"] == "A dataclass."
+    assert schema["$defs"]["Data"]["additionalProperties"] is False
+    assert config_properties(schema["$defs"]["Data"]) == {
+        "num": {"type": "integer", "description": "Description of num.", "default": 1},
+        "name": {"type": "string", "default": "x"},
     }
 
 
@@ -452,6 +528,11 @@ class RequiredSub(Base):
 base_paths = [f"{__name__}.{n}" for n in ["Base", "Sub", "OtherSub", "RequiredSub"]]
 
 
+def config_properties(schema: dict) -> dict:
+    """The properties of a config object, without the schema key that all of them accept."""
+    return {key: value for key, value in schema["properties"].items() if key != "$schema"}
+
+
 def class_path_entries(definition: dict) -> dict:
     """The subschemas of a subclass definition that describe one specific class path."""
     entries = {}
@@ -473,9 +554,9 @@ def test_subclass_type(parser):
         assert entry["additionalProperties"] is False
         assert entry["properties"]["dict_kwargs"] == {"type": "object"}
     init_args = {path: entry["properties"]["init_args"] for path, entry in entries.items()}
-    assert set(init_args[base_paths[0]]["properties"]) == {"base"}
-    assert set(init_args[base_paths[1]]["properties"]) == {"sub"}
-    assert set(init_args[base_paths[2]]["properties"]) == {"flag"}
+    assert set(config_properties(init_args[base_paths[0]])) == {"base"}
+    assert set(config_properties(init_args[base_paths[1]])) == {"sub"}
+    assert set(config_properties(init_args[base_paths[2]])) == {"flag"}
 
 
 def test_subclass_init_args_required_only_when_a_parameter_is_required(parser):
@@ -487,18 +568,13 @@ def test_subclass_init_args_required_only_when_a_parameter_is_required(parser):
     assert entries[f"{__name__}.RequiredSub"]["properties"]["init_args"]["required"] == ["req"]
 
 
-def test_subclass_unknown_class_path_entry(parser):
+def test_subclass_only_known_class_paths(parser):
+    # an entry that accepts any class_path would keep editors from suggesting the known ones
     parser.add_argument("--cls", type=Base)
     definition = get_schema(parser)["$defs"]["Base"]
-    assert {"type": "string"} in definition["anyOf"]
-    unknown = [e for e in definition["anyOf"] if e.get("properties", {}).get("class_path", {}).get("not")]
-    assert len(unknown) == 1
-    assert unknown[0]["properties"] == {
-        "class_path": {"type": "string", "not": {"enum": base_paths}},
-        "init_args": {"type": "object"},
-        "dict_kwargs": {"type": "object"},
-    }
-    assert unknown[0]["required"] == ["class_path"]
+    assert definition["anyOf"][0] == {"type": "string"}  # a class path or a path to a sub-config file
+    assert list(class_path_entries(definition)) == base_paths
+    assert len(definition["anyOf"]) == len(base_paths) + 1
 
 
 @skip_if_docstring_parser_unavailable
@@ -525,12 +601,14 @@ def test_subclass_type_validation(parser):
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "dict_kwargs": {"extra": 1}}})
     validate(schema, {"cls": f"{__name__}.Sub"})
     validate(schema, {"cls": "Sub"})
-    validate(schema, {"cls": {"class_path": "not_imported.Class", "init_args": {"anything": 1}}})
+    validate(schema, {"cls": "sub_config.yaml"})
     # what the parser rejects
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"flag": True}}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.RequiredSub"}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "bogus": 1}})
     assert iter_errors(schema, {"cls": {"init_args": {"sub": 2}}})
+    # stricter than the parser, so that the known subclasses are suggested and validated
+    assert iter_errors(schema, {"cls": {"class_path": "not_imported.Class", "init_args": {"anything": 1}}})
 
 
 def test_defs_discarded_when_unreachable(parser):
@@ -538,7 +616,7 @@ def test_defs_discarded_when_unreachable(parser):
     parser.add_argument("--cls", type=Optional[Base])
     parser.add_argument("--cls.num", type=int)
     schema = get_schema(parser)
-    assert schema["properties"]["cls"]["properties"] == {"num": {"type": "integer"}}
+    assert config_properties(schema["properties"]["cls"]) == {"num": {"type": "integer"}}
     assert "$defs" not in schema
 
 
@@ -773,20 +851,14 @@ class AbstractBase(ABC):
 
 def test_subclass_type_without_known_class_paths(parser):
     parser.add_argument("--cls", type=AbstractBase)
-    assert get_schema(parser)["$defs"]["AbstractBase"] == {
-        "anyOf": [
-            {"type": "string"},
-            {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "class_path": {"type": "string"},
-                    "init_args": {"type": "object"},
-                    "dict_kwargs": {"type": "object"},
-                },
-                "required": ["class_path"],
-            },
-        ]
+    definition = get_schema(parser)["$defs"]["AbstractBase"]
+    assert definition["anyOf"][0] == {"type": "string"}
+    assert len(definition["anyOf"]) == 2
+    assert definition["anyOf"][1]["required"] == ["class_path"]
+    assert config_properties(definition["anyOf"][1]) == {
+        "class_path": {"type": "string"},
+        "init_args": {"type": "object"},
+        "dict_kwargs": {"type": "object"},
     }
 
 
@@ -828,7 +900,7 @@ def test_defs_name_collision(parser, module_with_colliding_class):
     defs = get_schema(parser)["$defs"]
     assert list(defs) == ["Base", "colliding_module_Base"]
     entry = class_path_entries(defs["colliding_module_Base"])["colliding_module.Base"]
-    assert entry["properties"]["init_args"]["properties"] == {"other": {"type": "integer", "default": 1}}
+    assert config_properties(entry["properties"]["init_args"]) == {"other": {"type": "integer", "default": 1}}
 
 
 # plain argparse actions

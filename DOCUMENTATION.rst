@@ -3532,13 +3532,10 @@ the config can point to the generated schema with a ``$schema`` key:
       "bool": true
     }
 
-Since the schema describes complete configs, this key is only accepted at the
-root of the configs that a parser loads as a whole, i.e. the value of an
-``action="config"`` argument, a ``default_config_files`` entry, and
-:meth:`parse_path <.ArgumentParser.parse_path>` and :meth:`parse_string
-<.ArgumentParser.parse_string>`. It is not accepted in :ref:`sub-config-files`.
-The key is removed before parsing, so it never becomes part of the parsed
-namespace.
+The key is accepted in any config that a parser loads, :ref:`sub-config-files`
+included, and it is removed before parsing, so it never becomes part of the
+parsed namespace. Accordingly, every object in the schema that describes a
+config accepts the key.
 
 The schema is derived from the same information that the ``--help`` output is
 based on, so it includes:
@@ -3568,12 +3565,16 @@ based on, so it includes:
 Subclasses and types that are used in more than one place are added once to
 ``$defs`` and referenced with ``$ref``, which also makes recursive types work.
 
-The schema is intended to accept exactly what the parser accepts. For subclass
-types this means that all of the following are valid: a class path given
-directly as a string, an object with only ``class_path``, ``init_args``
-(mandatory only for the subclasses that have a required init parameter),
-``dict_kwargs``, and a ``class_path`` that is not among the known subclasses, in
-which case its ``init_args`` are not described and anything is accepted.
+The schema is intended to accept what the parser accepts, though for subclass
+types it is stricter: a string is accepted, since it can be a class path or a
+path to a sub-config file, but an object is only accepted for the known
+subclasses, i.e. one with ``class_path``, ``init_args`` (mandatory only for the
+subclasses that have a required init parameter) and ``dict_kwargs``. An object
+that accepts any ``class_path`` would keep tools from suggesting the known
+subclasses and from pointing out a class path that has a typo or is not the
+accepted import path, in which case the ``init_args`` would go undescribed. Only
+when a type has no known subclass is any ``class_path`` accepted, without
+describing its ``init_args``.
 
 A union with a subtype that accepts anything, i.e. ``Any`` or an unvalidated
 type, is kept as ``{"anyOf": [..., {}]}`` instead of the equivalent ``{}``, so
