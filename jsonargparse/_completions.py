@@ -1,5 +1,4 @@
 import argparse
-import inspect
 import locale
 import os
 import re
@@ -27,6 +26,7 @@ from ._typehints import (
     callable_origin_types,
     get_all_subclass_paths,
     get_callable_return_type,
+    get_help_types,
     get_typed_dict_key_type,
     get_typehint_origin,
     is_single_subclass_or_closed_type,
@@ -439,14 +439,10 @@ def add_subactions_and_get_subclass_choices(
 
 
 def get_help_class_choices(typehint) -> list[str]:
-    choices = []
-    if get_typehint_origin(typehint) == Union:
-        for subtype in typehint.__args__:
-            # a subscripted generic typed dict is a generic alias instead of a class
-            if inspect.isclass(subtype) or is_typed_dict(subtype):
-                choices.extend(get_help_class_choices(subtype))
-    elif is_typed_dict(typehint):
-        choices = [typehint.__name__]  # typed dicts don't accept a class path, only their name
-    else:
-        choices = get_all_subclass_paths(typehint)
+    choices: list[str] = []
+    for help_type in get_help_types(typehint) or []:
+        if is_typed_dict(help_type):
+            choices.append(help_type.__name__)  # typed dicts don't accept a class path, only their name
+        else:
+            choices += [p for p in get_all_subclass_paths(help_type) if p not in choices]
     return choices

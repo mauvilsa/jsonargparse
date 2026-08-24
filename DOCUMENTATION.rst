@@ -561,7 +561,9 @@ Some notes about this support are:
   element position can have its own type and will be validated as such.
   ``tuple`` with ellipsis (``tuple[type, ...]``) is also supported. In command
   line arguments, config files and environment variables, tuples and sets are
-  represented as an array.
+  represented as an array. A ``set`` or ``frozenset`` of a class type is kept as
+  a list when parsing, since subclass specs are not hashable, and becomes a set
+  on :meth:`instantiate <.ArgumentParser.instantiate>`.
 
 - To set a value to ``None`` it is required to use ``null`` since this is how
   JSON/YAML defines it. To avoid confusion in the help, ``NoneType`` is

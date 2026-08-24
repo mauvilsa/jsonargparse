@@ -790,14 +790,9 @@ class ActionTypeHint(Action):
 
     def extra_help(self):
         extra = ""
-        typehint = get_optional_arg(self._typehint)
-        typehint = get_callable_return_type(typehint) or typehint
-        if get_typehint_origin(typehint) is type:
-            typehint = typehint.__args__[0]
-        if self.is_subclass_typehint(typehint, all_subtypes=False):
-            class_paths = get_all_subclass_paths(typehint)
-            if class_paths:
-                extra = ", known subclasses: " + ", ".join(class_paths)
+        class_paths = get_all_subclass_paths(self._typehint, closed_types=False)
+        if class_paths:
+            extra = ", known subclasses: " + ", ".join(class_paths)
         return extra
 
     def completer(self, prefix, **kwargs):
@@ -1421,10 +1416,10 @@ def adapt_typehints(
         if not serialize:
             if typehint_origin in {Tuple, tuple}:
                 val = tuple(val)
-            elif typehint_origin is frozenset:
-                val = frozenset(val)
-            else:
-                val = set(val)
+            elif all(isinstance(v, abc.Hashable) for v in val):
+                val = frozenset(val) if typehint_origin is frozenset else set(val)
+            # values that are not hashable, e.g. subclass specs, are kept as a
+            # list and become a set once the classes are instantiated
 
     # List, Iterable or Sequence
     elif typehint_origin in sequence_origin_types:
@@ -2035,20 +2030,34 @@ is_single_subclass_type = partial(is_single_class_type, closed_class=False)
 is_single_subclass_or_closed_type = partial(is_single_class_type, closed_class=True)
 
 
-def yield_class_types(typehint, is_single, also_lists=False, callable_return=False):
+def yield_class_types(typehint, is_single, also_lists=False, also_containers=False, callable_return=False):
     typehint = typehint_from_action(typehint)
     if typehint is None:
         return
     typehint = get_unaliased_type(get_optional_arg(get_unaliased_type(typehint)))
     typehint_origin = get_typehint_origin(typehint)
-    kwargs = {"is_single": is_single, "also_lists": also_lists, "callable_return": callable_return}
+    kwargs = {
+        "is_single": is_single,
+        "also_lists": also_lists,
+        "also_containers": also_containers,
+        "callable_return": callable_return,
+    }
     if callable_return and (typehint_origin in callable_origin_types or is_instance_factory_protocol(typehint)):
         return_type = get_callable_return_type(typehint)
         if return_type:
             yield from yield_class_types(return_type, **kwargs)
-    elif typehint_origin == Union or (also_lists and typehint_origin in sequence_origin_types):
-        for subtype in typehint.__args__:
+    elif also_containers and typehint_origin in mapping_origin_types and not is_typed_dict(typehint):
+        # only the value type of mappings can be a class, since keys are always simple types
+        for subtype in getattr(typehint, "__args__", [])[1:]:
             yield from yield_class_types(subtype, **kwargs)
+    elif (
+        typehint_origin == Union
+        or ((also_lists or also_containers) and typehint_origin in sequence_origin_types)
+        or (also_containers and typehint_origin in tuple_set_origin_types)
+    ):
+        for subtype in typehint.__args__:
+            if subtype is not Ellipsis:
+                yield from yield_class_types(subtype, **kwargs)
     if is_single(typehint, typehint_origin):
         if is_typed_dict(typehint):
             # a subscripted generic TypedDict is yielded as is, since its keys are
@@ -2060,10 +2069,14 @@ def yield_class_types(typehint, is_single, also_lists=False, callable_return=Fal
             yield get_generic_origin(typehint)
 
 
-def get_subclass_types(typehint, also_lists=False, callable_return=False):
+def get_subclass_types(typehint, also_lists=False, also_containers=False, callable_return=False):
     types = tuple(
         yield_class_types(
-            typehint, is_single=is_single_subclass_type, also_lists=also_lists, callable_return=callable_return
+            typehint,
+            is_single=is_single_subclass_type,
+            also_lists=also_lists,
+            also_containers=also_containers,
+            callable_return=callable_return,
         )
     )
     return types or None
@@ -2087,7 +2100,9 @@ def is_single_help_type(typehint, typehint_origin):
 
 def get_help_types(typehint):
     """Types in a type hint for which a --*.help option shows the accepted arguments."""
-    types = tuple(yield_class_types(typehint, is_single=is_single_help_type, also_lists=True, callable_return=True))
+    types = tuple(
+        yield_class_types(typehint, is_single=is_single_help_type, also_containers=True, callable_return=True)
+    )
     return types or None
 
 
@@ -2132,7 +2147,7 @@ def adapt_partial_callable_class(callable_type, subclass_spec):
     return subclass_spec, partial_skip_args
 
 
-def get_all_subclass_paths(cls: type, include_abstract: bool = False) -> list[str]:
+def get_all_subclass_paths(cls: type, include_abstract: bool = False, closed_types: bool = True) -> list[str]:
     subclass_list = []
 
     def is_local(cl):
@@ -2142,10 +2157,6 @@ def get_all_subclass_paths(cls: type, include_abstract: bool = False) -> list[st
         return "._" in class_path
 
     def add_subclasses(cl):
-        if hasattr(cl, "__args__") and get_typehint_origin(cl) in sequence_origin_types.union({Union}):
-            for arg in cl.__args__:
-                add_subclasses(arg)
-            return
         try:
             class_path = get_import_path(cl)
         except (ImportError, AttributeError) as err:  # Attribute is added in case of dot notation imports
@@ -2160,17 +2171,27 @@ def get_all_subclass_paths(cls: type, include_abstract: bool = False) -> list[st
         for subclass in cl.__subclasses__() if hasattr(cl, "__subclasses__") else []:
             add_subclasses(subclass)
 
-    if get_typehint_origin(cls) in callable_origin_types:
-        cls = cls.__args__[-1]  # type: ignore[attr-defined]
-
-    if get_typehint_origin(cls) in {Union, Type, type}:
-        for arg in cls.__args__:  # type: ignore[union-attr]
-            if ActionTypeHint.is_subclass_typehint(arg, also_lists=True) and arg not in {object, type}:
-                add_subclasses(arg)
-    else:
-        add_subclasses(cls)
+    for class_type in get_class_types(cls, closed_types=closed_types):
+        add_subclasses(class_type)
 
     return subclass_list
+
+
+def get_class_types(typehint, closed_types: bool = True) -> tuple:
+    """Classes in a type hint for which a class path is accepted as value.
+
+    Types that have subclasses disabled only accept their own class path, so they
+    are excluded when closed_types is False, e.g. to show the known subclasses.
+    """
+    typehint = get_unaliased_type(get_optional_arg(get_unaliased_type(typehint)))
+    if get_typehint_origin(typehint) in {Type, type}:
+        args = getattr(typehint, "__args__", ())
+        return tuple(a for a in args if ActionTypeHint.is_subclass_typehint(a))
+    if inspect.isclass(typehint) or is_generic_class(typehint):
+        cls = get_generic_origin(typehint)
+        is_single = is_single_subclass_or_closed_type if closed_types else is_single_subclass_type
+        return (cls,) if is_single(cls, get_typehint_origin(cls)) else ()
+    return get_subclass_types(typehint, also_containers=True, callable_return=True) or ()
 
 
 def resolve_class_path_by_name(cls: type | tuple[type], name: str) -> str:

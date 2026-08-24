@@ -15,12 +15,14 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Generic,
     Iterable,
     List,
     Mapping,
     Optional,
     Protocol,
+    Set,
     Tuple,
     Type,
     TypeVar,
@@ -247,6 +249,83 @@ def test_subclass_known_subclasses_multiple_bases(parser, allow_gzip_import_path
     help_str = get_parser_help(parser)
     for class_path in [f"{__name__}.BaseC", f"{__name__}.SubA", f"{__name__}.SubB", "gzip.GzipFile"]:
         assert class_path in help_str
+
+
+# subclasses in containers tests
+
+
+container_types = [
+    List[BaseC],
+    Optional[List[BaseC]],
+    Iterable[BaseC],
+    Set[BaseC],
+    FrozenSet[BaseC],
+    Optional[Set[BaseC]],
+    Tuple[BaseC, int],
+    Tuple[BaseC, ...],
+    Dict[str, BaseC],
+    Optional[Dict[str, BaseC]],
+    Mapping[str, BaseC],
+    Optional[Union[Dict[str, BaseC], str]],
+]
+
+
+@pytest.mark.parametrize("container_type", container_types)
+def test_subclass_in_container_help(parser, container_type):
+    parser.add_argument("--op", type=container_type)
+    help_str = " ".join(get_parser_help(parser).split())
+    assert "Show the help for the given subclass of BaseC" in help_str
+    assert f"known subclasses: {__name__}.BaseC, {__name__}.SubA, {__name__}.SubB" in help_str
+    class_help_str = get_parse_args_stdout(parser, [f"--op.help={__name__}.SubA"])
+    assert "--op.p P" in class_help_str
+
+
+def test_subclass_in_dict_parse_and_instantiate(parser):
+    parser.add_argument("--op", type=Optional[Dict[str, BaseC]])
+    value = {"a": f"{__name__}.SubA", "b": {"class_path": "SubB", "init_args": {"p": 2}}}
+    cfg = parser.parse_args([f"--op={json.dumps(value)}"])
+    assert cfg.op["a"] == Namespace(class_path=f"{__name__}.SubA", init_args=Namespace(p=0))
+    init = parser.instantiate(cfg)
+    assert isinstance(init.op["a"], SubA)
+    assert isinstance(init.op["b"], SubB)
+    assert init.op["b"].p == 2
+
+
+def test_subclass_in_set_parse_and_instantiate(parser):
+    parser.add_argument("--op", type=Set[BaseC])
+    cfg = parser.parse_args([f'--op=["{__name__}.SubA", "{__name__}.SubB"]'])
+    # subclass specs are not hashable, so they are a list until the classes are instantiated
+    assert cfg.op == [
+        Namespace(class_path=f"{__name__}.SubA", init_args=Namespace(p=0)),
+        Namespace(class_path=f"{__name__}.SubB", init_args=Namespace(p=0)),
+    ]
+    assert json_or_yaml_load(parser.dump(cfg))["op"] == [
+        {"class_path": f"{__name__}.SubA", "init_args": {"p": 0}},
+        {"class_path": f"{__name__}.SubB", "init_args": {"p": 0}},
+    ]
+    init = parser.instantiate(cfg)
+    assert {type(x) for x in init.op} == {SubA, SubB}
+
+
+@final
+class ClosedC:
+    def __init__(self, p: int = 0):
+        pass  # pragma: no cover
+
+
+@pytest.mark.parametrize("closed_type", [Optional[ClosedC], List[ClosedC], Dict[str, ClosedC]])
+def test_closed_type_no_known_subclasses(parser, closed_type):
+    parser.add_argument("--op", type=closed_type)
+    help_str = get_parser_help(parser)
+    assert "--op.help" in help_str
+    assert "known subclasses" not in help_str
+
+
+def test_subclass_as_dict_key_no_help(parser):
+    parser.add_argument("--op", type=Dict[BaseC, int])
+    help_str = get_parser_help(parser)
+    assert "--op.help" not in help_str
+    assert "known subclasses" not in help_str
 
 
 # abstract class tests

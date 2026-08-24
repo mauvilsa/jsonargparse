@@ -13,7 +13,7 @@ from enum import Enum
 from importlib.util import find_spec
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Generic, Literal, Optional, TypedDict, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Literal, Optional, TypedDict, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -558,6 +558,14 @@ def test_bash_union_subclasses(parser, subtests):
             ("cls.p1", int, "", [], "Base, SubA, SubB"),
         ],
     )
+
+
+@pytest.mark.parametrize("container_type", [Optional[List[Base]], Dict[str, Base]])
+def test_bash_subclasses_in_container_help_choices(parser, container_type):
+    parser.add_argument("--cls", type=container_type)
+    shtab_script = get_shtab_script(parser, "bash")
+    classes = [f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+    assert get_bash_array(shtab_script, "_shtab_tool___cls_help_choices") == classes
 
 
 class SupBase:
