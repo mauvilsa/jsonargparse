@@ -835,9 +835,8 @@ def is_pathlike(typehint) -> bool:
 
 def is_list_pathlike(typehint) -> bool:
     typehint_origin = get_typehint_origin(typehint)
-    if typehint_origin in sequence_origin_types:
-        subtype = typehint.__args__[0]
-        return is_pathlike(subtype)
+    if typehint_origin in sequence_origin_types and hasattr(typehint, "__args__"):
+        return is_pathlike(typehint.__args__[0])
     return False
 
 

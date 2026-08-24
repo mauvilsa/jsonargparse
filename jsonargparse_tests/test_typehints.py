@@ -27,17 +27,21 @@ from typing import (
     Dict,
     FrozenSet,
     Generic,
+    Hashable,
     Iterable,
     Iterator,
     List,
     Literal,
     Mapping,
+    MutableMapping,
+    MutableSequence,
     NoReturn,
     Optional,
     Protocol,
     Reversible,
     Sequence,
     Set,
+    Sized,
     Tuple,
     Type,
     TypedDict,
@@ -1166,6 +1170,102 @@ def test_typeddict_with_not_required_arg(parser):
 @pytest.mark.skipif(not Required, reason="Required introduced in python 3.11 or backported in typing_extensions")
 def test_required_support():
     assert ActionTypeHint.is_supported_typehint(Required[Any])
+
+
+# unsubscripted typing alias tests
+
+
+@pytest.mark.parametrize(
+    ["alias", "expected"],
+    [
+        (List, [1, 2]),
+        (Sequence, [1, 2]),
+        (MutableSequence, [1, 2]),
+        (Iterable, [1, 2]),
+        (Collection, [1, 2]),
+        (Container, [1, 2]),
+        (Reversible, [1, 2]),
+        (Deque, deque([1, 2])),
+        (Set, {1, 2}),
+        (FrozenSet, frozenset({1, 2})),
+        (AbstractSet, {1, 2}),
+        (Tuple, (1, 2)),
+    ],
+    ids=str,
+)
+def test_unsubscripted_sequence_alias(parser, alias, expected):
+    parser.add_argument("--x", type=alias)
+    cfg = parser.parse_args(["--x=[1, 2]"])
+    assert cfg.x == expected
+    assert parser.dump(cfg, format="json") == '{"x":[1,2]}'
+
+
+@pytest.mark.parametrize("alias", [Dict, Mapping, MutableMapping], ids=str)
+def test_unsubscripted_mapping_alias(parser, alias):
+    parser.add_argument("--x", type=alias)
+    cfg = parser.parse_args(['--x={"a": 1}'])
+    assert cfg.x == {"a": 1}
+    assert parser.dump(cfg, format="json") == '{"x":{"a":1}}'
+
+
+@pytest.mark.parametrize("alias", [List, Iterable, Deque], ids=str)
+def test_unsubscripted_alias_in_union_with_class(parser, alias):
+    parser.add_argument("--x", type=Optional[Union[BaseC, alias]])
+    cfg = parser.parse_args(["--x=[1, 2]"])
+    assert list(cfg.x) == [1, 2]
+    cfg = parser.parse_args([f"--x={__name__}.BaseC"])
+    assert cfg.x.class_path == f"{__name__}.BaseC"
+
+
+class WithUnsubscriptedIterable:
+    def __init__(self, sampler: Union[BaseC, Iterable, None] = None):
+        self.sampler = sampler
+
+
+def test_unsubscripted_alias_signature_parameter(parser):
+    parser.add_class_arguments(WithUnsubscriptedIterable, "c")
+    cfg = parser.parse_args(["--c.sampler=[1, 2]"])
+    assert cfg.c.sampler == [1, 2]
+    init = parser.instantiate(cfg)
+    assert isinstance(init.c, WithUnsubscriptedIterable)
+
+
+# the typing aliases must behave the same as their collections.abc counterparts
+
+
+@pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
+def test_hashable(parser, hashable):
+    parser.add_argument("--x", type=hashable)
+    assert parser.parse_args(["--x=abc"]).x == "abc"
+
+
+@pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
+def test_sized(parser, sized):
+    parser.add_argument("--x", type=sized)
+    assert parser.parse_args(["--x=[1, 2]"]).x == [1, 2]
+
+
+@pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
+def test_optional_hashable(parser, hashable):
+    parser.add_argument("--x", type=Optional[hashable])
+    assert parser.parse_args(["--x=abc"]).x == "abc"
+    assert parser.parse_args(["--x=null"]).x is None
+
+
+@pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
+def test_optional_sized(parser, sized):
+    parser.add_argument("--x", type=Optional[sized])
+    assert parser.parse_args(["--x=[1, 2]"]).x == [1, 2]
+    assert parser.parse_args(["--x=null"]).x is None
+
+
+@pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
+def test_list_hashable(parser, hashable):
+    parser.add_argument("--x", type=List[hashable])
+    assert parser.parse_args(['--x=["a", "b"]']).x == ["a", "b"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--x=abc"])
+    ctx.match("Expected a <class 'list'>")
 
 
 # subscripted generic TypedDict tests

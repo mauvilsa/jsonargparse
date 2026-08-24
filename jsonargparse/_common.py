@@ -621,6 +621,14 @@ def get_generic_origins(class_or_tuple):
     return get_generic_origin(class_or_tuple)
 
 
+def get_unsubscripted_alias_origin(typehint):
+    """Origin class of an unsubscripted typing alias, e.g. typing.List -> list, else None."""
+    if isinstance(typehint, type) or hasattr(typehint, "__args__"):
+        return None
+    origin = getattr(typehint, "__origin__", None)
+    return origin if isinstance(origin, type) else None
+
+
 def get_unaliased_type(cls):
     new_cls = cls
     while True:
@@ -629,6 +637,9 @@ def get_unaliased_type(cls):
             new_cls = get_annotated_base_type(new_cls)
         if is_alias_type(new_cls):
             new_cls = get_alias_target(new_cls)
+        origin = get_unsubscripted_alias_origin(new_cls)
+        if origin is not None:
+            new_cls = origin
         if new_cls == cur_cls:
             break
     return cur_cls

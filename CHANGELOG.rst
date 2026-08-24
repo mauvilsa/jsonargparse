@@ -64,6 +64,16 @@ Fixed
   type, even when a stub file gives the return type. Now with the stubs resolver
   the return type from the ``.pyi`` is used (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Unsubscripted ``typing`` sequence aliases, i.e. ``List``, ``Sequence``,
+  ``MutableSequence``, ``Iterable``, ``Collection``, ``Container``,
+  ``Reversible`` and ``Deque``, raised ``AttributeError: __args__``, which made
+  classes that have one in their signature, e.g.
+  ``torch.utils.data.DataLoader``, impossible to add (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- ``typing.Hashable`` and ``typing.Sized`` were not supported, while the
+  ``collections.abc`` spelling of the same types was. A bare one didn't validate
+  and a composed one, e.g. ``Optional[Hashable]``, raised ``Unsupported type
+  hint`` (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Deprecated
 ^^^^^^^^^^
