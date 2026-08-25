@@ -38,6 +38,10 @@ Added
   ``$schema`` key, which is ignored when parsing. This feature is
   experimental, so the details of the generated schema might change in non-major
   releases (`#961 <https://github.com/mauvilsa/jsonargparse/pull/961>`__).
+- A protocol whose single method is ``__call__`` is now also implemented by a
+  function with a compatible signature, so the import path of a function is
+  accepted as value, see :ref:`type-hints` (`#963
+  <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
 
 Fixed
 ^^^^^
@@ -62,18 +66,18 @@ Fixed
 - Functions without a return annotation at runtime, e.g. C-implemented ones like
   ``time.localtime``, were rejected for ``Callable`` types with a class return
   type, even when a stub file gives the return type. Now with the stubs resolver
-  the return type from the ``.pyi`` is used (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  the return type from the ``.pyi`` is used (`#963
+  <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
 - Unsubscripted ``typing`` sequence aliases, i.e. ``List``, ``Sequence``,
   ``MutableSequence``, ``Iterable``, ``Collection``, ``Container``,
   ``Reversible`` and ``Deque``, raised ``AttributeError: __args__``, which made
   classes that have one in their signature, e.g.
-  ``torch.utils.data.DataLoader``, impossible to add (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  ``torch.utils.data.DataLoader``, impossible to add (`#963
+  <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
 - ``typing.Hashable`` and ``typing.Sized`` were not supported, while the
   ``collections.abc`` spelling of the same types was. A bare one didn't validate
   and a composed one, e.g. ``Optional[Hashable]``, raised ``Unsupported type
-  hint`` (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  hint`` (`#963 <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
 
 Deprecated
 ^^^^^^^^^^

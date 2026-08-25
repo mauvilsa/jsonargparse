@@ -561,7 +561,10 @@ Some notes about this support are:
   ``Proto[int]``. Subscripting substitutes the type arguments in the protocol's
   methods, so ``Proto[int]`` and ``Proto[str]`` accept different
   implementations. A ``TypeVar`` that remains, in the protocol or in the
-  implementation, matches any type, as static type checkers do.
+  implementation, matches any type, as static type checkers do. A protocol whose
+  single method is ``__call__`` is also implemented by a function with a
+  compatible signature, in which case the value is the function itself, instead
+  of a class to instantiate.
 
 - ``dataclasses``, final classes, attrs' ``define``, pydantic's ``dataclass``
   and pydantic's ``BaseModel`` are supported even when nested. By default they

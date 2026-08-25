@@ -399,7 +399,11 @@ class ActionTypeHint(Action):
             from ._parameter_resolvers import UnknownDefault
 
             default_type = type(default)
-            if not is_subclass(default_type, UnknownDefault) and self.is_subclass_typehint(default_type):
+            if (
+                not is_subclass(default_type, UnknownDefault)
+                and self.is_subclass_typehint(default_type)
+                and not any(implements_protocol(default, t) for t in get_subclass_types(self._typehint) or ())
+            ):
                 raise ValueError("Subclass types require as default either a dict with class_path or a lazy instance.")
         return default
 
@@ -1721,27 +1725,31 @@ protocol_irrelevant_dunder_methods = {
 }
 
 
-def get_protocol_method_signature(class_type, name, logger):
-    """Returns the parameters (excluding self) and return type of a method, with annotations resolved.
+def get_protocol_signature(function, logger, skip_self: bool = False):
+    """Returns the parameters and return type of a function, with annotations resolved.
 
     In contrast to get_signature_parameters, the signature is taken as declared, i.e. ``*args`` and
     ``**kwargs`` are not resolved into the parameters that they might accept, since for protocols
-    what matters is how the method can be called.
+    what matters is how the function can be called.
     """
     from jsonargparse._parameter_resolvers import ParamData, parameter_attributes
     from jsonargparse._postponed_annotations import evaluate_postponed_annotations, get_return_type
 
+    signature = inspect.signature(function)
+    params = [ParamData(**{a: getattr(p, a) for a in parameter_attributes}) for p in signature.parameters.values()]
+    evaluate_postponed_annotations(params, function, None, logger)
+    return (params[1:] if skip_self else params), get_return_type(function, logger)
+
+
+def get_protocol_method_signature(class_type, name, logger):
+    """Returns the parameters (excluding self) and return type of a method, see get_protocol_signature."""
     method = inspect.getattr_static(class_type, name)
     skip_self = not isinstance(method, staticmethod)
     if isinstance(method, (staticmethod, classmethod)):
         method = method.__func__
     if not inspect.isfunction(method):
         raise ValueError(f"Expected {class_type.__name__}.{name} to be a function, but got {method}.")
-
-    signature = inspect.signature(method)
-    params = [ParamData(**{a: getattr(p, a) for a in parameter_attributes}) for p in signature.parameters.values()]
-    evaluate_postponed_annotations(params, method, None, logger)
-    return (params[1:] if skip_self else params), get_return_type(method, logger)
+    return get_protocol_signature(method, logger, skip_self=skip_self)
 
 
 def type_var_wildcard_matches(proto_annotation, value_annotation) -> bool:
@@ -1875,37 +1883,71 @@ def protocol_params_match(proto_params, value_params) -> bool:
     return all(p.default is not empty for n, p in value_kw.items() if n not in proto_kw)
 
 
+def get_protocol_members(protocol) -> list[str]:
+    """Returns the names of the methods that an implementation of a protocol must have."""
+    members = []
+    for name, _ in inspect.getmembers(protocol, predicate=inspect.isfunction):
+        is_dunder = name.startswith("__") and name.endswith("__")
+        if (not is_dunder and name.startswith("_")) or (is_dunder and name in protocol_irrelevant_dunder_methods):
+            continue
+        members.append(name)
+    return members
+
+
+def substitute_protocol_type_vars(proto_params, proto_return, type_var_map):
+    """Substitutes in place the TypeVars in the parameters and returns the substituted return type.
+
+    A subscripted generic protocol is implemented by what its type arguments say,
+    e.g. Proto[int] by a run(self, x: int), the same as static type checkers do.
+    """
+    for param in proto_params:
+        param.annotation = substitute_type_vars(param.annotation, type_var_map)
+    return substitute_type_vars(proto_return, type_var_map)
+
+
 def implements_protocol(value, protocol) -> bool:
-    if not inspect.isclass(value) or value is object or not is_protocol(protocol):
+    if not is_protocol(protocol) or value is object:
+        return False
+    if inspect.isfunction(value):
+        return function_implements_protocol(value, protocol)
+    if not inspect.isclass(value):
         return False
     origin = get_protocol_origin(protocol)
     type_var_map = get_type_var_map(protocol, origin)
     protocol = origin
 
     logger = parse_logger(True, "implements_protocol")
-    members = 0
-    for name, _ in inspect.getmembers(protocol, predicate=inspect.isfunction):
-        is_dunder = name.startswith("__") and name.endswith("__")
-        if (not is_dunder and name.startswith("_")) or (is_dunder and name in protocol_irrelevant_dunder_methods):
-            continue
+    members = get_protocol_members(protocol)
+    for name in members:
         if not hasattr(value, name):
             return False
-        members += 1
         try:
             value_params, value_return = get_protocol_method_signature(value, name, logger)
         except (ValueError, TypeError):
             return False
         proto_params, proto_return = get_protocol_method_signature(protocol, name, logger)
-        # a subscripted generic protocol is implemented by what its type arguments say,
-        # e.g. Proto[int] by a run(self, x: int), the same as static type checkers do
-        for param in proto_params:
-            param.annotation = substitute_type_vars(param.annotation, type_var_map)
-        proto_return = substitute_type_vars(proto_return, type_var_map)
+        proto_return = substitute_protocol_type_vars(proto_params, proto_return, type_var_map)
         if not protocol_params_match(proto_params, value_params):
             return False
         if not protocol_type_matches(proto_return, value_return):
             return False
     return True if members else False
+
+
+def function_implements_protocol(function, protocol) -> bool:
+    """Whether a function can be called in all the ways that the __call__ of a protocol can.
+
+    Only a protocol whose single method is __call__ can be implemented by a function,
+    since a function doesn't have any other method.
+    """
+    origin = get_protocol_origin(protocol)
+    if get_protocol_members(origin) != ["__call__"]:
+        return False
+    logger = parse_logger(True, "implements_protocol")
+    proto_params, proto_return = get_protocol_method_signature(origin, "__call__", logger)
+    proto_return = substitute_protocol_type_vars(proto_params, proto_return, get_type_var_map(protocol, origin))
+    value_params, value_return = get_protocol_signature(function, logger)
+    return protocol_params_match(proto_params, value_params) and protocol_type_matches(proto_return, value_return)
 
 
 def is_protocol(class_type) -> bool:
@@ -1931,7 +1973,8 @@ def is_subclass_or_implements_protocol(value, class_type) -> bool:
 
 def is_instance_or_supports_protocol(value, class_type):
     if is_protocol(class_type):
-        return is_subclass_or_implements_protocol(value.__class__, class_type)
+        # a function implements a callable protocol by itself, any other value by its class
+        return implements_protocol(value if inspect.isfunction(value) else value.__class__, class_type)
     return is_instance(value, class_type)
 
 

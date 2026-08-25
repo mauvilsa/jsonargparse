@@ -2330,6 +2330,100 @@ def test_parse_implements_callable_protocol(parser):
         parser.parse_args(["--cls=[1]"])
 
 
+# function implements callable protocol tests
+
+
+def implements_callable_interface(items: List[float]) -> List[float]:
+    return items
+
+
+def not_implements_callable_interface1(items: str) -> List[float]:
+    return []  # pragma: no cover
+
+
+def not_implements_callable_interface2(items: List[float], extra: int) -> List[float]:
+    return items  # pragma: no cover
+
+
+def not_implements_callable_interface3(items: List[float]) -> None:
+    return  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    "expected, protocol, value",
+    [
+        (True, CallableInterface, implements_callable_interface),
+        (False, CallableInterface, not_implements_callable_interface1),
+        (False, CallableInterface, not_implements_callable_interface2),
+        (False, CallableInterface, not_implements_callable_interface3),
+        (False, CallableInterface, len),  # not a function, so no inspectable signature
+        (False, Interface, implements_callable_interface),  # a function can't have a predict method
+    ],
+)
+def test_function_implements_protocol(expected, protocol, value):
+    assert implements_protocol(value, protocol) is expected
+    assert is_instance_or_supports_protocol(value, protocol) is expected
+
+
+class GenericCallableInterface(Protocol[ProtoVar]):
+    def __call__(self, items: List[ProtoVar]) -> List[ProtoVar]: ...
+
+
+def implements_generic_callable_interface(items: List[int]) -> List[int]:
+    return items  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    "expected, protocol",
+    [
+        (True, GenericCallableInterface),
+        (True, GenericCallableInterface[int]),
+        # the type arguments are substituted, so an int function is not a GenericCallableInterface[str]
+        (False, GenericCallableInterface[str]),
+    ],
+)
+def test_function_implements_generic_protocol(expected, protocol):
+    assert implements_protocol(implements_generic_callable_interface, protocol) is expected
+
+
+def test_parse_function_implements_callable_protocol(parser):
+    parser.add_argument("--cls", type=CallableInterface)
+    cfg = parser.parse_args([f"--cls={__name__}.implements_callable_interface"])
+    assert cfg.cls is implements_callable_interface
+    init = parser.instantiate(cfg)
+    assert init.cls([1.0, 2.0]) == [1.0, 2.0]
+    dump = parser.dump(cfg)
+    assert json_or_yaml_load(dump) == {"cls": f"{__name__}.implements_callable_interface"}
+
+    with pytest.raises(ArgumentError, match="does not implement protocol"):
+        parser.parse_args([f"--cls={__name__}.not_implements_callable_interface1"])
+    with pytest.raises(ArgumentError, match="is not a class, so it has no help"):
+        parser.parse_args([f"--cls.help={__name__}.implements_callable_interface"])
+
+
+def test_function_implements_callable_protocol_default(parser):
+    parser.add_argument("--cls", type=CallableInterface, default=implements_callable_interface)
+    cfg = parser.get_defaults()
+    assert cfg.cls is implements_callable_interface
+    cfg = parser.parse_args([])
+    assert cfg.cls is implements_callable_interface
+    dump = parser.dump(cfg)
+    assert json_or_yaml_load(dump) == {"cls": f"{__name__}.implements_callable_interface"}
+
+
+class TakesCallableInterface:
+    def __init__(self, fn: CallableInterface = implements_callable_interface):
+        self.fn = fn
+
+
+def test_function_implements_callable_protocol_class_default(parser):
+    parser.add_class_arguments(TakesCallableInterface, "takes")
+    cfg = parser.parse_args([])
+    assert cfg.takes.fn is implements_callable_interface
+    init = parser.instantiate(cfg)
+    assert init.takes.fn is implements_callable_interface
+
+
 # parameter skip tests
 
 

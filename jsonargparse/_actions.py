@@ -1,5 +1,6 @@
 """Collection of useful actions to define arguments."""
 
+import inspect
 import os
 import re
 import sys
@@ -409,6 +410,8 @@ class _ActionHelpClassPath(NonParsingAction):
                 raise TypeError(f"{option_string}: {ex}") from ex
         if not any(is_subclass(val_class, b) or implements_protocol(val_class, b) for b in class_types):
             raise TypeError(f'{option_string}: "{value}" is not a {self._kind} {self._basename}')
+        if not inspect.isclass(val_class):  # a function that implements a callable protocol
+            raise TypeError(f'{option_string}: "{value}" is not a class, so it has no help')
         return val_class
 
     def print_help(self, call_args):

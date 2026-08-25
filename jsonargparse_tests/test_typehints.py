@@ -2712,6 +2712,16 @@ def optimizer_factory(params: List[float]) -> Optimizer:
     return SGD(params)  # pragma: no cover
 
 
+def test_callable_protocol_instance_factory_function_default(parser):
+    parser.add_argument("--optimizer", type=OptimizerFactory, default=optimizer_factory)
+    cfg = parser.parse_args([])
+    assert cfg.optimizer is optimizer_factory
+    dump = parser.dump(cfg)
+    assert json_or_yaml_load(dump) == {"optimizer": f"{__name__}.optimizer_factory"}
+    with pytest.raises(ValueError, match="Subclass types require as default"):
+        parser.add_argument("--optimizer2", type=OptimizerFactory, default=calendar.month)
+
+
 def test_callable_return_type_bounds_the_accepted_function(parser):
     parser.add_argument("--optimizer", type=Callable[[List[float]], Optimizer])
     cfg = parser.parse_args([f"--optimizer={__name__}.optimizer_factory"])
