@@ -42,13 +42,6 @@ Added
   function with a compatible signature, so the import path of a function is
   accepted as value, see :ref:`type-hints` (`#963
   <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
-- New :ref:`migrate-v5` guide that describes what needs to be changed to migrate
-  from v4 to v5 (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
-- New ``yaml`` extras require, i.e. ``pip install jsonargparse[yaml]``, so that
-  ``pyyaml`` can already be requested explicitly before it stops being a
-  required dependency in v5.0.0. It is now part of the ``all`` extras require
-  (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Fixed
 ^^^^^
@@ -90,7 +83,9 @@ Changed
 ^^^^^^^
 - The documentation has been reworded throughout to be shorter and easier to
   read, and corrected in the places where it did not describe what the code does
-  (`#??? <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  (`#964 <https://github.com/mauvilsa/jsonargparse/pull/964>`__).
+- New :ref:`migrate-v5` guide that describes what needs to be changed to migrate
+  from v4 to v5 (`#964 <https://github.com/mauvilsa/jsonargparse/pull/964>`__).
 
 Deprecated
 ^^^^^^^^^^
