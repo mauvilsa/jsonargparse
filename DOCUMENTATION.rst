@@ -3,12 +3,11 @@
 Basic usage
 ===========
 
-There are multiple ways of using jsonargparse. One is to construct low level
-parsers (see :ref:`parsers`) being almost a drop in replacement of argparse.
-However, argparse is too verbose and leads to unnecessary duplication. The
-simplest and recommended way of using jsonargparse is by using the
-:func:`.auto_cli` function, which has the benefit of minimizing boilerplate
-code. A simple example is:
+There are two ways of using jsonargparse. One is to build a parser step by step
+(see :ref:`parsers`), which is almost a drop-in replacement of argparse. But
+argparse is verbose and duplicates information that the code already has. The
+simpler and recommended way is the :func:`.auto_cli` function, which builds the
+parser from the signatures of the given functions and classes. For example:
 
 .. testcode::
 
@@ -28,9 +27,8 @@ code. A simple example is:
     if __name__ == "__main__":
         auto_cli(command)
 
-Note that the ``name`` and ``prize`` parameters have type hints and are
-described in the docstring. These are shown in the help of the command line
-tool. In a shell you could see the help and run a command as follows:
+The ``name`` and ``prize`` parameters have type hints and are described in the
+docstring. Both are shown in the help. In a shell:
 
 .. code-block:: bash
 
@@ -45,14 +43,12 @@ tool. In a shell you could see the help and run a command as follows:
 
 .. note::
 
-    Parsing of docstrings is an optional feature. For this example to work as
-    shown, jsonargparse needs to be installed with the ``signatures`` extra
-    as explained in section :ref:`installation`.
+    Parsing of docstrings is optional. For the help to show the descriptions,
+    install jsonargparse with the ``signatures`` extra, see :ref:`installation`.
 
-When :func:`.auto_cli` receives a single class, the first arguments are for
-parameters to instantiate the class, then a method name is expected (i.e.
-methods become :ref:`sub-commands`) and the remaining arguments are for
-parameters of this method. An example would be:
+Given a single class, the first arguments are the class init parameters, then
+comes a method name (methods become :ref:`sub-commands`), and then the
+parameters of that method:
 
 .. testcode::
 
@@ -79,7 +75,7 @@ parameters of this method. An example would be:
     if __name__ == "__main__":
         print(auto_cli(Main))
 
-Then in a shell you could run:
+In a shell:
 
 .. code-block:: bash
 
@@ -91,8 +87,8 @@ Then in a shell you could run:
     >>> auto_cli(Main, args=["--max_prize=1000", "person", "Lucky"])  # doctest: +ELLIPSIS
     'Lucky won ...€!'
 
-If the given class does not have any methods, there will be no subcommands and
-:func:`.auto_cli` will return an instance of the class. For example:
+If the class has no public methods, there are no subcommands and
+:func:`.auto_cli` returns an instance of the class:
 
 .. testcode::
 
@@ -109,7 +105,7 @@ If the given class does not have any methods, there will be no subcommands and
     if __name__ == "__main__":
         print(auto_cli(Settings, as_positional=False))
 
-Then in a shell you could run:
+In a shell:
 
 .. code-block:: bash
 
@@ -121,24 +117,17 @@ Then in a shell you could run:
     >>> auto_cli(Settings, as_positional=False, args=["--name=Lucky"])  # doctest: +ELLIPSIS
     Settings(name='Lucky', prize=100)
 
-Note the use of ``as_positional=False`` to make required arguments
-non-positional.
+Note the ``as_positional=False``, which makes required arguments non-positional.
+To get an instance even when the class does have public methods, use
+``return_instance=True``. Then only the init arguments are parsed and no method
+subcommands are added.
 
-To force class instantiation even when the class has public methods, use
-``return_instance=True``. This makes :func:`.auto_cli` parse only the class init
-arguments and return the class instance, without adding method subcommands.
+If several functions are given, each one becomes a subcommand, i.e. ``example.py
+function [arguments]``. If several classes are given, or a mix of classes and
+functions, running a method needs two levels of subcommands, i.e. ``example.py
+class [init_arguments] method [arguments]``.
 
-If more than one function is given to :func:`.auto_cli`, then any of them can be
-run via :ref:`sub-commands` similar to the single class example above, i.e.
-``example.py function [arguments]`` where ``function`` is the name of the
-function to execute. If multiple classes or a mixture of functions and classes
-is given to :func:`.auto_cli`, to execute a method of a class, two levels of
-:ref:`sub-commands` are required. The first subcommand would be the name of the
-class and the second the name of the method, i.e. ``example.py class
-[init_arguments] method [arguments]``.
-
-Arbitrary levels of subcommands with custom names can be defined by providing a
-``dict``. For example:
+A ``dict`` defines subcommands with custom names and any number of levels:
 
 .. testcode::
 
@@ -165,7 +154,7 @@ Arbitrary levels of subcommands with custom names can be defined by providing a
     if __name__ == "__main__":
         print(auto_cli(components))
 
-Then in a shell:
+In a shell:
 
 .. code-block:: bash
 
@@ -179,23 +168,19 @@ Then in a shell:
 
 .. note::
 
-    The examples above are extremely simple, only defining parameters with
-    ``str`` and ``int`` type hints. The true power of jsonargparse is its
-    support for a wide range of types, see :ref:`type-hints`. It is even
-    possible to use general classes as type hints, allowing to easily implement
-    configurable `dependency injection (object composition)
-    <https://en.wikipedia.org/wiki/Dependency_injection>`__, see
-    :ref:`sub-classes`.
+    These examples only use ``str`` and ``int`` type hints. jsonargparse
+    supports a much wider range of types, see :ref:`type-hints`. Classes can
+    also be used as type hints, which makes configurable `dependency injection
+    (object composition) <https://en.wikipedia.org/wiki/Dependency_injection>`__
+    easy, see :ref:`sub-classes`.
 
 Writing configuration files
 ---------------------------
 
-All tools implemented with the :func:`.auto_cli` function have the ``--config``
-option to provide settings in a config file (more details in
-:ref:`configuration-files`). This is particularly useful when there are many
-configurable parameters. To ease the writing of config files, there is also the
-option ``--print_config`` which prints to standard output all settings that the
-tool supports with their default values. Users can follow these steps:
+Tools created with :func:`.auto_cli` have a ``--config`` option to give settings
+in a config file (see :ref:`configuration-files`). This helps when there are
+many parameters. The ``--print_config`` option prints all supported settings
+with their default values, which is a good starting point:
 
 .. code-block:: bash
 
@@ -211,9 +196,9 @@ tool supports with their default values. Users can follow these steps:
 Parsers
 =======
 
-An argument parser is created just like it is done with Python's `argparse
-<https://docs.python.org/3/library/argparse.html>`__. You import the module,
-create a parser object and then add arguments to it. A simple example would be:
+A parser is created just like with Python's `argparse
+<https://docs.python.org/3/library/argparse.html>`__: import the module, create
+a parser and add arguments to it.
 
 .. testcode::
 
@@ -224,12 +209,9 @@ create a parser object and then add arguments to it. A simple example would be:
     parser.add_argument("--opt2", type=float, default=1.0, help="Help for option 2.")
 
 
-After creating the parser, you can use it to parse command line arguments with
-the :meth:`parse_args <.ArgumentParser.parse_args>` function, after which you
-get an object with the parsed values or defaults available as attributes. For
-illustrative purposes giving to :meth:`parse_args <.ArgumentParser.parse_args>`
-a list of arguments (instead of automatically getting them from the command line
-arguments), with the parser shown above you would observe:
+:meth:`parse_args <.ArgumentParser.parse_args>` returns an object with the
+parsed values, or the defaults, as attributes. In the examples a list of
+arguments is given to it, instead of taking them from the command line:
 
 .. doctest::
 
@@ -239,17 +221,16 @@ arguments), with the parser shown above you would observe:
     >>> cfg.opt2, type(cfg.opt2)
     (2.3, <class 'float'>)
 
-If the parsing fails the standard behavior is that the usage is printed and the
-program is terminated. Alternatively you can initialize the parser with
-``exit_on_error=False`` in which case an :class:`.ArgumentError` is raised.
+If parsing fails, by default the usage is printed and the program exits. With
+``exit_on_error=False`` an :class:`.ArgumentError` is raised instead.
 
 
 Override order
 --------------
 
-Final parsed values depend on different sources, namely: source code, command
-line arguments, :ref:`configuration-files` and :ref:`environment-variables`.
-Values are overridden based on the following precedence:
+Parsed values can come from several sources: the source code, command line
+arguments, :ref:`configuration-files` and :ref:`environment-variables`. Later
+sources in the following list override earlier ones:
 
 1. Defaults defined in the source code.
 2. Existing default config files in the order defined in
@@ -258,20 +239,19 @@ Values are overridden based on the following precedence:
 4. Individual key environment variables, e.g. ``APP_OPT1``.
 5. Command line arguments in order left to right (might include config files).
 
-Depending on the parse method used (see :class:`.ArgumentParser`) and how the
-parser was built, some of the options above might not apply. Parsing of
-environment variables must be explicitly enabled, except if using
-:meth:`parse_env <.ArgumentParser.parse_env>`. If the parser does not have an
-``action="config"`` argument, then there is no parsing of a full config
-environment variable or a way to provide a config file from command line.
+Some of these sources might not apply, depending on the parse method used (see
+:class:`.ArgumentParser`) and how the parser was built. Environment variables
+must be enabled explicitly, except when using :meth:`parse_env
+<.ArgumentParser.parse_env>`. Without an ``action="config"`` argument there is
+no full config environment variable and no way to give a config file from the
+command line.
 
 
 Capturing parsers
 -----------------
 
-It can be common practice to have a function that implements an entire CLI or a
-function that constructs a parser conditionally based on some parameters and
-then parses. For example, one might have:
+A common pattern is a single function that builds a parser, possibly depending
+on some parameters, and then parses:
 
 .. testcode::
 
@@ -288,12 +268,10 @@ then parses. For example, one might have:
     if __name__ == "__main__":
         main_cli()
 
-For some use cases it is necessary to get an instance of the parser object,
-without doing any parsing. For instance `sphinx-argparse
-<https://sphinx-argparse.readthedocs.io/en/stable/>`__ can be used to include
-the help of CLIs in automatically generated documentation of a package. To use
-sphinx-argparse it is necessary to have a function that returns the parser.
-This can be easily implemented with :func:`.capture_parser` as follows:
+Sometimes the parser object is needed without parsing. For instance
+`sphinx-argparse <https://sphinx-argparse.readthedocs.io/en/stable/>`__
+includes the help of CLIs in generated documentation, and requires a function
+that returns the parser. :func:`.capture_parser` provides it:
 
 .. testcode::
 
@@ -305,32 +283,27 @@ This can be easily implemented with :func:`.capture_parser` as follows:
 
 .. note::
 
-    The official way to obtain the parser for command line tools based on
-    :func:`.auto_cli` is by using :func:`.auto_parser`, which is just a
-    convenience function that calls :func:`.capture_parser`.
+    For tools based on :func:`.auto_cli`, the way to get the parser is
+    :func:`.auto_parser`, a shorthand that calls :func:`.capture_parser`.
 
 
 Optionals as positionals
 ------------------------
 
-It can sometimes be useful to allow optional arguments to be passed both by
-name, such as ``--key=val``, and as positional arguments, such as ``val``. This
-behavior can be enabled by using
-``set_parsing_settings(parse_optionals_as_positionals=True)``. Key points to
-note about this feature are:
+Optional arguments can be accepted both by name, e.g. ``--key=val``, and as
+positional, e.g. ``val``. Enable this with
+``set_parsing_settings(parse_optionals_as_positionals=True)``. Key points:
 
-- Only optional arguments that accept exactly one value can be passed as
-  positional, i.e., when ``nargs`` is not specified or is set to ``nargs=1``.
-- Optional arguments with subclass types cannot be passed as positional
-  arguments.
-- Optionals are treated as positionals only after the standard positionals and
-  in the order they were added to the parser. The usage section in the help
-  displays the optionals that can be passed as positionals and their order.
-- Optional arguments in parsers with subcommands cannot be passed as
-  positionals. Only the child subparsers, after specifying the subcommand
-  name(s), support this feature.
+- Only optionals that take exactly one value qualify, i.e. no ``nargs`` or
+  ``nargs=1``.
+- Optionals with subclass types are excluded.
+- Extra positional values are assigned after the real positionals, in the order
+  in which the optionals were added to the parser. The usage in the help shows
+  which optionals accept this and in which order.
+- In a parser with subcommands, only the subparsers support this, after the
+  subcommand name(s) are given.
 
-For instance, consider a parser defined as follows:
+For instance, for a parser defined as:
 
 .. testcode::
 
@@ -343,27 +316,22 @@ For instance, consider a parser defined as follows:
     parser.add_argument("--o2")
     parser.add_argument("--o3")
 
-The help will display ``p1 [o2 [o3]]`` along with a note indicating that this
-feature is enabled. Name-based parsing, such as ``--o2=val2 --o3=val3 val1``,
-will work as expected. Additionally, the following cases are also valid:
-``--o3=val3 val1 val2`` or ``val1 val2 val3``.
+the help shows ``p1 [o2 [o3]]`` and a note saying that the feature is enabled.
+Giving values by name still works, e.g. ``--o2=val2 --o3=val3 val1``. Also valid
+are ``--o3=val3 val1 val2`` and ``val1 val2 val3``.
 
 .. note::
 
-    Positional arguments take precedence over optional arguments. This means
-    that if a value is provided both as a positional and as an optional
-    argument, the value from the positional argument will be used, regardless of
-    the order. For example, with the parser above, the command ``val1 val2a
-    --o2=val2b`` would result in ``o2=val2a``.
+    Positionals take precedence. If a value is given both ways, the positional
+    one is used, no matter the order. With the parser above, ``val1 val2a
+    --o2=val2b`` gives ``o2=val2a``.
 
 
 Always fail arguments
 ---------------------
 
-In scenarios where an argument should be included in the parser but should
-always fail parsing, there is the :class:`.ActionFail` action. For example a use
-case can be an optional feature that is only accessible if a specific package is
-installed:
+The :class:`.ActionFail` action adds an argument that always fails when given. A
+use case is a feature that is only available if some package is installed:
 
 .. testsetup:: always-fail
 
@@ -383,9 +351,9 @@ installed:
             help="Option unavailable due to missing 'package'",
         )
 
-With this setup, if an argument is provided as ``--module=...`` or in a nested
-form like ``--module.child=...``, the parsing will fail and display the
-configured error message.
+Then giving ``--module=...``, or a nested form like ``--module.child=...``,
+fails with the configured message. The message accepts the ``%(option)s`` and
+``%(value)s`` placeholders.
 
 
 .. _unset-values:
@@ -393,24 +361,19 @@ configured error message.
 Unset values
 ------------
 
-By default, jsonargparse follows argparse behavior: an argument that is not
-provided on the command line is given the value ``None`` in the parsed
-namespace. This makes it impossible to distinguish between an argument that was
-explicitly set to ``None`` (e.g. ``--opt=null``) and one that was simply
-omitted.
+By default jsonargparse follows argparse: an argument that is not given gets the
+value ``None``. This makes it impossible to tell apart an argument that was
+explicitly set to ``None``, e.g. ``--opt=null``, from one that was simply not
+given.
 
-The :obj:`.Unset` sentinel (enabled via
-``set_parsing_settings(unset_sentinel=True)``) addresses this by using a
-dedicated sentinel object as the default for arguments that have no explicitly
-provided ``default`` value. The three possible states for an argument then
-become:
+``set_parsing_settings(unset_sentinel=True)`` solves this by using the
+:obj:`.Unset` sentinel as the default of the arguments that were not given a
+``default``. An argument then has three possible states:
 
-- :obj:`.Unset` – the argument was not provided and no ``default`` was given in
-  ``add_argument``.
-- ``None`` – the argument was either explicitly set to ``null``, or its
-  ``add_argument`` call included ``default=None``.
-- Any other value – the argument was provided with that value (or defaults to
-  it).
+- :obj:`.Unset` – not given, and ``add_argument`` received no ``default``.
+- ``None`` – either explicitly set to ``null``, or ``add_argument`` received
+  ``default=None``.
+- Any other value – the given value, or the default.
 
 Example:
 
@@ -434,22 +397,21 @@ Example:
     cfg = parser.parse_args(["--num=5"])
     assert cfg.num == 5       # provided value
 
-.. testcleanup:: docstrings
+.. testcleanup:: unset-values
 
     set_parsing_settings(unset_sentinel=False)
 
 The ``skip_unset`` parameter of :meth:`dump <.ArgumentParser.dump>`, :meth:`save
-<.ArgumentParser.save>`, and :meth:`validate <.ArgumentParser.validate>`
-controls whether :obj:`.Unset` entries are excluded. The
-``--print_config=skip_unset`` flag does the same for command-line use.
+<.ArgumentParser.save>` and :meth:`validate <.ArgumentParser.validate>` decides
+whether :obj:`.Unset` entries are excluded, and defaults to ``True``. From the
+command line the same is done with ``--print_config=skip_unset``.
 
 **Relation to** ``argument_default=SUPPRESS``
 
-Argparse's ``argument_default=SUPPRESS`` (and per-argument ``default=SUPPRESS``)
-is a complementary mechanism: it causes an unprovided argument to be
-**completely absent** from the parsed namespace, i.e. it has no key at all.
-These two features play well together and represent different levels of
-"absence".
+Argparse's ``argument_default=SUPPRESS``, and the per-argument
+``default=SUPPRESS``, are complementary: an argument that is not given is
+**completely absent** from the namespace, i.e. it has no key at all. The two
+features work well together and express different levels of absence.
 
 
 .. _type-hints:
@@ -457,10 +419,9 @@ These two features play well together and represent different levels of
 Type hints
 ==========
 
-An important feature of jsonargparse is its wide support for argument types and
-respective validation. This extended support makes use of Python's type hint
-syntax. For example, an argument that can be ``None`` or a float in the range
-``(0, 1)`` or a positive int could be added using a type hint as follows:
+jsonargparse supports a wide range of argument types and validates values
+against them, using Python's type hint syntax. For example, an argument that
+accepts ``None``, a float in the range ``(0, 1)``, or a positive int:
 
 .. testcode::
 
@@ -468,153 +429,136 @@ syntax. For example, an argument that can be ``None`` or a float in the range
 
     parser.add_argument("--op", type=PositiveInt | OpenUnitInterval | None)
 
-The types in :py:mod:`jsonargparse.typing` are included for convenience since
-they are useful in argument parsing use cases and not available in standard
-Python. However, there is no need to use jsonargparse specific types.
+The types in :py:mod:`jsonargparse.typing` are a convenience for cases that
+standard Python does not cover. Using them is not required.
 
-A wide range of type hints are supported and with arbitrary complexity/nesting.
-Some notes about this support are:
+Types can be nested with any complexity. Notes about the support:
 
-- Nested types are supported as long as at least one child type is supported. By
-  nesting it is meant child types inside ``list``, ``dict``, etc. There is no
-  limit in nesting depth.
+- Nested types, i.e. child types inside ``list``, ``dict``, etc., work as long
+  as at least one child type is supported. There is no limit in nesting depth.
 
-- Postponed evaluation of types PEP `563 <https://peps.python.org/pep-0563/>`__
-  (i.e. ``from __future__ import annotations``) is supported. Also supported are
-  PEP `585 <https://peps.python.org/pep-0585/>`__ (i.e. ``list[<type>],
-  dict[<type>], ...`` instead of ``List[<type>], Dict[<type>], ...``) and `604
-  <https://peps.python.org/pep-0604/>`__ (i.e. ``<type> | <type>`` instead of
-  ``Union[<type>, <type>]``).
+- Supported PEPs: `563 <https://peps.python.org/pep-0563/>`__ postponed
+  evaluation (``from __future__ import annotations``), `585
+  <https://peps.python.org/pep-0585/>`__ (``list[<type>]`` instead of
+  ``List[<type>]``) and `604 <https://peps.python.org/pep-0604/>`__ (``<type> |
+  <type>`` instead of ``Union[<type>, <type>]``).
 
-- Types that use components imported inside ``TYPE_CHECKING`` blocks are
-  supported.
+- Types that use components imported inside ``TYPE_CHECKING`` blocks work, and
+  so do forward references, including names defined only in the body of the
+  class that owns the method, e.g. a nested class referred to without qualifying
+  it.
 
-- Resolving of forward references in types is supported. This includes names
-  that are only defined in the body of the class that owns the method, e.g. a
-  nested class referred to without qualifying it.
-
-- Fully supported types are: ``str``, ``bool`` (more details in
-  :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
-  ``bytes``/``bytearray`` (Base64 encoding), ``range``, ``list`` (more details
-  in :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``,
-  ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``,
-  ``Any``/``object``, ``Union``/``Optional`` (more details in
-  :ref:`union-types`), ``Type``, ``Enum``, ``PathLike``, ``UUID``,
-  ``timedelta``, restricted types as explained in sections
-  :ref:`restricted-numbers` and :ref:`restricted-strings` and path and URL types
-  as explained in sections :ref:`parsing-paths` and :ref:`parsing-urls`.
+- Fully supported types are: ``str``, ``bool`` (see :ref:`boolean-arguments`),
+  ``int``, ``float``, ``Decimal``, ``complex``, ``bytes``/``bytearray`` (Base64
+  encoding), ``range``, ``list`` (see :ref:`list-append`), ``Deque``,
+  ``Iterable``, ``Sequence``, ``MutableSequence``, ``Collection``,
+  ``Container``, ``Reversible``, ``Any``/``object``, ``Union``/``Optional`` (see
+  :ref:`union-types`), ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``,
+  ``timedelta``, the restricted types of :ref:`restricted-numbers` and
+  :ref:`restricted-strings`, and the path and URL types of :ref:`parsing-paths`
+  and :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
-  ``OrderedDict``, and ``TypedDict`` are supported but only with ``str`` or
-  ``int`` keys. ``Required`` and ``NotRequired`` are also supported for
-  fine-grained specification of required/optional ``TypedDict`` keys. ``Unpack``
-  is supported with ``TypedDict`` for more precise ``**kwargs`` typing as
-  described in PEP `692 <https://peps.python.org/pep-0692/>`__. For more details
-  see :ref:`dict-items`. The keys that a ``TypedDict`` argument accepts are
-  shown by a ``--*.help`` option, e.g. ``--data.help``. This option receives no
-  value, unless the ``TypedDict`` is in a union with other types that have their
-  own help, in which case the value is the name of the typed dict, e.g.
-  ``--data.help SomeTypedDict``. A ``TypedDict`` is also accepted by
-  :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>`, which adds
-  one argument per key and on :meth:`instantiate <.ArgumentParser.instantiate>`
-  gives the corresponding dict. A ``TypedDict`` can also be used as the argument
-  of ``type``, e.g. ``type[SomeTypedDict]``, in which case the value is an
-  import path to a class. Since ``TypedDict`` classes don't support
-  ``issubclass``, the given class is accepted when it is structurally
-  compatible, as specified in PEP `589 <https://peps.python.org/pep-0589/>`__,
-  i.e. it has all the keys of the expected ``TypedDict``, with the same types
-  and requiredness. A generic ``TypedDict`` is supported both unsubscripted and
-  subscripted, e.g. ``SomeDict`` and ``SomeDict[int]``, as is a ``TypedDict``
-  that inherits from a subscripted one. Subscripting doesn't change which keys
-  are accepted, only the types of the keys annotated with a ``TypeVar``. A key
-  whose type can't be validated accepts any value, see :ref:`unvalidated-types`.
+  ``OrderedDict`` and ``TypedDict`` are supported, but only with ``str`` or
+  ``int`` keys, see :ref:`dict-items`.
+
+- ``TypedDict`` accepts ``Required`` and ``NotRequired`` to mark single keys as
+  required or optional, and ``Unpack`` to type ``**kwargs`` precisely, see PEP
+  `692 <https://peps.python.org/pep-0692/>`__. A ``--*.help`` option, e.g.
+  ``--data.help``, shows the accepted keys. It takes no value, unless the
+  ``TypedDict`` is in a union with other types that have their own help, in
+  which case the value is the name of the typed dict, e.g. ``--data.help
+  SomeTypedDict``. :meth:`add_class_arguments
+  <.ArgumentParser.add_class_arguments>` also accepts a ``TypedDict``, adding
+  one argument per key and giving the corresponding dict on :meth:`instantiate
+  <.ArgumentParser.instantiate>`. As the argument of ``type``, e.g.
+  ``type[SomeTypedDict]``, the value is an import path to a class. Since
+  ``TypedDict`` classes don't support ``issubclass``, the given class is
+  accepted when it is structurally compatible, as specified in PEP `589
+  <https://peps.python.org/pep-0589/>`__, i.e. it has all the expected keys with
+  the same types and requiredness. A generic ``TypedDict`` works both
+  unsubscripted and subscripted, e.g. ``SomeDict`` and ``SomeDict[int]``, as
+  does one that inherits from a subscripted one. Subscripting doesn't change
+  which keys are accepted, only the types of the keys annotated with a
+  ``TypeVar``. A key whose type can't be validated accepts any value, see
+  :ref:`unvalidated-types`.
 
 - ``tuple``, ``set``, ``frozenset``, ``AbstractSet`` and ``MutableSet`` are
-  supported even though they can't be represented in JSON distinguishable from
-  a list. Each ``tuple``
-  element position can have its own type and will be validated as such.
-  ``tuple`` with ellipsis (``tuple[type, ...]``) is also supported. In command
-  line arguments, config files and environment variables, tuples and sets are
-  represented as an array. A ``set`` or ``frozenset`` of a class type is kept as
+  supported, even though on the command line, in config files and in environment
+  variables they are all written as an array, like a ``list``. Each ``tuple``
+  position can have its own type, which is validated as such, and ``tuple[type,
+  ...]`` is also accepted. A ``set`` or ``frozenset`` of a class type is kept as
   a list when parsing, since subclass specs are not hashable, and becomes a set
   on :meth:`instantiate <.ArgumentParser.instantiate>`.
 
-- To set a value to ``None`` it is required to use ``null`` since this is how
-  JSON/YAML defines it. To avoid confusion in the help, ``NoneType`` is
-  displayed as ``null``. For example a function argument with type and default
-  ``Optional[str] = None`` would be shown in the help as ``type: Union[str,
-  null], default: null``.
+- ``None`` is written as ``null``, as JSON/YAML define it. For the same reason
+  the help shows ``NoneType`` as ``null``, e.g. a parameter with type and
+  default ``Optional[str] = None`` is shown as ``type: Union[str, null],
+  default: null``.
 
-- Normal classes can be used as a type, which are specified with a dict
-  containing ``class_path`` and optionally ``init_args``. :meth:`instantiate
-  <.ArgumentParser.instantiate>` can be used to instantiate all classes in a
-  config object. For more details see :ref:`sub-classes`.
+- Normal classes can be used as a type. The value is a dict with a
+  ``class_path`` and optionally ``init_args``, and :meth:`instantiate
+  <.ArgumentParser.instantiate>` instantiates all classes in a config object,
+  see :ref:`sub-classes`.
 
-- ``Protocol`` types are also supported the same as subclasses. The protocols
-  are not required to be ``runtime_checkable``. But the accepted classes must
-  implement all of the protocol's public methods with a compatible signature,
-  i.e. the methods must be callable in all the ways that the protocol's methods
-  can be called, similar to what static type checkers verify. Parameter and
-  return types must match exactly, subtypes are not accepted, except when the
-  protocol has no annotation or ``Any``, which accept any type. A generic
-  protocol is supported both unsubscripted and subscripted, e.g. ``Proto`` and
-  ``Proto[int]``. Subscripting substitutes the type arguments in the protocol's
-  methods, so ``Proto[int]`` and ``Proto[str]`` accept different
+- ``Protocol`` types work the same as subclasses and don't need to be
+  ``runtime_checkable``. An accepted class must implement all public methods of
+  the protocol with a compatible signature, i.e. be callable in every way that
+  the protocol's methods can be called, like static type checkers verify.
+  Parameter and return types must match exactly, subtypes are not accepted,
+  except where the protocol has no annotation or ``Any``, which accept any type.
+  A generic protocol works both unsubscripted and subscripted, e.g. ``Proto``
+  and ``Proto[int]``. Subscripting substitutes the type arguments in the
+  protocol's methods, so ``Proto[int]`` and ``Proto[str]`` accept different
   implementations. A ``TypeVar`` that remains, in the protocol or in the
   implementation, matches any type, as static type checkers do. A protocol whose
-  single method is ``__call__`` is also implemented by a function with a
+  only method is ``__call__`` is also implemented by a function with a
   compatible signature, in which case the value is the function itself, instead
   of a class to instantiate.
 
 - ``dataclasses``, final classes, attrs' ``define``, pydantic's ``dataclass``
-  and pydantic's ``BaseModel`` are supported even when nested. By default they
-  don't accept subclasses. For more details see :ref:`subclasses-disabled` and
-  for enabling subclasses see :ref:`enable-disable-subclasses`. If a dataclass
-  is mixed inheriting from a normal class, by default subclasses are accepted.
+  and pydantic's ``BaseModel`` are supported, even when nested. By default they
+  don't accept subclasses, see :ref:`subclasses-disabled` and
+  :ref:`enable-disable-subclasses`. A dataclass that also inherits from a normal
+  class does accept subclasses by default.
 
-- User-defined ``Generic`` types are supported. For more details see
-  :ref:`generic-types`.
+- User-defined ``Generic`` types are supported, see :ref:`generic-types`.
 
-- ``Annotated`` types are supported. If the metadata corresponds to a `pydantic
-  type <https://docs.pydantic.dev/latest/api/types/>`__, this is used for
-  validation.
+- ``Annotated`` types are supported. If the metadata is a `pydantic type
+  <https://docs.pydantic.dev/latest/api/types/>`__, it is used for validation.
 
-- ``pydantic.SecretStr`` type is supported with the expected behavior of not
-  serializing the actual value. There is also ``jsonargparse.typing.SecretStr``
-  to support the same behavior without the need of a dependency. Since dumps
-  only have the mask ``**********`` instead of the actual secret, parsing this
-  mask as a secret fails, so that a config bootstrapped with ``--print_config``
-  is not used with the mask as the secret.
+- ``pydantic.SecretStr`` is supported and, as expected, the actual value is not
+  serialized. ``jsonargparse.typing.SecretStr`` gives the same behavior without
+  the pydantic dependency. Dumps only have the mask ``**********``, and parsing
+  this mask as a secret fails, so that a config bootstrapped with
+  ``--print_config`` is not used with the mask as the secret.
 
-- ``pydantic.FilePath`` and ``pydantic.DirectoryPath`` types are supported,
-  running the corresponding pydantic validation when parsing. Arguments with
-  these types also get file and directory tab completions, see
-  :ref:`tab-completion`.
+- ``pydantic.FilePath`` and ``pydantic.DirectoryPath`` run the corresponding
+  pydantic validation when parsing. Arguments with these types also get file and
+  directory tab completions, see :ref:`tab-completion`.
 
-- ``Callable`` is supported by either giving a dot import path to a callable
-  object or by giving a dict with a ``class_path`` and optionally ``init_args``
-  entries. The specified class must either instantiate into a callable or be a
-  subclass of the return type of the callable. For these cases running
-  :meth:`instantiate <.ArgumentParser.instantiate>` will instantiate the class
-  or provide a function that returns the instance of the class. For more details
-  see :ref:`callable-type`. A function given by import path must have a return
-  annotation, or a return type in a stub file (see :ref:`stubs-resolver`), that
-  is the callable's return type or a subclass of it. Argument types are not
-  validated.
+- ``Callable`` accepts either a dot import path to a callable object, or a dict
+  with ``class_path`` and optionally ``init_args``. The named class must either
+  instantiate into a callable or be a subclass of the callable's return type.
+  :meth:`instantiate <.ArgumentParser.instantiate>` then gives the instance or a
+  function that returns it, see :ref:`callable-type`. A function given by import
+  path must have a return annotation, or a return type in a stub file (see
+  :ref:`stubs-resolver`), that is the callable's return type or a subclass of
+  it. Argument types are not validated.
 
-- ``types.ModuleType`` is supported by giving the dot import path of a module,
-  and on ``instantiate`` is replaced by the imported module object.
+- ``types.ModuleType`` accepts the dot import path of a module, and on
+  ``instantiate`` is replaced by the imported module object.
 
 - ``types.UnionType`` and ``types.GenericAlias``, commonly found in third party
-  libraries in unions such as ``type | UnionType | dict``, are supported by
-  giving a string with a type expression, e.g. ``"int | str"`` and
-  ``"list[int]"``. The expression is resolved without evaluating code, so its
-  names must be builtins, ``typing`` names or dot import paths.
+  libraries in unions such as ``type | UnionType | dict``, accept a string with
+  a type expression, e.g. ``"int | str"`` or ``"list[int]"``. The expression is
+  resolved without evaluating code, so its names must be builtins, ``typing``
+  names or dot import paths.
 
-- ``TypeAliasType`` is supported with values parsed as the aliased type and the
-  alias shown as the argument type in help. This includes aliases defined with
+- ``TypeAliasType`` is supported. Values are parsed as the aliased type and the
+  help shows the alias as the argument type. This includes aliases defined with
   the `PEP 695 <https://peps.python.org/pep-0695/>`__ ``type X = ...`` statement
-  (python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``.
+  (Python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``.
 
 
 .. _union-types:
@@ -622,17 +566,17 @@ Some notes about this support are:
 Union types
 -----------
 
-A value given for an argument that has a ``Union`` type is validated against
-each of the subtypes, one at a time, and the first subtype that accepts it
-decides the parsed value. This means that the order of the subtypes matters. For
-example, for ``Union[str, int]`` the command line value ``2`` is parsed as the
-``str`` ``"2"``, since any command line value is a valid ``str``, whereas for
-``Union[int, str]`` it is parsed as the ``int`` ``2``.
+A value for an argument with a ``Union`` type is validated against each subtype,
+one at a time, and the first subtype that accepts it decides the parsed value.
+So the order of the subtypes matters. For example, for ``Union[str, int]`` the
+command line value ``2`` is parsed as the ``str`` ``"2"``, since any command
+line value is a valid ``str``, whereas for ``Union[int, str]`` it is parsed as
+the ``int`` ``2``.
 
-The subtypes are mostly attempted in the order in which they are written. The
-exception are the ones that accept anything, which are sorted to the end when
-the argument is added, so that the subtypes that validate get a chance of being
-used. From first to last attempted, the groups are:
+Subtypes are mostly attempted in the order in which they are written. The
+exception are the ones that accept anything, which are moved to the end when the
+argument is added, so that the subtypes that do validate get a chance. From
+first to last attempted, the groups are:
 
 1. All types not mentioned below, in the order in which they are written.
 2. ``None``, which only accepts ``null``. It is placed second to last so that
@@ -641,20 +585,20 @@ used. From first to last attempted, the groups are:
    :ref:`unvalidated-types`. These accept any value, so a subtype after them
    would never be attempted.
 
-The sorting is stable, meaning that subtypes in the same group keep the relative
-order in which they are given. Unions nested inside other types are sorted as
-well, e.g. the ``Union`` in ``list[Union[int, Any]]``.
+The sorting is stable, so subtypes in the same group keep their relative order.
+Unions nested inside other types are sorted as well, e.g. the ``Union`` in
+``list[Union[int, Any]]``.
 
-Be aware that ``typing`` considers two unions equal independent of the order of
-the subtypes, and caches the types that it creates. This means that for a union
-nested in a ``typing`` type, e.g. ``typing.List[Union[int, str]]``, the order
-can end up being the one of an equal union created before somewhere else. The
-`PEP 585 <https://peps.python.org/pep-0585/>`__ types are not cached, so writing
-``list[Union[int, str]]`` always gives the order as written.
+Be aware that ``typing`` considers two unions equal no matter the order of the
+subtypes, and caches the types that it creates. So for a union nested in a
+``typing`` type, e.g. ``typing.List[Union[int, str]]``, the order can end up
+being the one of an equal union created earlier somewhere else. `PEP 585
+<https://peps.python.org/pep-0585/>`__ types are not cached, so
+``list[Union[int, str]]`` always keeps the order as written.
 
-Since the sorting is done when the argument is added, the type shown in the
-``--help`` is the sorted one. That is, the help always tells the order in which
-the subtypes are attempted. For example, an argument added as:
+The sorting happens when the argument is added, so the type shown in ``--help``
+is the sorted one. That is, the help always tells in which order the subtypes
+are attempted. For example, an argument added as:
 
 .. testsetup:: union
 
@@ -678,13 +622,12 @@ parses values as:
     >>> parser.parse_args(["--val=abc"])
     Namespace(val='abc')
 
-There is a single case in which the order is changed while parsing, instead of
-when the argument is added. When appending to a list, see :ref:`list-append`,
-the subtypes that are a list are moved to the front. This can only be decided
-when parsing, since it depends on the value being appended to a previous list
-instead of replacing it. For instance, for an argument with type ``Union[int,
-list[int]]``, ``--val=1`` is parsed as ``1``, while ``--val+=1`` is parsed as
-``[1]``.
+In one case the order changes while parsing instead of when the argument is
+added: when appending to a list, see :ref:`list-append`, the subtypes that are a
+list are moved to the front. This can only be decided when parsing, since it
+depends on whether the value is appended to a previous list or replaces it. For
+an argument of type ``Union[int, list[int]]``, ``--val=1`` gives ``1``, while
+``--val+=1`` gives ``[1]``.
 
 
 .. _unvalidated-types:
@@ -696,15 +639,14 @@ When arguments are added from a signature, i.e. :meth:`add_function_arguments
 <.ArgumentParser.add_function_arguments>`, :meth:`add_method_arguments
 <.ArgumentParser.add_method_arguments>`, :meth:`add_class_arguments
 <.ArgumentParser.add_class_arguments>` or a parameter of a :ref:`subclass type
-<sub-classes>`, there can be parameters with a type that jsonargparse can't
+<sub-classes>`, some parameters can have a type that jsonargparse can't
 validate. The same holds for the keys of a ``TypedDict``, however the argument
-is added. Instead of skipping these parameters, which would make it impossible
-to give them in the command line or a config file, the parameter is added with
-only the parts of the type that can't be validated replaced by a type that
-accepts any value. In the help these parts are shown as ``Unvalidated<...>``,
-keeping the name that the source code has. For example, a class with an ``items:
-list[SomeType] = []`` parameter for which ``SomeType`` can't be validated, is
-shown in the help as:
+is added. Skipping these parameters would make it impossible to give them at
+all, so instead only the parts of the type that can't be validated are replaced
+by a type that accepts any value. The help shows these parts as
+``Unvalidated<...>``, keeping the name used in the source code. For example, a
+class with an ``items: list[SomeType] = []`` parameter for which ``SomeType``
+can't be validated is shown in the help as:
 
 .. code-block:: text
 
@@ -717,29 +659,28 @@ A type or a part of it can't be validated when:
 - It is not a type that jsonargparse supports, e.g. a ``TypeVar`` that stands
   for nothing, see :ref:`generic-types`.
 
-To know which of the two it is for a given parameter, enable debut level
-logging, see :ref:`logging`. The debug log states the reason for each of the
-parts of the type that can't be validated.
+To know which of the two it is for a given parameter, enable debug level
+logging, see :ref:`logging`. The debug log gives the reason for each part of the
+type that can't be validated.
 
-Note that only these parts accept any value. In the example above, the value
-must still be a list, though its items are not validated. Likewise, in a
-``Union`` only the subtypes that can't be validated accept any value, the others
-are still validated as usual.
+Only these parts accept any value. In the example above the value must still be
+a list, only its items are not validated. Likewise, in a ``Union`` only the
+subtypes that can't be validated accept any value, the others are validated as
+usual.
 
-Since there is no type to serialize with, in :meth:`dump <.ArgumentParser.dump>`
-and ``--print_config`` a type is derived from the value itself, so that the
-value is serialized the same as it would be for an argument of that type. A
-value of a type that jsonargparse doesn't support, e.g. a default that is an
-arbitrary object, is serialized the same as the instances given for a
-:ref:`subclass type <sub-classes>`. That is, as an import path when the value
-can be imported back, and otherwise as a message that says that it was not
-serializable, in which case a warning is also raised.
+Since there is no type to serialize with, :meth:`dump <.ArgumentParser.dump>`
+and ``--print_config`` derive a type from the value itself, so that it is
+serialized as it would be for an argument of that type. A value of a type that
+jsonargparse doesn't support, e.g. a default that is an arbitrary object, is
+serialized like the instances given for a :ref:`subclass type <sub-classes>`: as
+an import path when the value can be imported back, and otherwise as a message
+saying that it was not serializable, together with a warning.
 
 Parsing a dump back has no type to validate with either, so only the values that
-the config formats represent round-trip. For instance, a ``set`` is serialized
-as a list and parses back as a list, and an ``Enum`` member is serialized as its
-name and parses back as a string. A warning is raised for each dumped value that
-loses its type this way. All of the above equally applies to arguments typed as
+the config formats represent round-trip. For instance, a ``set`` is dumped as a
+list and parses back as a list, and an ``Enum`` member is dumped as its name and
+parses back as a string. A warning is raised for each dumped value that loses
+its type this way. All of the above applies equally to arguments typed as
 ``Any``/``object``.
 
 
@@ -748,13 +689,11 @@ loses its type this way. All of the above equally applies to arguments typed as
 Restricted numbers
 ------------------
 
-It is quite common that when parsing a number, its range should be limited. To
-ease these cases the module ``jsonargparse.typing`` includes some predefined
-types and a function :func:`.restricted_number_type` to define new types. The
-predefined types are: :class:`.PositiveInt`, :class:`.NonNegativeInt`,
+Numbers often need a limited range. For the common cases ``jsonargparse.typing``
+has the predefined types :class:`.PositiveInt`, :class:`.NonNegativeInt`,
 :class:`.PositiveFloat`, :class:`.NonNegativeFloat`,
-:class:`.ClosedUnitInterval` and :class:`.OpenUnitInterval`. Examples of usage
-are:
+:class:`.ClosedUnitInterval` and :class:`.OpenUnitInterval`, and the
+:func:`.restricted_number_type` function to define new ones:
 
 .. testcode::
 
@@ -772,11 +711,10 @@ are:
 Restricted strings
 ------------------
 
-Similar to the restricted numbers, there is a function to create string types
-that are restricted to match a given regular expression:
-:func:`.restricted_string_type`. A predefined type is :class:`.Email` which is
-restricted so that it follows the normal email pattern. For example to add an
-argument required to be exactly four uppercase letters:
+Likewise, :func:`.restricted_string_type` creates string types restricted to
+match a regular expression. The predefined ones are :class:`.Email`, which
+follows the normal email pattern, and :class:`.NotEmptyStr`. For example, an
+argument that must be exactly four uppercase letters:
 
 .. testcode::
 
@@ -792,17 +730,15 @@ argument required to be exactly four uppercase letters:
 Parsing paths
 -------------
 
-For some use cases it is necessary to parse file paths, checking its existence
-and access permissions, but not necessarily opening the file. Moreover, a file
-path could be included in a config file as relative with respect to the config
-file's location. After parsing it should be easy to access the parsed file path
-without having to consider the location of the config file. To help in these
-situations jsonargparse includes a type generator :func:`.path_type`, some
-predefined types (e.g. :class:`.Path_fr`).
+Parsing a file path often means checking that it exists and has the required
+access permissions, without opening the file. Also, a path in a config file can
+be relative to the location of that config file, and after parsing it should be
+easy to use without having to think about where the config file was. For this
+jsonargparse has the :func:`.path_type` type generator and some predefined
+types, e.g. :class:`.Path_fr`.
 
-For example suppose you have a directory with a config file ``app/config.yaml``
-and some data ``app/data/info.db``. The contents of the YAML file is the
-following:
+For example, suppose there is a directory with a config file ``app/config.yaml``
+and some data ``app/data/info.db``. The YAML file contains:
 
 .. code-block:: yaml
 
@@ -810,8 +746,7 @@ following:
     databases:
       info: data/info.db
 
-To create a parser that checks that the value of ``databases.info`` is a file
-that exists and is readable, the following could be done:
+To check that ``databases.info`` is a file that exists and is readable:
 
 .. testsetup:: paths
 
@@ -839,10 +774,9 @@ that exists and is readable, the following could be done:
     parser.add_argument("--databases.info", type=Path_fr)
     cfg = parser.parse_path("app/config.yaml")
 
-The ``fr`` in the type are flags that stand for file and readable. After
-parsing, the value of ``databases.info`` will be an instance of the
-:class:`.Path_fr` class that allows to get both the original relative path as
-included in the YAML file, or the corresponding absolute path:
+The ``fr`` in the type name are flags standing for file and readable. After
+parsing, ``databases.info`` is a :class:`.Path_fr` instance, which gives both
+the original relative path from the YAML file and the absolute path:
 
 .. doctest:: paths
     :skipif: os.name != "posix"
@@ -852,19 +786,17 @@ included in the YAML file, or the corresponding absolute path:
     >>> cfg.databases.info.absolute  # doctest: +ELLIPSIS
     '/.../app/data/info.db'
 
-Likewise directories can be parsed using the :class:`.Path_dw` type, which would
-require a directory to exist and be writable. New path types can be created
-using the :func:`.path_type` function. For example to create a type for files
-that must exist and be both readable and writable, the command would be
-``Path_frw = path_type('frw')``. If the file ``app/config.yaml`` is not
-writable, then using the type to cast ``Path_frw('app/config.yaml')`` would
-raise a *TypeError: File is not writable* exception. For more information of
-all the mode flags supported, refer to the documentation of the :class:`.Path`
-class.
+Directories work the same, e.g. :class:`.Path_dw` requires a directory that
+exists and is writable. New path types are created with :func:`.path_type`, e.g.
+``Path_frw = path_type('frw')`` for files that must exist and be both readable
+and writable. If ``app/config.yaml`` is not writable, then
+``Path_frw('app/config.yaml')`` raises a ``PathError`` (a subclass of
+``TypeError``) saying that the file is not writable. All supported mode flags
+are documented in the :class:`.Path` class.
 
-Types created with :func:`.path_type` have as base class  :class:`.Path`. This
-class implements the ``os.PathLike`` protocol, using the absolute version as the
-actual path, thus for the previous example:
+Types created with :func:`.path_type` have :class:`.Path` as base class. This
+class implements the ``os.PathLike`` protocol, using the absolute path, so for
+the previous example:
 
 .. doctest:: paths
     :skipif: os.name != "posix"
@@ -872,16 +804,13 @@ actual path, thus for the previous example:
     >>> os.fspath(cfg.databases.info)  # doctest: +ELLIPSIS
     '/.../app/data/info.db'
 
-The content of a file referenced by a :class:`.Path` instance can be read using
-the :py:meth:`.Path.read_text` method. For the previous example, this would be
+The content of the file is read with the :py:meth:`.Path.read_text` method, e.g.
 ``info_db = cfg.databases.info.read_text()``.
 
-An argument with a path type can be given ``nargs='+'`` to parse multiple paths.
-Thus, from command line you could do ``--files file1 file2``, separated by
-space. It might also be desired to parse a list of paths found in a plain text
-file or from stdin. For this add the argument with type ``list[<path_type>]``
-and ``sub_configs=True``. To read from stdin give the special string ``'-'``.
-Example:
+An argument with a path type can be given ``nargs='+'`` to accept multiple
+paths, i.e. ``--files file1 file2``. To instead read a list of paths from a
+plain text file or from stdin, add the argument with type ``list[<path_type>]``
+and ``sub_configs=True``. The special string ``'-'`` means stdin:
 
 .. testsetup:: path_list
 
@@ -911,26 +840,24 @@ Example:
     cfg = parser.parse_args(["--list", "paths.lst"])  # File with list of paths
     cfg = parser.parse_args(["--list", "-"])  # List of paths from stdin
 
-In this case since there is no ``nargs``, the argument expects a single value.
-That is why to provide multiple paths directly from command line, a more
-cumbersome YAML/JSON array syntax is required, i.e. ``--list "[file1,file2]"``.
-However, the simpler syntax described in :ref:`list-append` can also be used,
-which would be like ``--list+ file1 --list+ file2``. Not as simple as with
-``nargs='+'`` but with tab completion enabled the effort is minimal.
+Without ``nargs``, the argument expects a single value. So giving several paths
+directly on the command line requires the YAML/JSON array syntax, i.e. ``--list
+"[file1,file2]"``, or the simpler append syntax of :ref:`list-append`, i.e.
+``--list+ file1 --list+ file2``. Not as short as ``nargs='+'``, but with tab
+completion the effort is minimal.
 
-The same ``list[<path_type>]`` behavior described here will work for arguments
-automatically created from type hints in signatures, that is with
-:func:`.auto_cli`, :meth:`add_function_arguments
-<.ArgumentParser.add_function_arguments>`, :meth:`add_method_arguments
-<.ArgumentParser.add_method_arguments>`, :meth:`add_class_arguments
-<.ArgumentParser.add_class_arguments>` and :meth:`add_subclass_arguments
-<.ArgumentParser.add_subclass_arguments>`.
+The same ``list[<path_type>]`` behavior applies to arguments created
+automatically from type hints in signatures, i.e. with :func:`.auto_cli`,
+:meth:`add_function_arguments <.ArgumentParser.add_function_arguments>`,
+:meth:`add_method_arguments <.ArgumentParser.add_method_arguments>`,
+:meth:`add_class_arguments <.ArgumentParser.add_class_arguments>` and
+:meth:`add_subclass_arguments <.ArgumentParser.add_subclass_arguments>`.
 
 .. note::
 
-    If ``nargs='+'`` and ``sub_configs=True`` are set for an argument of type
-    ``list[<path_type>]``, each argument will produce a list of paths. This
-    behavior may not be what you expect.
+    Setting both ``nargs='+'`` and ``sub_configs=True`` for an argument of type
+    ``list[<path_type>]`` makes each given value produce a list of paths, which
+    might not be what you expect.
 
 .. note::
 
@@ -942,34 +869,24 @@ automatically created from type hints in signatures, that is with
 Parsing URLs
 ------------
 
-The :func:`.path_type` function also supports URLs which after parsing, the
-:py:meth:`.Path.read_text` method can be used to perform a GET request to the
-corresponding URL and retrieve its content. For this to work the *requests*
-Python package is required. Alternatively, :func:`.path_type` can also be used
-for `fsspec <https://filesystem-spec.readthedocs.io>`__ supported file systems.
-The respective optional package(s) will be installed along with jsonargparse if
-installed with the ``urls`` or ``fsspec`` extras as explained in section
-:ref:`installation`.
+:func:`.path_type` also supports URLs, with the ``'u'`` flag, and `fsspec
+<https://filesystem-spec.readthedocs.io>`__ file systems, with the ``'s'`` flag.
+These need the *requests* and *fsspec* packages, which are installed with the
+``urls`` and ``fsspec`` extras, see :ref:`installation`.
 
-The ``'u'`` flag is used to parse URLs using requests and the flag ``'s'`` to
-parse fsspec file systems. For example if it is desired that an argument can be
-either a readable file or URL, the type would be created as ``Path_fur =
-path_type('fur')``. If the value appears to be a URL, a HEAD request would be
-triggered to check if it is accessible. To get the content of the parsed path,
-without needing to care if it is a local file or a URL, the
-:py:meth:`.Path.read_text` method can be used.
+For example, an argument that accepts either a readable file or a URL uses the
+type ``Path_fur = path_type('fur')``. If the value looks like a URL, a HEAD
+request checks that it is accessible. The :py:meth:`.Path.read_text` method then
+gets the content, doing a GET request for a URL, so the code does not need to
+care whether the value is a local file or a URL.
 
-If you import ``from jsonargparse import set_parsing_settings`` and then run
-``set_parsing_settings(config_read_mode_urls_enabled=True)`` or
-``set_parsing_settings(config_read_mode_fsspec_enabled=True)``, the following
-functions and classes will also support loading from URLs: :meth:`parse_path
-<.ArgumentParser.parse_path>`, :meth:`get_defaults
-<.ArgumentParser.get_defaults>` (``default_config_files`` argument),
-``action="config"``, :py:meth:`.FromConfigMixin.from_config`,
+``set_parsing_settings(config_read_mode_urls_enabled=True)`` and
+``set_parsing_settings(config_read_mode_fsspec_enabled=True)`` extend this to
+config files, that is to :meth:`parse_path <.ArgumentParser.parse_path>`,
+:meth:`get_defaults <.ArgumentParser.get_defaults>` (``default_config_files``
+argument), ``action="config"``, :py:meth:`.FromConfigMixin.from_config`,
 :class:`.ActionJsonSchema`, :class:`.ActionJsonnet` and :class:`.ActionParser`.
-This means that a tool that can receive a config file via ``action="config"`` is
-able to get the content from a URL, thus something like the following would
-work:
+So a tool that takes a config file can also get it from a URL:
 
 .. code-block:: bash
 
@@ -988,14 +905,12 @@ work:
 Booleans
 --------
 
-Parsing boolean arguments is very common, however, the original argparse only
-has a limited support for them, via ``store_true`` and ``store_false``.
-Furthermore unexperienced users might mistakenly use ``type=bool`` which would
-not provide the intended behavior.
+Boolean arguments are very common, but argparse only supports them through
+``store_true`` and ``store_false``. Users new to argparse often write
+``type=bool``, which in argparse does not do what they expect.
 
-With jsonargparse adding an argument with ``type=bool`` the intended action is
-implemented. If given as values ``{'yes', 'true'}`` or ``{'no', 'false'}`` the
-corresponding parsed values would be ``True`` or ``False``. For example:
+In jsonargparse ``type=bool`` does the expected thing: the values ``true`` and
+``yes`` parse as ``True``, and ``false`` and ``no`` as ``False``. For example:
 
 .. testsetup:: boolean
 
@@ -1008,9 +923,8 @@ corresponding parsed values would be ``True`` or ``False``. For example:
     >>> parser.parse_args(["--op1", "yes", "--op2", "false"])
     Namespace(op1=True, op2=False)
 
-Sometimes it is also useful to define two paired options, one to set ``True``
-and the other to set ``False``. The :class:`.ActionYesNo` class makes this
-straightforward. A couple of examples would be:
+Two paired options, one to set ``True`` and the other to set ``False``, are
+added with :class:`.ActionYesNo`:
 
 .. testsetup:: yes_no
 
@@ -1020,14 +934,13 @@ straightforward. A couple of examples would be:
 
     from jsonargparse import ActionYesNo
 
-    # --opt1 for true and --no_opt1 for false.
+    # --op1 for true and --no_op1 for false.
     parser.add_argument("--op1", action=ActionYesNo)
-    # --with-opt2 for true and --without-opt2 for false.
+    # --with-op2 for true and --without-op2 for false.
     parser.add_argument("--with-op2", action=ActionYesNo(yes_prefix="with-", no_prefix="without-"))
 
-If the :class:`.ActionYesNo` class is used in conjunction with ``nargs='?'`` the
-options can also be set by giving as value any of ``{'true', 'yes', 'false',
-'no'}``.
+With ``nargs='?'`` these options also accept a value of ``true``, ``yes``,
+``false`` or ``no``.
 
 
 .. _enums:
@@ -1035,10 +948,9 @@ options can also be set by giving as value any of ``{'true', 'yes', 'false',
 Enum arguments
 --------------
 
-Another case of restricted values is string choices. In addition to the common
-``choices`` given as a list of strings, it is also possible to provide as type
-an ``Enum`` class. This has the added benefit that strings are mapped to some
-desired values. For example:
+String choices are another case of restricted values. Besides the usual
+``choices`` list, an ``Enum`` class can be given as type, which has the benefit
+of mapping each string to a desired value:
 
 .. testsetup:: enum
 
@@ -1062,12 +974,9 @@ desired values. For example:
 List append
 -----------
 
-As detailed before, arguments with ``list`` type are supported. By default when
-specifying an argument value, the previous value is replaced, and this also
-holds for lists. Thus, a parse such as ``parser.parse_args(['--list=[1]',
-'--list=[2, 3]'])`` would result in a final value of ``[2, 3]``. However, in
-some cases it might be decided to append to the list instead of replacing. This
-can be achieved by adding ``+`` as suffix to the argument key, for example:
+By default a new value replaces the previous one, also for lists. So
+``parser.parse_args(['--list=[1]', '--list=[2, 3]'])`` gives ``[2, 3]``. To
+append instead of replace, add ``+`` as suffix to the argument name:
 
 .. testsetup:: append
 
@@ -1085,8 +994,8 @@ can be achieved by adding ``+`` as suffix to the argument key, for example:
     >>> parser.parse_args(["--list=[4]", "--list+=5"])
     Namespace(list=[4, 5])
 
-Append is also supported in config files. For instance the following two config
-files would first assign a list and then append to this list:
+Config files support this too. The following two files first assign a list and
+then append to it:
 
 .. code-block:: yaml
 
@@ -1101,22 +1010,19 @@ files would first assign a list and then append to this list:
     - 2
     - 3
 
-Appending works for any type for the list elements. When the type is a union
-that has a list among its subtypes, appending changes the order in which the
-subtypes are attempted, see :ref:`union-types`. Lists with class type elements
-(see :ref:`sub-classes`) are also supported. To append to the list, first append
-a new class by using the ``+`` suffix. Then ``init_args`` for this class are
-specified like if the type wasn't a list, since the arguments are applied to the
-last class in the list. Take for example that an argument is
-added to a parser as:
+Appending works for any element type. When the type is a union that has a list
+among its subtypes, appending changes the order in which the subtypes are
+attempted, see :ref:`union-types`. Lists of class types (see :ref:`sub-classes`)
+also work: first append the class with the ``+`` suffix, then give its
+``init_args`` as if the type were not a list, since they apply to the last class
+in the list. For example, for an argument added as:
 
 .. testcode:: append
 
     parser.add_argument("--list_of_instances", type=list[MyBaseClass])
 
-Thanks to the short notation, command line arguments don't require to specify
-``class_path`` and ``init_args``. Thus, multiple classes can be appended and its
-arguments set as follows:
+Thanks to the short notation, ``class_path`` and ``init_args`` can be omitted,
+so several classes are appended and configured as:
 
 .. code-block:: bash
 
@@ -1131,10 +1037,9 @@ arguments set as follows:
       --list_of_instances.{CLASS_N_ARG_1}=... \
       ...
 
-Once a new class has been appended to the list, it is not possible to modify the
-arguments of a previous class. This limitation is intentional since it forces
-classes and its arguments to be defined in order, making the command line call
-intuitive to write and understand.
+Once a new class is appended, the arguments of a previous class can no longer be
+changed. This limitation is intentional: it forces classes and their arguments
+to be given in order, which makes the command line easier to write and to read.
 
 
 .. _dict-items:
@@ -1142,8 +1047,7 @@ intuitive to write and understand.
 Dict items
 ----------
 
-When an argument has ``dict`` as type, the value can be set using JSON format,
-e.g.:
+An argument of type ``dict`` accepts a value in JSON format:
 
 .. testsetup:: dict_items
 
@@ -1155,9 +1059,8 @@ e.g.:
     >>> parser.parse_args(['--dict={"key1": "val1", "key2": "val2"}'])
     Namespace(dict={'key1': 'val1', 'key2': 'val2'})
 
-Similar to lists, providing a second argument with value a JSON dict completely
-replaces the previous value. Setting individual dict items without replacing can
-be achieved as follows:
+As with lists, a second JSON dict replaces the previous value completely.
+Single items are set without replacing as:
 
 .. doctest:: dict_items
 
@@ -1170,10 +1073,9 @@ be achieved as follows:
 Generic types
 -------------
 
-Classes that inherit from ``typing.Generic``, also known as `user-defined
-generic types
+Classes that inherit from ``typing.Generic``, i.e. `user-defined generic types
 <https://docs.python.org/3/library/typing.html#user-defined-generic-types>`__,
-are supported. Take for example a point in 2D:
+are supported. For example, a point in 2D:
 
 .. testsetup:: generic_types
 
@@ -1190,7 +1092,7 @@ are supported. Take for example a point in 2D:
         x: Number = 0.0
         y: Number = 0.0
 
-Parsing complex-valued points would be:
+Parsing complex-valued points:
 
 .. doctest:: generic_types
 
@@ -1213,8 +1115,8 @@ help shows it as ``Unvalidated<...>``.
 Callable type
 -------------
 
-When using ``Callable`` as type, the parser accepts several options. The first
-option is the import path of a callable object, for example:
+A ``Callable`` type accepts several kinds of value. The first is the import path
+of a callable object:
 
 .. testsetup:: callable
 
@@ -1225,7 +1127,7 @@ option is the import path of a callable object, for example:
     parser.add_argument("--callable", type=Callable)
     parser.parse_args(["--callable=time.sleep"])
 
-A second option is a class that once instantiated becomes callable:
+The second is a class whose instances are callable:
 
 .. testcode:: callable
 
@@ -1257,28 +1159,21 @@ A second option is a class that once instantiated becomes callable:
     >>> init.callable(5)
     8
 
-The third option is only applicable when the type is a callable that returns
-class instances. This is a form of :ref:`dependency-injection`, so this third
-case is explained in section :ref:`instance-factories`.
+The third only applies when the callable returns class instances. It is a form
+of :ref:`dependency-injection`, explained in :ref:`instance-factories`.
 
 .. _registering-types:
 
 Registering types
 -----------------
 
-With the :func:`.register_type` function it is possible to register additional
-types for use in jsonargparse parsers. If the type class can be instantiated
-with a string representation and casting the instance to ``str`` gives back the
-string representation, then only the type class is given to
-:func:`.register_type`. For example in the ``jsonargparse.typing`` package this
-is how complex numbers are registered: ``register_type(complex)``. For other
-type classes that don't have these properties, to register it might be necessary
-to provide a serializer and/or deserializer function. Including the serializer
-and deserializer functions, the registration of the complex numbers example is
-equivalent to ``register_type(complex, serializer=str, deserializer=complex)``.
-
-A more useful example could be registering the ``datetime`` class. This case
-requires to give both a serializer and a deserializer as seen below.
+:func:`.register_type` adds new types for use in parsers. If the class can be
+created from a string representation, and ``str`` of an instance gives that
+representation back, only the class is needed. This is how
+``jsonargparse.typing`` registers complex numbers, ``register_type(complex)``,
+which is the same as ``register_type(complex, serializer=str,
+deserializer=complex)``. Other classes need a serializer and/or a deserializer,
+for example ``datetime``:
 
 .. testcode::
 
@@ -1303,10 +1198,10 @@ requires to give both a serializer and a deserializer as seen below.
 
 .. note::
 
-    The registering of types is only intended for simple types. By default any
-    class used as a type hint is considered a subclass (see :ref:`sub-classes`)
-    which might be good for many use cases. If a class is registered with
-    :func:`.register_type` then the subclass option is no longer available.
+    Registering is only intended for simple types. By default, any class used as
+    a type hint is treated as a subclass type (see :ref:`sub-classes`), which
+    suits many use cases. Registering a class with :func:`.register_type`
+    removes that option.
 
 
 .. _custom-types:
@@ -1314,16 +1209,14 @@ requires to give both a serializer and a deserializer as seen below.
 Creating custom types
 ---------------------
 
-It is possible to create new types and use them for parsing. Even though types
-can be created for specific CLI behaviors, it is recommended to create them such
-that they make sense independent of parsing. This is so that they can be used as
-type hints in functions and classes in order to improve the code in a more
-general sense. An alternative to creating types, can be to use `pydantic types
+New types can be created and used for parsing. Even when a type is meant for a
+CLI, it is better to design it so that it also makes sense outside of parsing,
+i.e. as a type hint in functions and classes that improves the code in general.
+An alternative is to use `pydantic types
 <https://docs.pydantic.dev/latest/api/types/>`__.
 
-There are a few ways for creating types, the most simple being to implement a
-class. When creating a type, take as reference how basic types work, e.g.
-``int``. Properties of basic types are:
+The simplest way is to implement a class. Take a basic type such as ``int`` as
+reference. Basic types have these properties:
 
 - Casting a string creates an instance of the type, if the value is valid, e.g.
   ``int("1")``.
@@ -1334,13 +1227,9 @@ class. When creating a type, take as reference how basic types work, e.g.
 - Types are idempotent, i.e. casting an instance of the type to the type gives
   back the same value, e.g. ``int(1) == int(int(1))``.
 
-Once a type is created, it can be registered with :func:`.register_type`. If the
-type follows the properties above, then there is no need to provide more
-parameters, just do ``register_type(MyType)``.
-
-The :func:`.extend_base_type` function can be useful for creating and
-registering new types in a single call. For example, creating a type for even
-integers could be done as:
+A new type is registered with :func:`.register_type`. If it follows the
+properties above, ``register_type(MyType)`` is enough. :func:`.extend_base_type`
+creates and registers a type in a single call, for example for even integers:
 
 .. testcode::
 
@@ -1352,7 +1241,7 @@ integers could be done as:
 
     EvenInt = extend_base_type("EvenInt", int, is_even)
 
-Then this type can be used in a parser as:
+Then in a parser:
 
 .. doctest::
 
@@ -1361,8 +1250,8 @@ Then this type can be used in a parser as:
     >>> parser.parse_args(["--even_int=2"])
     Namespace(even_int=2)
 
-When using custom types as a type hint, defaults must be casted so that static
-type checkers don't complain. For example:
+When a custom type is used as a type hint, the default must be cast to it so
+that static type checkers don't complain:
 
 .. testcode::
 
@@ -1375,9 +1264,8 @@ type checkers don't complain. For example:
 Nested namespaces
 =================
 
-A difference with respect to basic argparse is, that by using dot notation in
-the argument names, you can define a hierarchy of nested namespaces. For example
-you could do the following:
+Unlike in argparse, dot notation in the argument names defines a hierarchy of
+nested namespaces:
 
 .. doctest::
 
@@ -1390,9 +1278,8 @@ you could do the following:
     >>> cfg.lev1.opt2
     'from default 2'
 
-A group of nested options can be created by using a dataclass. This has the
-advantage that the same options can be reused in multiple places of a project.
-An example analogous to the one above would be:
+A dataclass creates a group of nested options, with the advantage that the same
+options can be reused in several places of a project. The analogous example is:
 
 .. testcode::
 
@@ -1414,12 +1301,10 @@ An example analogous to the one above would be:
     parser = ArgumentParser()
     parser.add_argument("--lev1", type=Level1Options, default=Level1Options())
 
-The :class:`.Namespace` class is an extension of the one from argparse, having
-some additional features. In particular, keys can be accessed like a dictionary
-either with individual keys, e.g. ``cfg['lev1']['opt1']``, or a single one, e.g.
-``cfg['lev1.opt1']``. Also the class has a method :py:meth:`.Namespace.as_dict`
-that can be used to represent the nested namespace as a nested dictionary. This
-is useful for example for class instantiation.
+The :class:`.Namespace` class extends the argparse one. Keys can be accessed
+like in a dictionary, either one level at a time, e.g. ``cfg['lev1']['opt1']``,
+or all at once, e.g. ``cfg['lev1.opt1']``. The :py:meth:`.Namespace.as_dict`
+method gives the nested namespace as a nested dictionary.
 
 
 .. _configuration-files:
@@ -1427,30 +1312,25 @@ is useful for example for class instantiation.
 Configuration files
 ===================
 
-An important feature of jsonargparse is its ability to parse configuration files
-(config files). The dot notation hierarchy of the arguments (see
-:ref:`nested-namespaces`) defines the expected structure in these files. By
-default, the configuration format is YAML. To change the format, use the
-``parser_mode`` parameter when instantiating the parser, e.g.,
+jsonargparse can parse configuration files (config files). The dot notation
+hierarchy of the arguments (see :ref:`nested-namespaces`) defines the structure
+expected in these files. The default format is YAML. To change it, use the
+``parser_mode`` parameter of the parser, e.g.
 ``ArgumentParser(parser_mode="toml")``.
 
-The :py:attr:`.ArgumentParser.default_config_files` property can be set when
-creating a parser to specify patterns for searching config files. For example,
-if a parser is created as
-``ArgumentParser(default_config_files=['~/.myapp.yaml', '/etc/myapp.yaml'])``,
-it will search for and parse any of these files if they exist, using them to
-override the defaults. All matched config files are parsed and applied in the
-given order. The default config files are always parsed first, meaning any
-command line argument will override their values.
+The :py:attr:`.ArgumentParser.default_config_files` property holds patterns of
+config files to search for, e.g.
+``ArgumentParser(default_config_files=['~/.myapp.yaml', '/etc/myapp.yaml'])``.
+All matching files are parsed in the given order and override the defaults from
+the source code. They are always parsed first, so any command line argument
+overrides their values.
 
-You can also add an argument to explicitly provide a config file path. Providing
-a config file as an argument does not disable the parsing of
-``default_config_files``. The config argument will be parsed in the specific
-position among the command line arguments, so arguments found afterward will
-override the values from that config file. The config argument can be given
-multiple times, each instance overriding the values of the previous one. Using
-the example parser from the :ref:`nested-namespaces` section above, we could
-have the following config file in YAML format:
+An argument can also be added to give a config file path explicitly. This does
+not disable ``default_config_files``. The config argument is parsed at its
+position among the command line arguments, so arguments after it override the
+values from that config file. It can be given several times, each one overriding
+the previous. Using the example parser from :ref:`nested-namespaces`, a config
+file in YAML format could be:
 
 .. code-block:: yaml
 
@@ -1459,8 +1339,7 @@ have the following config file in YAML format:
       opt1: from yaml 1
       opt2: from yaml 2
 
-Then in Python adding a config file argument and parsing some dummy arguments,
-the following would be observed:
+Adding a config file argument and parsing some arguments then gives:
 
 .. testsetup:: config
 
@@ -1488,8 +1367,7 @@ the following would be observed:
     >>> cfg.lev1.opt2
     'from arg 2'
 
-Instead of providing a path to a config file, a string with the config content
-can also be provided.
+The value can also be a string with the config content, instead of a path:
 
 .. doctest:: config
 
@@ -1497,39 +1375,37 @@ can also be provided.
     >>> cfg.lev1.opt1
     'from string 1'
 
-The config file can also be provided as an environment variable as explained in
-section :ref:`environment-variables`. The config file environment variable is
-the first one to be parsed. Any other argument provided through an environment
-variable would override the config file one.
+The config file can also come from an environment variable, see
+:ref:`environment-variables`. This variable is parsed first, so any other
+argument given through an environment variable overrides it.
 
-A config file or string can also be parsed without parsing command line
-arguments. The methods for this are :meth:`parse_path
-<.ArgumentParser.parse_path>` and :meth:`parse_string
-<.ArgumentParser.parse_string>` to parse a config file or a config string
-respectively.
+To parse a config file or a config string without parsing command line
+arguments, use :meth:`parse_path <.ArgumentParser.parse_path>` or
+:meth:`parse_string <.ArgumentParser.parse_string>`.
 
 Serialization
 -------------
 
-Parsers that have an ``action="config"`` argument also include a
-``--print_config`` option. This is useful particularly for command line tools
-with a large set of options to create an initial config file including all
-default values. If the `ruamel.yaml <https://pypi.org/project/ruamel.yaml>`__
-package is installed, the config can be printed having the help descriptions
-content as YAML comments by using ``--print_config=comments``. The comments
-include the descriptions of the groups and arguments of the parser, and for
-values that correspond to a class, e.g. the ``init_args`` of a subclass or the
-fields of a dataclass, the descriptions from the respective class. Another
-option is ``--print_config=skip_unset`` which skips entries whose value is the
-configured unset value (see :ref:`unset-values`).
+Parsers that have an ``action="config"`` argument also get a ``--print_config``
+option. It is useful for tools with many options, to create an initial config
+file with all default values. The option accepts one or more flags separated by
+comma, e.g. ``--print_config=comments,skip_default``:
 
-From within Python it is also possible to serialize a config object by using
-either the :meth:`dump <.ArgumentParser.dump>` or :meth:`save
-<.ArgumentParser.save>` parser methods. Several formats with a particular style
-are supported: ``yaml``, ``toml``, ``json_compact`` and ``json_indented``. It is
-possible to add more dumping formats by using the :func:`.set_dumper` function.
-For example to allow dumping using PyYAML's ``default_flow_style`` do the
-following:
+- ``comments``: add the help descriptions as YAML comments. Requires the
+  `ruamel.yaml <https://pypi.org/project/ruamel.yaml>`__ package. The comments
+  are the descriptions of the groups and arguments of the parser and, for values
+  that correspond to a class, e.g. the ``init_args`` of a subclass or the fields
+  of a dataclass, the descriptions from that class.
+- ``skip_default``: skip entries whose value is the same as the default.
+- ``skip_unset``: skip entries that were not given a value, see
+  :ref:`unset-values`.
+
+From Python, a config object is serialized with the :meth:`dump
+<.ArgumentParser.dump>` and :meth:`save <.ArgumentParser.save>` methods. The
+supported formats are ``yaml``, ``toml``, ``json``/``json_compact``,
+``json_indented`` and ``parser_mode``, the default, which uses the format of the
+parser. More formats are added with :func:`.set_dumper`, for example to dump
+with PyYAML's ``default_flow_style``:
 
 .. testcode::
 
@@ -1548,17 +1424,22 @@ following:
 Custom loaders
 --------------
 
-The ``yaml`` parser mode (see :py:meth:`.ArgumentParser.__init__`) uses for
-loading a subclass of `yaml.SafeLoader
-<https://pyyaml.org/wiki/PyYAMLDocumentation#loader>`__ with two modifications.
-First, it supports float's scientific notation, e.g. ``'1e-3' => 0.001`` (unlike
-default PyYAML which considers ``'1e-3'`` a string). Second, text within curly
-braces is considered a string, e.g. ``'{text}' (unlike default PyYAML which
-parses this as ``{'text': None}``).
+The ``yaml`` parser mode (see :py:meth:`.ArgumentParser.__init__`) loads with a
+subclass of `yaml.SafeLoader
+<https://pyyaml.org/wiki/PyYAMLDocumentation#loader>`__ that has three
+differences:
 
-It is possible to replace the ``yaml`` loader or add a loader as a new parser
-mode via the :func:`.set_loader` function. For example if you need a custom
-PyYAML loader it can be registered and used as follows:
+- Float scientific notation is supported, e.g. ``'1e-3'`` gives ``0.001``, while
+  default PyYAML gives the string ``'1e-3'``.
+- Dates are kept as strings, e.g. ``'2020-01-01'``, while default PyYAML gives a
+  ``datetime.date``.
+- Text that looks like a mapping only because of the syntax is kept as a string,
+  e.g. ``'{text}'`` and ``'name:'``, while default PyYAML gives ``{'text':
+  None}`` and ``{'name': None}``.
+
+The :func:`.set_loader` function replaces the ``yaml`` loader or adds a loader
+as a new parser mode. For example, a custom PyYAML loader is registered and used
+as:
 
 .. testcode::
 
@@ -1578,8 +1459,8 @@ PyYAML loader it can be registered and used as follows:
 
     parser = ArgumentParser(parser_mode="yaml_custom")
 
-When setting a loader based on a library different from PyYAML, the ``exceptions``
-that it raises when there are failures should be given to :func:`.set_loader`.
+When the loader is based on a library other than PyYAML, give the ``exceptions``
+that it raises on failure to :func:`.set_loader`.
 
 
 .. _classes-methods-functions:
@@ -1587,17 +1468,16 @@ that it raises when there are failures should be given to :func:`.set_loader`.
 Classes, methods and functions
 ==============================
 
-It is good practice to write Python code in which parameters have type hints and
-these are described in the docstrings. To make this well written code
-configurable, it wouldn't make sense to duplicate information of types and
-parameter descriptions. To avoid this duplication, jsonargparse includes methods
-to automatically add annotated parameters as arguments, see
-:meth:`add_function_arguments <.ArgumentParser.add_function_arguments>`,
-:meth:`add_method_arguments <.ArgumentParser.add_method_arguments>`,
-:meth:`add_class_arguments <.ArgumentParser.add_class_arguments>` and
-:meth:`add_subclass_arguments <.ArgumentParser.add_subclass_arguments>`.
+Well written Python code gives type hints to its parameters and describes them
+in the docstrings. Making such code configurable should not duplicate the types
+and the descriptions. To avoid this, jsonargparse adds annotated parameters as
+arguments automatically, see :meth:`add_function_arguments
+<.ArgumentParser.add_function_arguments>`, :meth:`add_method_arguments
+<.ArgumentParser.add_method_arguments>`, :meth:`add_class_arguments
+<.ArgumentParser.add_class_arguments>` and :meth:`add_subclass_arguments
+<.ArgumentParser.add_subclass_arguments>`.
 
-Take for example a class with its init and a method with docstrings as follows:
+Take for example a class with an init and a method with docstrings:
 
 .. testsetup:: class_method
 
@@ -1628,8 +1508,8 @@ Take for example a class with its init and a method with docstrings as follows:
             """
             ...
 
-Both ``MyClass`` and ``mymethod`` can easily be made configurable, the class
-initialized and the method executed as follows:
+Both ``MyClass`` and ``mymethod`` are made configurable, the class instantiated
+and the method run, as follows:
 
 .. testcode:: class_method
 
@@ -1645,28 +1525,24 @@ initialized and the method executed as follows:
 
 
 The :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>` call adds
-to the ``myclass.init`` key the ``items`` argument with description as in the
-docstring, sets it as required since it lacks a default value. When parsed, it
-is validated according to the type hint, i.e., a dict with values ints or list
-of ints. Also since the init has the ``**kwargs`` argument, the keyword
-arguments from ``MyBaseClass`` are also added to the parser. Similarly, the
-:meth:`add_method_arguments <.ArgumentParser.add_method_arguments>` call adds to
-the ``myclass.method`` key, the arguments ``value`` as a required float and
-``flag`` as an optional boolean with default value false.
+``myclass.init.foo``, with the description from the docstring, and makes it
+required since it has no default. When parsed, it is validated against its type
+hint, i.e. a dict whose values are ints or lists of ints. Since the init has
+``**kwargs``, the keyword arguments of ``MyBaseClass`` are added too. Likewise,
+the :meth:`add_method_arguments <.ArgumentParser.add_method_arguments>` call
+adds ``myclass.method.bar`` as a required float and ``myclass.method.baz`` as an
+optional boolean with default false.
 
+Several classes added with :meth:`add_class_arguments
+<.ArgumentParser.add_class_arguments>` are instantiated at once with
+:meth:`instantiate <.ArgumentParser.instantiate>`. In the example above, ``cfg =
+parser.instantiate(cfg)`` makes ``cfg.myclass.init`` an instance of ``MyClass``,
+built from the parsed arguments.
 
-Instantiation of several classes added with :meth:`add_class_arguments
-<.ArgumentParser.add_class_arguments>` can be done more simply for an entire
-config object using :meth:`instantiate <.ArgumentParser.instantiate>`. For the
-example above running ``cfg = parser.instantiate(cfg)`` would result in
-``cfg.myclass.init`` containing an instance of ``MyClass`` initialized with
-whatever command line arguments were parsed.
-
-When parsing from a config file (see :ref:`configuration-files`) all the values
-can be given in a single config file. For convenience it is also possible that
-the values for each of the argument groups created by the calls to add
-signatures methods can be parsed from independent files. This means that for the
-example above there could be one general config file with contents:
+All values can be given in a single config file (see
+:ref:`configuration-files`). For convenience, the values of each argument group
+created by an add signature method can also come from its own file. For the
+example above, a general config file could be:
 
 .. code-block:: yaml
 
@@ -1674,40 +1550,44 @@ example above there could be one general config file with contents:
       init: myclass.yaml
       method: mymethod.yaml
 
-Then the files ``myclass.yaml`` and ``mymethod.yaml`` would include the settings
-for the instantiation of the class and the call to the method respectively.
+Then ``myclass.yaml`` and ``mymethod.yaml`` hold the settings for the class
+instantiation and for the method call.
 
-A wide range of type hints are supported for the signature parameters. For exact
-details go to section :ref:`type-hints`. Some notes about the add signature
-methods are:
+A wide range of type hints is supported for signature parameters, see
+:ref:`type-hints`. Notes about the add signature methods:
 
-- All positional only parameters must have a type, otherwise the add arguments
-  functions raise an exception.
+- With the default ``fail_untyped=True``, all required parameters must have a
+  type, otherwise an exception is raised. Positional-only parameters are always
+  required.
 
-- Keyword parameters are ignored if they don't have at least one type that is
-  supported.
+- A parameter that has a default but no type annotation is added with type
+  ``Union[<type of the default>, Any]``, so any value is accepted. With
+  ``fail_untyped=False``, a required parameter without a type gets type ``Any``.
 
-- Parameters whose name starts with ``_`` are considered internal and ignored.
+- A parameter whose type can only be validated in part is added with the
+  remaining parts replaced by a type that accepts any value, see
+  :ref:`unvalidated-types`.
 
-- The signature methods have a ``skip`` parameter which can be used to exclude
-  adding some arguments, e.g. ``parser.add_method_arguments(MyClass, 'mymethod',
-  skip={'flag'})``.
+- Parameters whose name starts with ``_`` are considered internal and skipped,
+  unless they are required.
+
+- The ``skip`` parameter excludes arguments, e.g.
+  ``parser.add_method_arguments(MyClass, 'mymethod', skip={'baz'})``.
 
 .. note::
 
-    The signatures support is intended to be non-intrusive. It is by design that
-    there is no need to inherit from a class, add decorators, or use special
-    type hints and default values. This has several advantages. For example it
-    is possible to use classes from third party libraries which is not possible
-    for developers to modify.
+    The signatures support is intended to be non-intrusive. By design there is
+    no need to inherit from a class, add decorators, or use special type hints
+    and default values. Among other advantages, this makes it possible to use
+    classes from third party libraries, which developers can't modify.
 
 From config mixin
 -----------------
 
-For classes that should support direct instantiation from configuration values,
-:class:`.FromConfigMixin` adds a ``from_config`` class method. It can be useful
-for small utilities that need to load constructor values from a dictionary or a
-configuration file in one call.
+:class:`.FromConfigMixin` adds a ``from_config`` class method, so that a class
+can be instantiated directly from configuration values. It is useful for small
+utilities that load constructor values from a dictionary or a config file in a
+single call.
 
 .. doctest::
 
@@ -1720,22 +1600,18 @@ configuration file in one call.
     >>> (client.host, client.port)
     ('api.local', 8080)
 
-For details on all supported behavior, see :class:`.FromConfigMixin` in the API
-reference.
+See :class:`.FromConfigMixin` in the API reference for the complete behavior.
 
 Docstring parsing
 -----------------
 
-To get parameter docstrings in the parser help, the `docstring-parser
-<https://pypi.org/project/docstring-parser/>`__ package is required. This
-package is included when installing jsonargparse with the ``signatures`` extra
-as explained in section :ref:`installation`.
+Parameter descriptions in the help require the `docstring-parser
+<https://pypi.org/project/docstring-parser/>`__ package, which is included in
+the ``signatures`` extra, see :ref:`installation`.
 
-A couple of options can be configured, both related to docstring parsing speed.
-By default docstrings are parsed used with
-``docstring_parser.DocstringStyle.AUTO``, which means that it is attempted to
-parse docstrings with all supported styles. If the relevant codebase uses a
-single style, this is inefficient. A single style can be configured as follows:
+Two options can be configured, both related to parsing speed. By default the
+style is ``docstring_parser.DocstringStyle.AUTO``, which tries all supported
+styles. If the codebase uses a single style, setting it is faster:
 
 .. testcode:: docstrings
 
@@ -1744,11 +1620,10 @@ single style, this is inefficient. A single style can be configured as follows:
 
     set_parsing_settings(docstring_parse_style=DocstringStyle.REST)
 
-The second option that can be configured is the support for `attribute
-docstrings <https://peps.python.org/pep-0257/#what-is-a-docstring>`__ (i.e.
-literal strings in the line after an attribute is defined). By default this
-feature is disabled and enabling it makes the parsing slower even for classes
-that don't have attribute docstrings. To enable this, do as follows:
+The second option is support for `attribute docstrings
+<https://peps.python.org/pep-0257/#what-is-a-docstring>`__, i.e. literal strings
+in the line after an attribute is defined. It is disabled by default, because
+enabling it makes parsing slower even for classes that have none:
 
 .. testcode:: docstrings
 
@@ -1767,14 +1642,13 @@ that don't have attribute docstrings. To enable this, do as follows:
         prize: int = 100
         """Amount won."""
 
-Docstrings are searched for in the entire class inheritance chain. Thus,
-parameters and attributes that a class inherits are documented in the help by
-the base class that declares them, and the description of a group is taken from
-the nearest class in the method resolution order that has a docstring. Base
-classes that only provide machinery, i.e. ``object``, ``abc.ABC``,
-``typing.Generic``, ``enum.Enum``, ``pydantic.BaseModel`` and the like, are
-skipped, since their docstrings describe themselves instead of the class being
-added to the parser.
+Docstrings are searched in the entire class inheritance chain. So inherited
+parameters and attributes are documented in the help by the base class that
+declares them, and the description of a group comes from the nearest class in
+the method resolution order that has a docstring. Base classes that only provide
+machinery, i.e. ``object``, ``abc.ABC``, ``typing.Generic``, ``enum.Enum``,
+``pydantic.BaseModel`` and the like, are skipped, since their docstrings
+describe themselves instead of the class being added to the parser.
 
 .. testcleanup:: docstrings
 
@@ -1784,17 +1658,15 @@ added to the parser.
 Customization of arguments
 --------------------------
 
-Since the arguments are added automatically based on the function signatures,
-the developer has limited control over their behavior. To customize some of the
-arguments, you can create a subclass and override the :meth:`add_argument
-<.ActionsContainer.add_argument>` method. For example, by default, ``bool``
-arguments require a ``true|false`` value from the command line. To change this
-behavior and use :class:`.ActionYesNo` instead, through a CLI based on
-:func:`.auto_cli`, you can:
+Arguments added automatically from signatures give the developer limited control
+over their behavior. To customize them, subclass the parser and override the
+:meth:`add_argument <.ActionsContainer.add_argument>` method. For example,
+``bool`` arguments need a ``true|false`` value on the command line. To use
+:class:`.ActionYesNo` instead, in a CLI based on :func:`.auto_cli`:
 
 .. testcode::
 
-    from jsonargparse import ArgumentParser, auto_cli
+    from jsonargparse import ActionYesNo, ArgumentParser, auto_cli
 
     class CustomArgumentParser(ArgumentParser):
         def add_argument(self, *args, **kwargs):
@@ -1812,9 +1684,9 @@ behavior and use :class:`.ActionYesNo` instead, through a CLI based on
 Classes from functions
 ----------------------
 
-In some cases there are functions which return an instance of a class. To add
-this to a parser such that :meth:`instantiate <.ArgumentParser.instantiate>`
-calls this function, the example above would change to:
+Some functions return an instance of a class. :func:`.class_from_function` turns
+such a function into a class that can be added to a parser, so that
+:meth:`instantiate <.ArgumentParser.instantiate>` calls the function:
 
 .. testsetup:: class_from_function
 
@@ -1836,8 +1708,8 @@ calls this function, the example above would change to:
 
 .. note::
 
-    :func:`.class_from_function` requires the input function to have a return
-    type annotation that must be the class type it returns.
+    :func:`.class_from_function` requires the function to have a return type
+    annotation, which must be the class that it returns.
 
 Classes created with :func:`.class_from_function` can be selected using
 ``class_path`` for :ref:`sub-classes`. For example, if
@@ -1847,31 +1719,28 @@ Classes created with :func:`.class_from_function` can be selected using
 
     class_from_function(instantiate_myclass, name="MyClass")
 
-Then the ``class_path`` for the created class would be ``my_module.MyClass``.
+Then the ``class_path`` of the created class is ``my_module.MyClass``.
 
 
 Parameter resolvers
 -------------------
 
-Three techniques are implemented for resolving signature parameters. One makes
-use of Python's `Abstract Syntax Trees (AST)
-<https://docs.python.org/3/library/ast.html>`__ library and the second is based
-on assumptions of class inheritance. The AST resolver is used first and only
-when AST fails, the assumptions resolver is run as fallback. The third resolver
-uses stub files ``*.pyi`` and is applied on top of both the AST and assumptions
-resolvers.
+There are three techniques for resolving signature parameters. The AST resolver,
+which uses Python's `Abstract Syntax Trees (AST)
+<https://docs.python.org/3/library/ast.html>`__ library, is tried first. The
+assumptions resolver, based on assumptions about class inheritance, is the
+fallback for when AST fails. The stubs resolver, which uses ``*.pyi`` stub
+files, is applied on top of both.
 
 Unresolved parameters
 ^^^^^^^^^^^^^^^^^^^^^
 
-The parameter resolvers make a best effort to determine the correct names and
-types that the parser should accept. However, there can be cases not yet
-supported or cases for which it would be impossible to support. To somewhat
-overcome these limitations, there is a special key ``dict_kwargs`` that can be
-used to provide arguments that will not be validated during parsing, but will be
-used for class instantiation. It is called ``dict_kwargs`` because there are use
-cases in which ``**kwargs`` is used just as a dict, thus it also serves that
-purpose.
+The resolvers make a best effort to find the correct names and types that the
+parser should accept. Some cases are not supported yet, and some would be
+impossible to support. For these there is the special ``dict_kwargs`` key, whose
+entries are not validated when parsing but are used for class instantiation. The
+name comes from the use cases in which ``**kwargs`` is only used as a dict, a
+purpose that it also serves.
 
 This section is about parameters whose *name* the resolvers can't determine. For
 parameters that are resolved but have a type that can't be validated, see
@@ -1913,33 +1782,30 @@ following could be a valid config file:
     dict_kwargs:
       bar: 2
 
-The value for ``bar`` will not be validated, but the class will be instantiated
-as ``MyClass(foo=1, bar=2)``.
+The value for ``bar`` is not validated, but the class is instantiated as
+``MyClass(foo=1, bar=2)``.
 
 Assumptions resolver
 ^^^^^^^^^^^^^^^^^^^^
 
-The assumptions resolver only considers classes. Whenever the ``__init__``
-method has ``*args`` and/or ``**kwargs``, the resolver assumes that these are
-directly forwarded to the next parent class, i.e. ``__init__`` includes a line
-like ``super().__init__(*args, **kwargs)``. Thus, it blindly collects the
-``__init__`` parameters of parent classes. The collected parameters will be
-incorrect if the code does not follow this pattern. This is why it is only used
-as fallback when the AST resolver fails.
+The assumptions resolver only considers classes. When ``__init__`` has ``*args``
+and/or ``**kwargs``, it assumes that these go directly to the parent class, i.e.
+that ``__init__`` has a line like ``super().__init__(*args, **kwargs)``, and
+blindly collects the ``__init__`` parameters of the parent classes. If the code
+does not follow this pattern, the collected parameters are wrong. This is why it
+is only a fallback for when the AST resolver fails.
 
 .. _ast-resolver:
 
 AST resolver
 ^^^^^^^^^^^^
 
-The AST resolver analyzes the source code and tries to figure out how the
-``*args`` and ``**kwargs`` are used to further find more accepted parameters.
-This type of resolving is limited to a few specific cases since there are
-endless possibilities for what code can do. The supported cases are illustrated
-below. Bear in mind that the code does not need to be exactly like this. The
-important detail is how ``*args`` and ``**kwargs`` are used, not other
-parameters, or the names of variables, or the complexity of the code that is
-unrelated to these variables.
+The AST resolver reads the source code and works out how ``*args`` and
+``**kwargs`` are used, so as to find more accepted parameters. Since code can do
+endless things, only a few specific cases are supported, illustrated below. The
+code does not need to look exactly like this. What matters is how ``*args`` and
+``**kwargs`` are used, not the other parameters, the names of the variables, or
+the complexity of unrelated code.
 
 .. testsetup:: ast_resolver
 
@@ -2064,21 +1930,18 @@ unrelated to these variables.
     # Lambda returning class instance: only keyword arguments with ``ast.Constant`` value
     class_instance: Callable[[type], BaseClass] = lambda a: ChildClass(a, param=2.3)
 
-There can be other parameters apart from ``*args`` and ``**kwargs``, thus in the
-cases above, the signatures can be for example like ``name(p1: int, k1: str =
-'a', **kws)``. Also when internally calling some function or instantiating a
-class, there can be additional parameters. For example in:
+There can be other parameters besides ``*args`` and ``**kwargs``, so the
+signatures above could be e.g. ``name(p1: int, k1: str = 'a', **kws)``. The
+internal call can also have extra parameters, for example:
 
 .. testcode::
 
     def calls_a_function(*args, **kwargs):
         a_function(*args, param=1, **kwargs)
 
-The ``param`` parameter would be excluded from the resolved parameters because
-it is internally hard coded.
+``param`` is excluded from the resolved parameters, because it is hard coded.
 
-A special case which is supported but with caveats, is multiple calls that use
-``**kwargs``. For example:
+Multiple calls that use ``**kwargs`` are supported, but with caveats:
 
 .. testcode:: ast_resolver
 
@@ -2090,42 +1953,33 @@ A special case which is supported but with caveats, is multiple calls that use
         else:
             third_function(**kwargs)
 
-The resolved parameters that have the same type hint and default across all
-calls are supported normally. When there is a discrepancy between the calls, the
-parameters behave differently and are shown in the help with the default like
+Parameters that have the same type hint and default in all calls behave
+normally. When the calls disagree, the help shows the default as
 ``Conditional<ast-resolver> {DEFAULT_1, ...}``. The main difference is that
 these parameters are not included in :meth:`get_defaults
-<.ArgumentParser.get_defaults>` or the output of ``--print_config``. This is
-necessary because the parser does not know which of the calls will be used at
-runtime, and adding them would cause :meth:`instantiate
-<.ArgumentParser.instantiate>` to fail due to unexpected keyword arguments.
+<.ArgumentParser.get_defaults>` or in the output of ``--print_config``. This is
+needed because the parser does not know which call will happen at runtime, and
+including them would make :meth:`instantiate <.ArgumentParser.instantiate>` fail
+with unexpected keyword arguments.
 
 .. note::
 
-    The parameter resolvers log messages of failures and unsupported cases. To
-    view these logs, set the environment variable ``JSONARGPARSE_DEBUG`` to
-    ``true``. The supported cases are limited and it is highly encouraged that
-    people create issues requesting the support for new ones. However, note
-    that when a case is highly convoluted it could be a symptom that the
-    respective code is in need of refactoring.
+    The resolvers log failures and unsupported cases. To see these logs, set the
+    environment variable ``JSONARGPARSE_DEBUG`` to ``true``. The supported cases
+    are limited, so please create issues asking for new ones. Note though that a
+    very convoluted case can be a sign that the code needs refactoring.
 
 .. _stubs-resolver:
 
 Stubs resolver
 ^^^^^^^^^^^^^^
 
-The stubs resolver makes use of the `typeshed-client
-<https://pypi.org/project/typeshed-client/>`__ package to identify parameters
-and their type hints from stub files ``*.pyi``. To enable this resolver, install
-jsonargparse with the ``signatures`` extra as explained in section
-:ref:`installation`.
+The stubs resolver uses the `typeshed-client
+<https://pypi.org/project/typeshed-client/>`__ package to find parameters and
+their type hints in stub files ``*.pyi``. To enable it, install jsonargparse
+with the ``signatures`` extra, see :ref:`installation`.
 
-Many of the types defined in stub files use the latest syntax for type hints,
-that is, bitwise or operator ``|`` for unions, see PEP `604
-<https://peps.python.org/pep-0604>`__. This syntax is fully supported.
-
-Most of the types in the Python standard library have their types in stubs. An
-example from the standard library would be:
+Most of the Python standard library has its types in stubs, for example:
 
 .. doctest:: stubs_resolver
 
@@ -2136,16 +1990,18 @@ example from the standard library would be:
     >>> parser.parse_args(["--uniform.a=0.7", "--uniform.b=3.4"])
     Namespace(uniform=Namespace(a=0.7, b=3.4))
 
-Without the stubs resolver, the :meth:`add_function_arguments
-<.ArgumentParser.add_function_arguments>` call requires the
-``fail_untyped=False`` option. This has the disadvantage that type ``Any`` is
-given to the ``a`` and ``b`` arguments, instead of ``float``. And this means
-that the parser would not fail if given an invalid value, for instance a string.
+Without the stubs resolver, that :meth:`add_function_arguments
+<.ArgumentParser.add_function_arguments>` call needs ``fail_untyped=False``, and
+then ``a`` and ``b`` get type ``Any`` instead of ``float``, so an invalid value
+such as a string would not fail.
 
-It is not possible to know the defaults of parameters discovered only because of
-the stubs. In these cases in the parser help the default is shown as
-``Unknown<stubs-resolver>`` and not included in :meth:`get_defaults
-<.ArgumentParser.get_defaults>` or the output of ``--print_config``.
+The defaults of parameters found only through stubs are not known. The help then
+shows the default as ``Unknown<stubs-resolver>``, and these parameters are not
+included in :meth:`get_defaults <.ArgumentParser.get_defaults>` or in the output
+of ``--print_config``.
+
+By default only ``*.pyi`` files are searched. To also search in ``*.py`` files,
+use ``set_parsing_settings(stubs_resolver_allow_py_files=True)``.
 
 .. _parameter-aliases:
 
@@ -2180,12 +2036,12 @@ When the framework only accepts the alias, e.g. the same model without
 ``populate_by_name``, the alias is the name used everywhere, since giving the
 attribute name would not instantiate the class as expected.
 
-Aliases are not supported for a parameter whose type is a subclasses-disabled
-type added as a group of arguments, since then the name is a prefix of several
-arguments instead of a single option string. In this case only the attribute
-name is accepted. Enabling subclasses for the type, see
+Aliases don't work for a parameter whose type is a subclasses-disabled type
+added as a group of arguments, since then the name is a prefix of several
+arguments instead of a single option string, so only the attribute name is
+accepted. Enabling subclasses for the type, see
 :ref:`enable-disable-subclasses`, makes it a single argument, and then its alias
-is accepted as well.
+is accepted too.
 
 
 .. _dependency-injection:
@@ -2193,20 +2049,18 @@ is accepted as well.
 Dependency injection
 ====================
 
-Dependency injection is a software design pattern that separates the
-instantiation details of objects from their usage, resulting in more loosely
-coupled programs, see the `wikipedia article
-<https://en.wikipedia.org/wiki/Dependency_injection>`__. Because of its
-benefits, support for dependency injection has been a design goal of
-jsonargparse.
+Dependency injection is a design pattern that separates how objects are created
+from how they are used, giving more loosely coupled programs, see the `wikipedia
+article <https://en.wikipedia.org/wiki/Dependency_injection>`__. Supporting it
+has been a design goal of jsonargparse.
 
-In Python, dependency injection is achieved by:
+In Python, dependency injection is done by:
 
 - Using as type hint a class, such that the parameter accepts an instance of
   this class or any subclass, e.g. ``module: ModuleBaseClass``.
 - Using as type hint a callable that returns an instance of a class, such that
-  the parameter accepts a function for instantiation. This could be either
-  using ``Callable``, e.g. ``module: Callable[[int], ModuleBaseClass]``, or a
+  the parameter accepts a function for instantiation. This could be either using
+  ``Callable``, e.g. ``module: Callable[[int], ModuleBaseClass]``, or a
   protocol, e.g. ``module: ModuleFactoryProtocol``.
 
 .. _sub-classes:
@@ -2214,29 +2068,25 @@ In Python, dependency injection is achieved by:
 Class type and subclasses
 -------------------------
 
-When a class is used as a type hint, jsonargparse expects in config files a
-dictionary with a ``class_path`` entry indicating the dot notation expression to
-import the class, and optionally some ``init_args`` that would be used to
-instantiate it. This dictionary is referred to as a **subclass spec**. When
-parsing, it will be checked that the class can be imported, that it is a subclass
-of the given type and that ``init_args`` values correspond to valid arguments to
-instantiate it. After parsing, the config object will include the ``class_path``
-and ``init_args`` entries. To get a config object with all nested subclasses
-instantiated, the :meth:`instantiate <.ArgumentParser.instantiate>` method is
-used.
+When a class is used as a type hint, the value is a dictionary with a
+``class_path`` entry, which is the dot notation expression to import the class,
+and optionally ``init_args`` to instantiate it. This dictionary is called a
+**subclass spec**. When parsing, it is checked that the class can be imported,
+that it is a subclass of the type, and that the ``init_args`` values are valid
+arguments to instantiate it. The parsed config keeps the ``class_path`` and
+``init_args`` entries. :meth:`instantiate <.ArgumentParser.instantiate>` gives a
+config object with all nested subclasses instantiated.
 
-In addition to using a class as type hint in signatures, for low level
-construction of parsers, there are also the methods :meth:`add_class_arguments
-<.ArgumentParser.add_class_arguments>` and :meth:`add_subclass_arguments
-<.ArgumentParser.add_subclass_arguments>`. These methods accept a ``skip``
-argument that can be used to exclude parameters within subclasses. This is done
-by giving its relative destination key, i.e. as ``param.init_args.subparam``. An
-individual argument can also be added using a class as type, i.e.
-``parser.add_argument("--module", type=ModuleBase)``.
+Besides using a class as type hint in a signature, parsers can be built with
+:meth:`add_class_arguments <.ArgumentParser.add_class_arguments>` and
+:meth:`add_subclass_arguments <.ArgumentParser.add_subclass_arguments>`. These
+accept a ``skip`` argument to exclude parameters inside subclasses, given as a
+relative destination key, i.e. ``param.init_args.subparam``. A single argument
+can also be added with a class as type, i.e. ``parser.add_argument("--module",
+type=ModuleBase)``.
 
-A simple example with a top-level class to instantiate, with a parameter that
-expects an injected class instance, would use a config file
-``config.yaml`` as:
+A simple example, with a top-level class whose parameter expects an injected
+class instance, uses a config file ``config.yaml`` as:
 
 .. code-block:: yaml
 
@@ -2285,14 +2135,12 @@ Then in Python:
     >>> cfg.myclass.calendar.getfirstweekday()
     1
 
-In this example the ``class_path`` points to the same class used for the type.
-But a subclass of ``Calendar`` with an extended set of init parameters would
-also work.
+Here the ``class_path`` points to the same class used as the type. A subclass of
+``Calendar``, with more init parameters, would work as well.
 
-If the previous example were changed to use :meth:`add_subclass_arguments
-<.ArgumentParser.add_subclass_arguments>` instead of :meth:`add_class_arguments
-<.ArgumentParser.add_class_arguments>`, then subclasses ``MyClass`` would also
-be accepted. In this case the config would be like:
+Using :meth:`add_subclass_arguments <.ArgumentParser.add_subclass_arguments>`
+instead of :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>`
+would also accept subclasses of ``MyClass``, and the config would be:
 
 .. code-block:: yaml
 
@@ -2306,42 +2154,38 @@ be accepted. In this case the config would be like:
 
 .. note::
 
-    Classes will be parsed and instantiated when given as value a dict with
-    ``class_path`` and ``init_args`` if the corresponding parameter has type
-    ``Any`` or ``object``, or when ``fail_untyped=False`` which defaults to type
-    ``Any``.
+    A parameter of type ``Any`` or ``object``, which is also what
+    ``fail_untyped=False`` gives, accepts a dict with ``class_path`` and
+    ``init_args``, and the class is parsed and instantiated.
 
-    The instantiation of these values is deprecated. From v5.0.0 the subclass
-    spec will be kept as is, so that the code that receives it decides whether
-    to instantiate it. Set ``instantiate_subclass_spec_in_any=False`` in
-    :func:`.set_parsing_settings` to get this behavior now and silence the
-    deprecation warning. Setting it to ``True`` keeps the instantiation, but it
-    is discouraged since it means that a config is able to instantiate any
-    class, which can be a security risk.
+    This instantiation is deprecated. From v5.0.0 the subclass spec is kept as
+    is, so that the code receiving it decides whether to instantiate it. Set
+    ``instantiate_subclass_spec_in_any=False`` in :func:`.set_parsing_settings`
+    to get this behavior now and silence the deprecation warning. Setting it to
+    ``True`` keeps the instantiation, but is discouraged, since it means that a
+    config can instantiate any class, which is a security risk.
 
-    If a value looks like a subclass spec (has a ``class_path``) but cannot be
-    parsed as one, e.g. because the class fails to import, by default it is left
-    unchanged and a debug message is logged. Set
+    A value that looks like a subclass spec, i.e. has a ``class_path``, but
+    can't be parsed as one, e.g. because the class fails to import, is by
+    default left unchanged and a debug message is logged. Set
     ``validate_subclass_spec_in_any=True`` in :func:`.set_parsing_settings` to
-    make the parsing fail instead. Apart from ``Any``, ``object`` and
+    make parsing fail instead. Besides ``Any``, ``object`` and
     ``Unvalidated<...>``, this also applies to dicts that don't validate their
-    values, e.g.
-    ``dict[str, Any]``. For dicts the spec is only validated, since the value is
-    kept as a dict, which matters for unions such as ``Union[SomeClass,
+    values, e.g. ``dict[str, Any]``. For dicts the spec is only validated, since
+    the value stays a dict. This matters for unions such as ``Union[SomeClass,
     dict[str, Any]]``, where a spec rejected by the class member would otherwise
     be silently swallowed by the dict member.
 
 .. note::
 
-    It is also possible to provide to ``class_path`` a function that has as
-    return type a class. The accepted ``init_args`` would be the parameters of
-    that function.
+    ``class_path`` also accepts a function whose return type is a class. The
+    accepted ``init_args`` are then the parameters of that function.
 
 .. note::
 
     Abstract classes, i.e. classes that have abstract methods, are not accepted
-    as ``class_path`` value, since they can't be instantiated. For the same
-    reason they are not included in the known subclasses shown in the help.
+    as ``class_path``, since they can't be instantiated. For the same reason
+    they are not among the known subclasses shown in the help.
 
 
 .. _untrusted-configs:
@@ -2351,9 +2195,9 @@ Untrusted configs
 
 Resolving a ``class_path`` imports the named module and instantiates the named
 class with the given ``init_args``, so a config decides what code runs. When the
-configs come from a trusted source, e.g. the same repository as the code, this
-is not a concern. When they don't, e.g. a config uploaded by a user of a
-service, an import path denylist limits what a config can reach.
+configs come from a trusted source, this is not a concern. When they don't, e.g.
+a config uploaded by a user of a service, an import path denylist limits what a
+config can reach.
 
 Import paths that come from a value, i.e. a ``class_path``, a ``Callable``, a
 ``type[...]`` or a ``types.ModuleType`` given in a config file, the command line
@@ -2454,15 +2298,14 @@ Sub-config files
 ----------------
 
 Instead of writing a subclass spec inline, a path to a config file that holds it
-can be given. This makes it possible to split a large config into smaller
-reusable files. It requires that the argument was added with
-``sub_configs=True``, which is the default in :func:`.auto_cli` and is accepted
-by :meth:`add_argument <.ArgumentParser.add_argument>` and the
-``add_*_arguments`` methods.
+can be given. This splits a large config into smaller reusable files. It
+requires the argument to be added with ``sub_configs=True``, which is the
+default in :func:`.auto_cli` and is accepted by :meth:`add_argument
+<.ArgumentParser.add_argument>` and the ``add_*_arguments`` methods.
 
 This also works for the items of a list of classes and for the values of a dict
-of classes, which is useful when each component is defined in its own config
-file. For example, take the following classes:
+of classes, useful when each component has its own config file. For example,
+take the following classes:
 
 .. testcode:: sub_config_files
 
@@ -2550,18 +2393,16 @@ checkpoint_hook.yaml]``, or appending one item at a time as explained in
 --hooks+=checkpoint_hook.yaml``.
 
 Relative paths inside a sub-config file are resolved with respect to the
-directory of that sub-config file, such that a group of config files can be
-moved around without needing to modify them. Furthermore, :meth:`save
-<.ArgumentParser.save>` with ``multifile=True`` writes back each sub-config to
-its own file, preserving the original structure.
+directory of that file, so a group of config files can be moved around without
+being modified. :meth:`save <.ArgumentParser.save>` with ``multifile=True``
+writes each sub-config back to its own file, keeping the original structure.
 
-Dataclass-like types, see :ref:`subclasses-disabled`, also accept a sub-config
-file, the difference being that its content are the fields of the type, without
-``class_path`` and ``init_args``. Note that this only applies when the type is
-not added as an argument group, i.e. when it is part of a larger type, e.g.
-``Optional[SomeDataclass]`` or ``list[SomeDataclass]``. When added as a group,
-the group's own config argument accepts the path, e.g. ``--data=data.yaml``,
-independent of ``sub_configs``.
+:ref:`subclasses-disabled` types also accept a sub-config file, whose content is
+the fields of the type, without ``class_path`` and ``init_args``. This only
+applies when the type is not added as an argument group, i.e. when it is part of
+a larger type, e.g. ``Optional[SomeDataclass]`` or ``list[SomeDataclass]``. When
+added as a group, the group's own config argument accepts the path, e.g.
+``--data=data.yaml``, independent of ``sub_configs``.
 
 
 .. _instance-factories:
@@ -2569,15 +2410,13 @@ independent of ``sub_configs``.
 Instance factories
 ------------------
 
-As explained at the beginning of section :ref:`dependency-injection`, callables
-that return instances of classes, referred to as instance factories, represent
-an alternative approach to dependency injection. This is useful to support
-dependency injection of classes that require parameters that are only available
-after injection. For this case, when :meth:`instantiate
-<.ArgumentParser.instantiate>` is run, a partial function is provided, which
-might accept parameters and return the instance of the class. Two options are
-possible: using ``Callable`` or ``Protocol``. To illustrate the ``Callable``
-option, take for example the classes:
+As mentioned in :ref:`dependency-injection`, callables that return instances of
+classes, called instance factories, are the other way of doing dependency
+injection. They are useful for classes that need parameters which are only
+available after injection. In this case :meth:`instantiate
+<.ArgumentParser.instantiate>` gives a partial function, which takes those
+parameters and returns the instance. There are two options, ``Callable`` and
+``Protocol``. For the ``Callable`` option, take the classes:
 
 .. testcode:: callable
 
@@ -2596,7 +2435,7 @@ option, take for example the classes:
 
     doctest_mock_class_in_main(SGD)
 
-A possible parser and callable behavior would be:
+A parser and its behavior could be:
 
 .. doctest:: callable
 
@@ -2620,12 +2459,11 @@ A possible parser and callable behavior would be:
 
 .. note::
 
-    When the ``Callable`` has a class return type, it is possible to specify the
-    ``class_path`` giving only its name if imported before parsing, as explained
-    in :ref:`sub-classes-command-line`.
+    When the ``Callable`` returns a class, the ``class_path`` can be given as
+    just the class name, if the class was imported before parsing, see
+    :ref:`sub-classes-command-line`.
 
-If the same type above is used as type hint of a parameter of another class, a
-default can be set using a lambda, for example:
+When the same type above is used in a signature, a lambda can set the default:
 
 .. testcode:: callable
 
@@ -2636,7 +2474,7 @@ default can be set using a lambda, for example:
         ):
             self.optimizer = optimizer
 
-Then a parser and behavior could be:
+A parser then gives:
 
 .. code-block::
 
@@ -2649,29 +2487,25 @@ Then a parser and behavior could be:
     >>> optimizer.params, optimizer.lr
     ([1, 2, 3], 0.05)
 
-See :ref:`ast-resolver` for limitations of lambda defaults in signatures.
-Providing a lambda default to :meth:`add_argument
-<.ActionsContainer.add_argument>` does not work since there is no AST resolving.
-In this case, a dict with ``class_path`` and ``init_args`` can be used as
-default.
+See :ref:`ast-resolver` for the limitations of lambda defaults in signatures. A
+lambda default given to :meth:`add_argument <.ActionsContainer.add_argument>`
+does not work, since there is no AST resolving. Use a dict with ``class_path``
+and ``init_args`` as default instead.
 
-Multiple arguments required after injection is also supported and can be
-specified the same way with a ``Callable``. For example, for two
-``Iterable`` arguments, you can use the syntax: ``Callable[[Iterable,
-Iterable], Type]``. Similarly, for a callable that accepts zero
-arguments, the syntax would be ``Callable[[], Type]``.
+Several arguments after injection work the same way, e.g. ``Callable[[Iterable,
+Iterable], Type]`` for two ``Iterable`` arguments, and ``Callable[[], Type]``
+for none.
 
-Note the big limitation that ``Callable`` has. It is only possible to specify
-positional and unnamed parameters. To overcome this limitation, the second
-option, a callable ``Protocol`` can be used instead. Building up from the same
-example, an ``OptimizerFactory`` protocol can be defined as:
+``Callable`` has an important limitation: its parameters are positional and
+unnamed. The second option, a callable ``Protocol``, avoids this. For the same
+example:
 
 .. testcode:: callable
 
     class OptimizerFactory(Protocol):
         def __call__(self, params: Iterable) -> Optimizer: ...
 
-Then a parser and protocol behavior would be:
+A parser using it behaves as:
 
 .. testcode:: callable
     :hide:
@@ -2696,18 +2530,17 @@ Then a parser and protocol behavior would be:
     >>> optimizer.params, optimizer.lr
     ([6, 5], 0.02)
 
-The key difference with respect to the ``Callable`` is being able to call
-``init.optimizer()`` with keyword arguments ``params=[6, 5]``.
+The difference is that ``init.optimizer()`` can now be called with keyword
+arguments, i.e. ``params=[6, 5]``.
 
 .. _sub-classes-command-line:
 
 Command line
 ------------
 
-The help of the parser does not show accepted parameters of a class since this
-depends on the chosen subclass. To get details for a particular subclass there
-is a help option that receives the import path. Take for example a parser
-defined as:
+The help does not show the parameters of a class, since these depend on the
+chosen subclass. A help option that takes an import path gives them. For a
+parser defined as:
 
 .. testcode::
 
@@ -2717,14 +2550,13 @@ defined as:
     parser = ArgumentParser()
     parser.add_argument("--calendar", type=Calendar)
 
-The help for a corresponding subclass could be printed as:
+the help of a subclass is printed with:
 
 .. code-block:: bash
 
     python tool.py --calendar.help calendar.TextCalendar
 
-In the command line, a subclass can be specified through multiple command line
-arguments:
+A subclass can be given through several command line arguments:
 
 .. code-block:: bash
 
@@ -2732,18 +2564,17 @@ arguments:
       --calendar.class_path calendar.TextCalendar \
       --calendar.init_args.firstweekday 1
 
-For convenience, the arguments can be somewhat shorter by omitting
-``.class_path`` and ``.init_args`` and only specifying the name of the subclass
-instead of the full import path.
+For convenience, ``.class_path`` and ``.init_args`` can be omitted, and the
+subclass can be named instead of giving its full import path:
 
 .. code-block:: bash
 
     python tool.py --calendar TextCalendar --calendar.firstweekday 1
 
-Specifying the name of the subclass works for subclasses in modules that have
-been imported before parsing. Abstract classes and private classes (module or
-name starting with ``'_'``) are not considered. All the subclasses resolvable by
-its name can be seen in the general help ``python tool.py --help``.
+Naming the subclass works for subclasses in modules that were imported before
+parsing. Abstract classes and private classes (module or name starting with
+``'_'``) are not considered. The general help, ``python tool.py --help``, lists
+all the subclasses that can be given by name.
 
 When the base class is not abstract, the ``class_path`` can be omitted, by
 giving directly ``init_args``, for example:
@@ -2758,16 +2589,14 @@ would implicitly use ``calendar.Calendar`` as the class path.
 Default values
 --------------
 
-For a parameter that has a class as type, it might also be wanted to set a
-default value for it. Special care must be taken when doing this, could be
-considered bad practice and be a good idea to avoid in most cases. The issue is
-that classes are normally mutable. Depending on how the parameter value is used,
-its default class instance in the signature could be changed. This goes against
-what a default value is expected to be and lead to bugs which are difficult to
-debug.
+A parameter that has a class as type can also have a default value. Take care
+with this: it can be considered bad practice and is best avoided in most cases.
+The problem is that classes are normally mutable, so depending on how the value
+is used, the default instance in the signature can end up modified. That is not
+what a default value should be, and leads to bugs that are hard to debug.
 
-Since there are some legitimate use cases for class instances in defaults, they
-are supported with a particular behavior and recommendations. An example is:
+Since there are legitimate use cases, class instances in defaults are supported
+with a particular behavior. An example is:
 
 .. testcode:: instance_default
 
@@ -2778,17 +2607,15 @@ are supported with a particular behavior and recommendations. An example is:
         ):
             self.calendar = calendar
 
-Adding this class to a parser will work without issues. The :ref:`ast-resolver`
-in limited cases determines how to instantiate the original default. The parsing
-methods would provide a dict with ``class_path`` and ``init_args`` instead of
-the class instance. Furthermore, if :meth:`instantiate
-<.ArgumentParser.instantiate>` is used, a new instance of the class is created,
-thereby avoiding issues related to the mutability of the default.
+Adding this class to a parser works without issues. In limited cases the
+:ref:`ast-resolver` figures out how the original default was instantiated, and
+then the parse methods give a dict with ``class_path`` and ``init_args`` instead
+of the instance. :meth:`instantiate <.ArgumentParser.instantiate>` creates a new
+instance, which avoids the mutability problem.
 
-Since the :ref:`ast-resolver` only supports limited cases, or when the source
-code is not available, a second approach is to use the special function
-:func:`.lazy_instance` to instantiate the default. Continuing with the same
-example above, this would be:
+When the :ref:`ast-resolver` does not support the case, or the source code is
+not available, the second approach is to instantiate the default with the
+:func:`.lazy_instance` function:
 
 .. testcode:: instance_default
 
@@ -2802,23 +2629,21 @@ example above, this would be:
         ):
             self.calendar = calendar
 
-Like this, the parsed default will be a dict with ``class_path`` and
-``init_args``, again avoiding the risk of mutability.
+The parsed default is then again a dict with ``class_path`` and ``init_args``,
+avoiding the mutability risk.
 
-The use of :func:`.lazy_instance` is somewhat discouraged. A function that
-delays the initialization of instances, and works for all possible cases out
-there, is challenging. The current implementation is known to have some
-problems. Instead of using :func:`.lazy_instance`, you could consider switching
-to :ref:`instance-factories`.
+:func:`.lazy_instance` is somewhat discouraged. Delaying the initialization of
+instances in a way that works in general is hard, and the current implementation
+is known to have some problems. Consider using :ref:`instance-factories`
+instead.
 
 .. note::
 
-    In Python there can be some classes or functions for which it is not
-    possible to determine its import path from the object alone. When using one
-    of these as a default would cause a failure when serializing because what
-    gets saved in the config file is the import path. To overcome this problem
-    use the :func:`.register_unresolvable_import_paths` function giving it the
-    module from where the respective object can be imported.
+    For some classes and functions the import path can't be determined from the
+    object alone. Using one of these as a default fails when serializing, since
+    what gets saved in the config file is the import path. To solve this, give
+    the module from which the object can be imported to
+    :func:`.register_unresolvable_import_paths`.
 
 
 .. _subclasses-disabled:
@@ -2826,13 +2651,11 @@ to :ref:`instance-factories`.
 Class types with subclasses disabled
 ------------------------------------
 
-In certain situations, it is preferable to use a class as a type hint with no
-intention to receive subclasses. From a parser perspective, this means that
-providing a subclass is not permitted, and when serializing, the instantiation
-arguments are stored directly, without including ``class_path`` and
-``init_args``. The standard Python approach for this scenario is to decorate
-classes with :func:`.final`, which explicitly indicates that subclassing is not
-intended. A parsing example would be:
+Sometimes a class is used as a type hint with no intention of accepting
+subclasses. For the parser this means that a subclass is not allowed, and that
+serializing stores the init arguments directly, without ``class_path`` and
+``init_args``. The standard Python way to express this is the :func:`.final`
+decorator. For example:
 
 .. testcode:: final_classes
 
@@ -2858,30 +2681,28 @@ for which a dump would give as output:
       number: 8
       accepted: true
 
-In some cases, subclasses are not intended, but the :func:`.final` decorator is
-not applied. For example, having ``class_path`` for a simple ``x, y``
-coordinates dataclass would be unnecessarily cumbersome. For this reason,
-``jsonargparse`` early on, implemented the same behavior for pure (not mixed
-with normal classes) ``dataclasses``, attrs' ``define``, pydantic's
-``dataclass``, and pydantic's ``BaseModel`` classes.  However, since these
-classes technically support subclassing, subclass support can be enabled as
-described below. Subclass support has been kept disabled for these types by
-default to avoid introducing breaking changes.
+Sometimes subclasses are not intended but the :func:`.final` decorator is not
+used. For example, requiring a ``class_path`` for a simple ``x, y`` coordinates
+dataclass would be needlessly cumbersome. For this reason jsonargparse early on
+gave the same behavior to pure ``dataclasses`` (not mixed with normal classes),
+attrs' ``define``, pydantic's ``dataclass`` and pydantic's ``BaseModel``. These
+classes do technically support subclassing, so subclass support can be enabled
+as described below. It is disabled by default to avoid breaking changes.
 
 A type with subclasses disabled is added as an argument group when it is the
-entire type of an argument, such that each of its init args is an individual
-argument, e.g. ``--data.number``. This is not the case when the type is part of
+entire type of an argument, so each of its init args becomes an individual
+argument, e.g. ``--data.number``. This does not happen when the type is part of
 a larger type, e.g. ``Optional[FinalClass]`` or ``list[FinalClass]``, since then
-a single argument must accept the entire value. Independent of this, the
-accepted values are the same. A subclass spec is accepted, though only with the
-``class_path`` of the type itself, i.e. ``--data={"class_path": "FinalClass",
-"init_args": {"number": 8}}``. The ``class_path`` of a subclass is not accepted,
-unless subclass support is enabled for the type as described next.
+a single argument must accept the whole value. Either way the accepted values
+are the same. A subclass spec is accepted, but only with the ``class_path`` of
+the type itself, i.e. ``--data={"class_path": "FinalClass", "init_args":
+{"number": 8}}``. The ``class_path`` of a subclass is not accepted, unless
+subclass support is enabled for the type as described next.
 
 Abstract dataclass-like types are an exception. A class that has abstract
-methods or that inherits from ``abc.ABC`` is not intended to be instantiated
-from its own fields, so for these types subclass support is enabled by default,
-i.e. only the ``class_path`` of an implementation is accepted.
+methods or that inherits from ``abc.ABC`` is not meant to be instantiated from
+its own fields, so for these types subclass support is enabled by default, i.e.
+only the ``class_path`` of an implementation is accepted.
 
 
 .. _enable-disable-subclasses:
@@ -2889,27 +2710,23 @@ i.e. only the ``class_path`` of an implementation is accepted.
 Enable/disable subclasses
 -------------------------
 
-The :func:`.set_parsing_settings` function provides the ``subclasses_disabled``
-and ``subclasses_enabled`` parameters, which, as their names suggest, control
-which class types support subclasses. The ``subclasses_disabled`` parameter
-accepts a list of class types and functions. When a type is provided, that type
-and its descendants will have subclass support disabled. Functions in the list
-should accept a type and return ``True`` if subclasses should be disabled for
-that type.
+The ``subclasses_disabled`` and ``subclasses_enabled`` parameters of
+:func:`.set_parsing_settings` control which class types support subclasses.
 
-The ``subclasses_enabled`` parameter accepts a list of class types and function
-names. When a type is provided, both the type and its descendants will have
-subclass support enabled. Types specified in ``subclasses_enabled`` take
-precedence over those in ``subclasses_disabled``. If a function name is given to
-``subclasses_enabled``, it must correspond to a function previously registered
-in ``subclasses_disabled``; in this case, the effect is to unregister it. By
-default, the following disabling functions are registered: ``is_pure_dataclass``,
-``is_pydantic_model``, ``is_attrs_class``, and ``is_final_class``. These
-functions are not applied to abstract classes, see above.
+``subclasses_disabled`` accepts a list of types and functions. A given type and
+its descendants have subclass support disabled. A function receives a type and
+returns ``True`` if subclasses should be disabled for it.
 
-Some examples. Since ``subclasses_enabled`` takes precedence, it is possible to
-keep subclass support disabled for dataclasses, but enable it for a specific
-dataclass as follows:
+``subclasses_enabled`` accepts a list of types and function names. A given type
+and its descendants have subclass support enabled, and take precedence over
+``subclasses_disabled``. A function name must be one previously registered in
+``subclasses_disabled``, and the effect is to unregister it. The disabling
+functions registered by default are ``is_pure_dataclass``,
+``is_pydantic_model``, ``is_attrs_class`` and ``is_final_class``. These are not
+applied to abstract classes, see above.
+
+Since ``subclasses_enabled`` takes precedence, subclass support can be kept
+disabled for dataclasses but enabled for a specific one:
 
 .. testsetup:: enable_disable_subclasses
 
@@ -2930,14 +2747,13 @@ dataclass as follows:
 
     set_parsing_settings(subclasses_enabled=[DataClassBaseType])
 
-To enable subclass support for all pydantic models, the following can be done:
+To enable subclass support for all pydantic models:
 
 .. testcode:: enable_disable_subclasses
 
     set_parsing_settings(subclasses_enabled=["is_pydantic_model"])
 
-To enable subclass support for all dataclasses, but have it disabled for a
-specific dataclass, the following can be done:
+To enable it for all dataclasses but disable it for a specific one:
 
 .. testcode:: enable_disable_subclasses
 
@@ -2948,10 +2764,9 @@ specific dataclass, the following can be done:
 
 .. note::
 
-    Enabling subclass support for types is currently experimental. While the
-    interface and behavior is expected to be stable, fundamental issues may
-    arise that require changes to the design, which could result in breaking
-    changes in future releases.
+    Enabling subclass support for types is experimental. The interface and
+    behavior are expected to be stable, but fundamental issues may still require
+    design changes, which could break things in future releases.
 
 
 .. _argument-linking:
@@ -2959,24 +2774,22 @@ specific dataclass, the following can be done:
 Argument linking
 ================
 
-Some use cases could require adding arguments from multiple classes and some
-parameters get a value automatically computed from other arguments. This
-behavior can be obtained by using the :meth:`link_arguments
-<.ArgumentParser.link_arguments>` parser method.
+Some use cases add arguments from several classes, where a parameter gets its
+value computed from other arguments. The :meth:`link_arguments
+<.ArgumentParser.link_arguments>` parser method does this.
 
-There are two types of links, defined with ``apply_on='parse'`` or
-``apply_on='instantiate'``. As the names suggest, the former are set when
-calling one of the parse methods and the latter are set when calling
-:meth:`instantiate <.ArgumentParser.instantiate>`.
+There are two types of links, ``apply_on='parse'`` and
+``apply_on='instantiate'``. As the names say, the first are applied by the parse
+methods and the second by :meth:`instantiate <.ArgumentParser.instantiate>`.
 
 Applied on parse
 ----------------
 
-For parsing links, source keys can be individual arguments or nested groups. The
-target key has to be a single argument. The keys can be inside ``init_args`` of
-a subclass. The compute function should accept as many positional arguments as
-there are sources and return a value of type compatible with the target. An
-example would be the following:
+For parse links, the source keys can be single arguments or nested groups, and
+the target key must be a single argument. Keys can be inside the ``init_args``
+of a subclass. The compute function takes as many positional arguments as there
+are sources, and returns a value of a type compatible with the target. For
+example:
 
 .. testcode::
 
@@ -2995,10 +2808,10 @@ example would be the following:
     parser.add_class_arguments(Data, "data")
     parser.link_arguments("data.batch_size", "model.batch_size", apply_on="parse")
 
-As argument and in config files only ``data.batch_size`` should be specified.
-Then whatever value it has will be propagated to ``model.batch_size``.
+Only ``data.batch_size`` is given, on the command line or in a config file, and
+its value is propagated to ``model.batch_size``.
 
-An example of a target being in a subclass is:
+An example with the target inside a subclass:
 
 .. testcode::
 
@@ -3018,21 +2831,21 @@ An example of a target being in a subclass is:
     parser.add_class_arguments(Trainer, "trainer")
     parser.link_arguments("trainer.save_dir", "trainer.logger.init_args.save_dir")
 
-The link gets applied to the ``logger`` parameter when it is a single subclass
-and applied to all elements of a list of subclasses. If a subclass does not
-define the targeted ``init_args`` parameter, the link is ignored.
+The link is applied to the ``logger`` parameter when it is a single subclass,
+and to all elements when it is a list of subclasses. If a subclass does not have
+the targeted ``init_args`` parameter, the link is ignored.
 
 Applied on instantiate
 ----------------------
 
-For instantiation links, sources can be class groups (added with
+For instantiate links, the sources can be class groups (added with
 :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>`) or subclass
-arguments (see :ref:`sub-classes`). The source key can be the entire
-instantiated object or an attribute of the object. The target key has to be a
-single argument and can be inside init_args of a subclass. The order of
-instantiation used by :meth:`instantiate <.ArgumentParser.instantiate>` is
-automatically determined based on the links. The set of all instantiation links
-must be a directed acyclic graph. An example would be the following:
+arguments (see :ref:`sub-classes`). The source key is the instantiated object
+itself or one of its attributes. The target key must be a single argument, and
+can be inside the ``init_args`` of a subclass. :meth:`instantiate
+<.ArgumentParser.instantiate>` determines the instantiation order from the
+links, so all instantiate links together must form a directed acyclic graph. For
+example:
 
 .. testcode::
 
@@ -3051,9 +2864,8 @@ must be a directed acyclic graph. An example would be the following:
     parser.add_class_arguments(Data, "data")
     parser.link_arguments("data.num_classes", "model.num_classes", apply_on="instantiate")
 
-This link would imply that :meth:`instantiate <.ArgumentParser.instantiate>`
-instantiates ``Data`` first, then use the ``num_classes`` attribute to
-instantiate ``Model``.
+This link makes :meth:`instantiate <.ArgumentParser.instantiate>` build ``Data``
+first, and then use its ``num_classes`` attribute to build ``Model``.
 
 
 .. _omegaconf-interpolation:
@@ -3061,13 +2873,12 @@ instantiate ``Model``.
 OmegaConf variable interpolation
 ================================
 
-One of the possible reasons to add a parser mode (see :ref:`custom-loaders`) can
-be to have support for variable interpolation in YAML files. Any library could
-be used to implement a loader and configure a mode for it. Without needing to
-implement a loader function, an ``omegaconf`` parser mode is available out of
-the box when this package is installed.
+One reason to add a parser mode (see :ref:`custom-loaders`) is to support
+variable interpolation. Any library can be used for this. Without writing a
+loader, an ``omegaconf`` parser mode is available out of the box when the
+omegaconf package is installed.
 
-Take for example a YAML file as:
+For example, a YAML file:
 
 .. code-block:: yaml
 
@@ -3097,7 +2908,7 @@ Take for example a YAML file as:
     os.chdir(cwd)
     shutil.rmtree(tmpdir)
 
-This YAML could be parsed as follows:
+It is parsed as:
 
 .. doctest:: omegaconf
 
@@ -3123,27 +2934,25 @@ This YAML could be parsed as follows:
 
 .. note::
 
-    The ``parser_mode="omegaconf"`` provides support for `OmegaConf's resolvers
+    ``parser_mode="omegaconf"`` supports `OmegaConf's resolvers
     <https://omegaconf.readthedocs.io/en/latest/usage.html#variable-interpolation>`__
-    in a single YAML file. It is not possible to do interpolation across
-    multiple YAML files or in an isolated individual command line argument.
+    within a single YAML file. Interpolation across several YAML files, or in a
+    single command line argument, is not possible.
 
 Experimental ``omegaconf+`` mode
 --------------------------------
 
-An experimental ``omegaconf+`` parser mode is available, which addresses the
-limitations of the ``omegaconf`` mode mentioned earlier. Instead of applying
-OmegaConf resolvers to each YAML config individually, the resolving is performed
-once at the end of the parsing process. As a result, in nested subconfigs,
-references to nodes must be either relative or parser-level absolute to function
-correctly. Alternatively, you can
-``set_parsing_settings(omegaconf_absolute_to_relative_paths=True)`` to enable
-automatic conversion of absolute paths to relative ones during parsing. Be aware
-that this automatic conversion does not work for every possible case.
+The experimental ``omegaconf+`` parser mode removes the limitations above.
+Instead of resolving each YAML config on its own, resolving happens once at the
+end of parsing. As a result, in nested subconfigs, node references must be
+relative or absolute at the parser level. Alternatively,
+``set_parsing_settings(omegaconf_absolute_to_relative_paths=True)`` converts
+absolute paths to relative ones while parsing, though this does not work in
+every case.
 
-Based on community feedback, this mode may become the default ``omegaconf`` mode
-in version 5.0.0. This change would introduce a breaking modification, as
-absolute node references would no longer work in nested subconfigs.
+Depending on community feedback, this mode may become the default ``omegaconf``
+mode eventually. That would be a breaking change, since absolute node references
+would no longer work in nested subconfigs.
 
 
 .. _environment-variables:
@@ -3151,21 +2960,19 @@ absolute node references would no longer work in nested subconfigs.
 Environment variables
 =====================
 
-jsonargparse parsers can also get values from environment variables. The
-parser checks existing environment variables whose name is of the form
-``[PREFIX_][LEV__]*OPT``, that is, all in upper case, first a prefix (set by
-``env_prefix``, or if unset the ``prog`` without extension or none if set to False)
-followed by underscore and then the argument name replacing dots with two underscores.
-Using the parser from the :ref:`nested-namespaces` section above, in your shell you
-would set the environment variables as:
+Parsers can also get values from environment variables. The name of a variable
+is ``[PREFIX_][LEV__]*OPT``: all upper case, a prefix, an underscore, and then
+the argument name with each dot replaced by two underscores. The prefix is
+``env_prefix``, or the ``prog`` without extension when ``env_prefix`` is unset,
+or none when it is ``False``. For the parser from :ref:`nested-namespaces`, the
+shell variables are:
 
 .. code-block:: bash
 
     export APP_LEV1__OPT1='from env 1'
     export APP_LEV1__OPT2='from env 2'
 
-Then in Python the parser would use these variables, unless overridden by the
-command line arguments, that is:
+The parser then uses these variables, unless the command line overrides them:
 
 .. testsetup:: env
 
@@ -3183,18 +2990,16 @@ command line arguments, that is:
     >>> cfg.lev1.opt2
     'from env 2'
 
-Note that when creating the parser, ``default_env=True`` was given. By default
-:meth:`parse_args <.ArgumentParser.parse_args>` does not parse environment
-variables. If ``default_env`` is left unset, environment variable parsing can
-also be enabled by setting in your shell ``JSONARGPARSE_DEFAULT_ENV=true``.
+Note the ``default_env=True`` given to the parser. By default :meth:`parse_args
+<.ArgumentParser.parse_args>` does not parse environment variables. If
+``default_env`` is left unset, they can also be enabled by setting
+``JSONARGPARSE_DEFAULT_ENV=true`` in the shell.
 
-There is also the :meth:`parse_env <.ArgumentParser.parse_env>` function to only
-parse environment variables, which might be useful for some use cases in which
-there is no command line call involved.
+The :meth:`parse_env <.ArgumentParser.parse_env>` method parses only environment
+variables, useful when there is no command line call.
 
-If a parser includes an ``action="config"`` argument, then the environment
-variable for this config file will be parsed before all the other environment
-variables.
+If the parser has an ``action="config"`` argument, its environment variable is
+parsed before all the others.
 
 
 .. _sub-commands:
@@ -3202,19 +3007,16 @@ variables.
 Subcommands
 ===========
 
-Subcommands provide a modular approach to defining parsers, similar to the
-concept of `subcommands
-<https://docs.python.org/3/library/argparse.html#subcommands>`__ in argparse.
-However, in jsonargparse, subcommands behave somewhat differently; refer to
-:ref:`argparse-deviations` for further details.
+Subcommands are a modular way of defining parsers, like `subcommands
+<https://docs.python.org/3/library/argparse.html#subcommands>`__ in argparse. In
+jsonargparse they behave somewhat differently, see :ref:`argparse-deviations`.
 
-To incorporate subcommands into a parser, use the :meth:`add_subcommands
-<.ArgumentParser.add_subcommands>` method. You can then add an existing parser
-as a subcommand via :meth:`add_subcommand <.ActionSubCommands.add_subcommand>`.
-In the resulting parsed namespace, the selected subcommand is stored under the
-``subcommand`` key (or the key specified by ``dest``), and the arguments for the
-subcommand are nested under a key matching the subcommand's name. The following
-example demonstrates how to define a parser with subcommands:
+Add subcommands to a parser with :meth:`add_subcommands
+<.ArgumentParser.add_subcommands>`, and then add an existing parser as a
+subcommand with :meth:`add_subcommand <.ActionSubCommands.add_subcommand>`. In
+the parsed namespace, the chosen subcommand is under the ``subcommand`` key (or
+the key given by ``dest``), and its arguments are nested under a key with the
+subcommand's name. For example:
 
 .. testcode::
 
@@ -3233,7 +3035,7 @@ example demonstrates how to define a parser with subcommands:
     subcommands.add_subcommand("subcomm1", parser_subcomm1)
     subcommands.add_subcommand("subcomm2", parser_subcomm2)
 
-Then some examples of parsing are the following:
+Some parsing examples:
 
 .. doctest::
 
@@ -3242,10 +3044,10 @@ Then some examples of parsing are the following:
     >>> parser.parse_args(["--op0", "val0", "subcomm2", "--op2", "val2"])  # doctest: +IGNORE_RESULT
     Namespace(op0='val0', subcommand='subcomm2', subcomm2=Namespace(op2='val2'))
 
-Parsing config files with :meth:`parse_path <.ArgumentParser.parse_path>` or
-:meth:`parse_string <.ArgumentParser.parse_string>` is also possible. The config
-file is not required to specify a value for ``subcommand``. For the example
-parser above a valid YAML would be:
+Config files can also be parsed, with :meth:`parse_path
+<.ArgumentParser.parse_path>` or :meth:`parse_string
+<.ArgumentParser.parse_string>`. The config file does not need to give a value
+for ``subcommand``. For the parser above, a valid YAML is:
 
 .. code-block:: yaml
 
@@ -3254,18 +3056,16 @@ parser above a valid YAML would be:
     subcomm1:
       op1: val1
 
-Parsing of environment variables works similar to :class:`.ActionParser`. For
-the example parser above, all environment variables for ``subcomm1`` would have
-as prefix ``APP_SUBCOMM1_`` and likewise for ``subcomm2`` as prefix
-``APP_SUBCOMM2_``. The subcommand to use could be chosen by setting environment
-variable ``APP_SUBCOMMAND``.
+Environment variables work like for :class:`.ActionParser`. For the parser
+above, the variables of ``subcomm1`` have the prefix ``APP_SUBCOMM1_`` and those
+of ``subcomm2`` the prefix ``APP_SUBCOMM2_``. The subcommand itself is chosen
+with ``APP_SUBCOMMAND``.
 
-It is possible to have multiple levels of subcommands. With multiple levels
-there is one basic requirement: the subcommands must be added in the order of
-the levels. That is, first call :meth:`add_subcommands
+Several levels of subcommands are possible, with one requirement: they must be
+added in order of level. That is, first call :meth:`add_subcommands
 <.ArgumentParser.add_subcommands>` and :meth:`add_subcommand
-<.ActionSubCommands.add_subcommand>` for the first level. Only after do the
-same for the second level, and so on.
+<.ActionSubCommands.add_subcommand>` for the first level, only then for the
+second level, and so on.
 
 
 .. _json-schemas:
@@ -3273,17 +3073,14 @@ same for the second level, and so on.
 JSON Schemas
 ============
 
-The :class:`.ActionJsonSchema` class is provided to allow parsing and validation
-of values using a JSON Schema. This class requires the `jsonschema
-<https://pypi.org/project/jsonschema/>`__ Python package. Though note that
-``jsonschema`` is not a requirement of the minimal jsonargparse install. To
-enable this functionality install with the ``jsonschema`` extra as explained in
-section :ref:`installation`.
+The :class:`.ActionJsonSchema` class parses and validates values with a JSON
+Schema. It requires the `jsonschema <https://pypi.org/project/jsonschema/>`__
+package, which is not part of the minimal install. Install jsonargparse with the
+``jsonschema`` extra, see :ref:`installation`.
 
-Check out the `JSON Schema documentation
+See the `JSON Schema documentation
 <https://python-jsonschema.readthedocs.io/>`__ to learn how to write a schema.
-The current version of jsonargparse uses Draft7Validator. Parsing an argument
-using a JSON Schema is done like in the following example:
+jsonargparse currently uses ``Draft7Validator``. An example:
 
 .. doctest::
 
@@ -3303,12 +3100,10 @@ using a JSON Schema is done like in the following example:
     >>> parser.parse_args(["--json", '{"price": 1.5, "name": "cookie"}'])
     Namespace(json={'price': 1.5, 'name': 'cookie'})
 
-Instead of giving a JSON string as argument value, it is also possible to
-provide a path to a JSON/YAML file, which would be loaded and validated against
-the schema. If the schema defines default values, these will be used by the
-parser to initialize the config values that are not specified. When adding an
-argument with the :class:`.ActionJsonSchema` action, you can use "%s" in the
-``help`` string so that in that position the schema is printed.
+The value can also be a path to a JSON/YAML file, which is loaded and validated
+against the schema. Default values defined in the schema initialize the config
+values that are not given. In the ``help`` string, ``"%s"`` is replaced by the
+schema.
 
 
 .. _jsonnet-files:
@@ -3316,18 +3111,16 @@ argument with the :class:`.ActionJsonSchema` action, you can use "%s" in the
 Jsonnet files
 =============
 
-The Jsonnet support requires `jsonschema
+Jsonnet support requires the `jsonschema
 <https://pypi.org/project/jsonschema/>`__ and `jsonnet
-<https://pypi.org/project/jsonnet/>`__ Python packages which are not included
-with minimal jsonargparse install. To enable this functionality install
-jsonargparse with the ``jsonnet`` extra as explained in section
+<https://pypi.org/project/jsonnet/>`__ packages, which are not part of the
+minimal install. Install jsonargparse with the ``jsonnet`` extra, see
 :ref:`installation`.
 
-By default an :class:`.ArgumentParser` parses config files as YAML. However, if
-instantiated giving ``parser_mode='jsonnet'``, then :meth:`parse_args
-<.ArgumentParser.parse_args>`, :meth:`parse_path <.ArgumentParser.parse_path>`
-and :meth:`parse_string <.ArgumentParser.parse_string>` will expect config files
-to be in Jsonnet format instead. Example:
+By default an :class:`.ArgumentParser` parses config files as YAML. With
+``parser_mode='jsonnet'``, :meth:`parse_args <.ArgumentParser.parse_args>`,
+:meth:`parse_path <.ArgumentParser.parse_path>` and :meth:`parse_string
+<.ArgumentParser.parse_string>` expect Jsonnet instead:
 
 .. testsetup:: jsonnet
 
@@ -3350,13 +3143,11 @@ to be in Jsonnet format instead. Example:
     parser.add_argument("--config", action="config")
     cfg = parser.parse_args(["--config", "example.jsonnet"])
 
-Jsonnet files are commonly parametrized, thus requiring external variables for
-parsing. For these cases, instead of changing the parser mode away from
-``yaml``, the :class:`.ActionJsonnet` class can be used. This action allows to
-define an argument which would be a Jsonnet string or a path to a Jsonnet file.
-Moreover, another argument can be specified as the source for any external
-variables required, which would be either a path to or a string containing a
-JSON dictionary of variables. Its use would be as follows:
+Jsonnet files are often parametrized and need external variables. For these,
+instead of changing the parser mode away from ``yaml``, use the
+:class:`.ActionJsonnet` class. It defines an argument that takes a Jsonnet
+string or a path to a Jsonnet file, plus another argument as the source of the
+external variables, given as a path to, or a string with, a JSON dictionary:
 
 .. testcode:: jsonnet
 
@@ -3373,12 +3164,11 @@ the Jsonnet and the external variable could be given as:
 
     cfg = parser.parse_args(["--in_ext_vars", '{"param": 123}', "--in_jsonnet", "example.jsonnet"])
 
-Note that the external variables argument must be provided before the Jsonnet
-path so that this dictionary already exists when parsing the Jsonnet.
+The external variables argument must come before the Jsonnet path, so that the
+dictionary already exists when the Jsonnet is parsed.
 
-The :class:`.ActionJsonnet` class also accepts as argument a JSON Schema, in
-which case the Jsonnet would be validated against this schema right after
-parsing.
+:class:`.ActionJsonnet` also accepts a JSON Schema, and then validates the
+Jsonnet against it right after parsing.
 
 
 .. _parser-arguments:
@@ -3386,11 +3176,9 @@ parsing.
 Parsers as arguments
 ====================
 
-Sometimes it is useful to take an already existing parser that is required
-standalone in some part of the code, and reuse it to parse an inner node of
-another more complex parser. For these cases an argument can be defined using
-the :class:`.ActionParser` class. An example of how to use this class is the
-following:
+An existing parser, needed standalone somewhere in the code, can be reused to
+parse an inner node of a larger parser. The :class:`.ActionParser` class defines
+such an argument:
 
 .. testcode::
 
@@ -3402,29 +3190,23 @@ following:
     outer_parser = ArgumentParser(prog="app2")
     outer_parser.add_argument("--inner.node", title="Inner node title", action=ActionParser(parser=inner_parser))
 
-When using the :class:`.ActionParser` class, the value of the node in a config
-file can be either the complex node itself, or the path to a file which will be
-loaded and parsed with the corresponding inner parser. Naturally using
-``action="config"`` to parse a complete config file will parse the inner
-nodes correctly.
+In a config file, the value of the node can be the node itself, or the path to a
+file that is loaded and parsed with the inner parser. Parsing a complete config
+file with ``action="config"`` naturally parses the inner nodes correctly.
 
-Note that when adding ``inner_parser`` a title was given. In the help, the added
-parsers are shown as independent groups starting with the given ``title``. It is
-also possible to provide a ``description``.
+Note the ``title`` given when adding ``inner_parser``. In the help, added
+parsers are shown as independent groups starting with that ``title``. A
+``description`` can also be given.
 
-Regarding environment variables, the prefix of the outer parser will be used to
-populate the leaf nodes of the inner parser. In the example above, if
-``inner_parser`` is used to parse environment variables, then as normal
-``APP1_OP1`` would be checked to populate option ``op1``. But if
-``outer_parser`` is used, then ``APP2_INNER__NODE__OP1`` would be checked to
-populate ``inner.node.op1``.
+For environment variables, the prefix of the outer parser is used for the leaf
+nodes of the inner parser. In the example above, ``inner_parser`` on its own
+checks ``APP1_OP1`` to populate option ``op1``, while ``outer_parser`` checks
+``APP2_INNER__NODE__OP1`` to populate ``inner.node.op1``.
 
-An important detail to note is that the parsers that are given to
-:class:`.ActionParser` are internally modified. Therefore, to use the parser
-both as standalone and as inner node, it is necessary to implement a function
-that instantiates the parser. This function would be used in one place to get an
-instance of the parser for standalone parsing, and in some other place use the
-function to provide an instance of the parser to :class:`.ActionParser`.
+An important detail is that the parsers given to :class:`.ActionParser` are
+modified internally. So to use a parser both standalone and as an inner node,
+write a function that creates it, and call that function in each place, so that
+each one gets its own instance.
 
 
 .. _tab-completion:
@@ -3446,9 +3228,9 @@ lines. The supported completion types are:
 Both are generated with the :meth:`.ArgumentParser.get_completion_script`
 method, or from the command line, see :ref:`print-completion-argument`.
 
-Covered further down is completion at runtime in the shell, which jsonargparse
-supports through the `argcomplete <https://pypi.org/project/argcomplete/>`__
-package, see :ref:`argcomplete`. It does not involve any generated artifact.
+Completion at runtime in the shell, which jsonargparse supports through the
+`argcomplete <https://pypi.org/project/argcomplete/>`__ package, is covered
+further down in :ref:`argcomplete`. It involves no generated artifact.
 
 
 .. _print-completion-argument:
@@ -3467,9 +3249,8 @@ which accepts the completion types listed above.
 
     set_parsing_settings(add_print_completion_argument=True)
 
-Without changing python code, it is also possible to add the
-``--print_completion`` argument by setting the environment variable
-``JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT=true``.
+Without changing Python code, the argument is also added by setting the
+environment variable ``JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT=true``.
 
 
 jsonschema
@@ -3526,11 +3307,12 @@ based on, so it includes:
   the plain argparse actions, which have no type hint, this is what the action
   gives, e.g. a boolean for ``store_true``, an integer for ``count``, the
   possible values for ``store_const`` and an array for ``append``.
-- The defaults of the arguments, except for the required ones, the ones whose
-  default is ``argparse.SUPPRESS``, since not giving those leaves no key, and the
-  unset ones, see :ref:`unset-values`. Without ``unset_sentinel``, a ``None``
-  default is unset, so ``null`` is never described as a default. With it, an
-  explicit ``default=None`` is described, as long as the type accepts ``null``.
+- The defaults of the arguments. Three kinds are left out: the required ones,
+  the ones whose default is ``argparse.SUPPRESS``, since not giving those leaves
+  no key, and the unset ones, see :ref:`unset-values`. Without
+  ``unset_sentinel``, a ``None`` default counts as unset, so ``null`` is never
+  described as a default. With it, an explicit ``default=None`` is described, as
+  long as the type accepts ``null``.
 - Descriptions taken from the docstrings of the classes and functions that the
   arguments come from, or from the ``help`` given to ``add_argument``.
 - For subclass types, one entry per known subclass, each with a ``class_path``
@@ -3544,31 +3326,30 @@ based on, so it includes:
 Subclasses and types that are used in more than one place are added once to
 ``$defs`` and referenced with ``$ref``, which also makes recursive types work.
 
-The schema is intended to accept what the parser accepts, though for subclass
-types it is stricter: a string is accepted, since it can be a class path or a
-path to a sub-config file, but an object is only accepted for the known
-subclasses, i.e. one with ``class_path``, ``init_args`` (mandatory only for the
-subclasses that have a required init parameter) and ``dict_kwargs``. An object
-that accepts any ``class_path`` would keep tools from suggesting the known
-subclasses and from pointing out a class path that has a typo or is not the
-accepted import path, in which case the ``init_args`` would go undescribed. Only
-when a type has no known subclass is any ``class_path`` accepted, without
-describing its ``init_args``.
+The schema is meant to accept what the parser accepts, but for subclass types it
+is stricter. A string is accepted, since it can be a class path or a path to a
+sub-config file. An object is only accepted for the known subclasses, i.e. one
+with ``class_path``, ``init_args`` (required only for the subclasses that have a
+required init parameter) and ``dict_kwargs``. Accepting any ``class_path`` would
+keep tools from suggesting the known subclasses and from pointing out a class
+path that has a typo or is not the accepted import path, and its ``init_args``
+would go undescribed. Any ``class_path`` is accepted only when a type has no
+known subclass, and then its ``init_args`` are not described.
 
-A union with a subtype that accepts anything, i.e. ``Any`` or an unvalidated
+A union that has a subtype accepting anything, i.e. ``Any`` or an unvalidated
 type, is kept as ``{"anyOf": [..., {}]}`` instead of the equivalent ``{}``, so
 that tools still have the other subschemas to describe and complete against. The
-exception is when another subtype constrains the keys of an object, e.g. a
+exception is when another subtype restricts the keys of an object, e.g. a
 subclass, dataclass or typed dict. Then the subschemas that accept any object,
-i.e. from ``Any``, ``dict`` and unvalidated types, are excluded, making the
-schema stricter than the parser, but in exchange mistakes in the keys are
+i.e. those from ``Any``, ``dict`` and unvalidated types, are removed. This makes
+the schema stricter than the parser, but in exchange mistakes in the keys are
 pointed out instead of going unnoticed.
 
 .. note::
 
     The subclasses of a type that the schema includes are the ones known to
-    python at the time the schema is generated, i.e. only those whose modules
-    happen to have been imported.
+    Python when the schema is generated, i.e. only those whose modules happen to
+    have been imported.
 
 .. note::
 
@@ -3582,11 +3363,11 @@ shtab
 The ``shtab-*`` completion types give a shell completion script, using
 ``shtab-`` followed by the shell name, e.g. ``shtab-bash`` or ``shtab-zsh``.
 
-For ``shtab`` to work, there is no need to set ``complete``/``choices`` to the
-parser actions, and no need to call `shtab.add_argument_to
-<https://docs.iterative.ai/shtab/ref/#add_argument_to>`__. The only
-requirement is to install shtab either directly or by installing jsonargparse
-with the ``shtab`` extra as explained in section :ref:`installation`.
+For ``shtab`` there is no need to set ``complete``/``choices`` on the parser
+actions, or to call `shtab.add_argument_to
+<https://docs.iterative.ai/shtab/ref/#add_argument_to>`__. The only requirement
+is to install shtab, directly or with the ``shtab`` extra, see
+:ref:`installation`.
 
 .. testcode::
 
@@ -3609,8 +3390,7 @@ users, as root:
 
     # example.py --print_completion=shtab-bash > /etc/bash_completion.d/example
 
-Without installing, completion scripts can be tested by sourcing or evaluating
-them:
+Without installing, a script can be tested by sourcing or evaluating it:
 
 .. code-block:: bash
 
@@ -3619,8 +3399,8 @@ them:
 Completion behavior
 ^^^^^^^^^^^^^^^^^^^
 
-The scripts work both to complete when there are choices, but also gives
-instructions to the user for guidance. Take for example the parser:
+The scripts complete when there are choices, and also print guidance for the
+user. Take for example the parser:
 
 .. testsetup:: tab_completion
 
@@ -3637,9 +3417,9 @@ instructions to the user for guidance. Take for example the parser:
 
     parser.parse_args()
 
-The completions print the type of the argument, how many options are matched,
-and afterward the list of choices matched up to that point. If only one option
-matches, then the value is completed without printing guidance. For example:
+The completion prints the type of the argument, how many options match, and then
+the matching choices. If only one option matches, the value is completed without
+printing guidance. For example:
 
 .. code-block:: bash
 
@@ -3649,10 +3429,10 @@ matches, then the value is completed without printing guidance. For example:
     $ example.py --bool f<TAB>
     $ example.py --bool false
 
-For the case of subclass types, the import class paths for known subclasses are
-completed, both for the switch to select the class and for the corresponding
-``--*.help`` switch. The ``init_args`` for known subclasses are also completed,
-giving as guidance which of the subclasses accepts it. An example would be:
+For subclass types, the import paths of the known subclasses are completed, both
+for the option that selects the class and for the ``--*.help`` option. The
+``init_args`` of the known subclasses are completed too, with guidance saying
+which subclasses accept each one. For example:
 
 .. code-block:: bash
 
@@ -3665,8 +3445,8 @@ giving as guidance which of the subclasses accepts it. An example would be:
     $ example.py --cls other.module.SubclassA --cls.param2 <TAB><TAB>
     Expected type: int; Accepted by subclasses: SubclassA
 
-Analogously, for dataclass-like types and ``TypedDict``, the fields or keys are
-completed, as well as the values that they accept, e.g.:
+Analogously, for subclasses-disabled types and ``TypedDict``, the fields or keys
+are completed, as well as the values that they accept, e.g.:
 
 .. code-block:: bash
 
@@ -3681,21 +3461,19 @@ completed, as well as the values that they accept, e.g.:
 argcomplete
 -----------
 
-For ``argcomplete`` to work, there is no need to implement completer functions
-or to call `argcomplete.autocomplete
-<https://kislyuk.github.io/argcomplete/#argcomplete.autocomplete>`__ since this
-is done automatically by :meth:`parse_args <.ArgumentParser.parse_args>`. The
-only requirement to enable shell completion is to install argcomplete either
-directly or by installing jsonargparse with the ``argcomplete`` extra as
-explained in section :ref:`installation`.
+For ``argcomplete`` there is no need to implement completer functions or to call
+`argcomplete.autocomplete
+<https://kislyuk.github.io/argcomplete/#argcomplete.autocomplete>`__, since
+:meth:`parse_args <.ArgumentParser.parse_args>` does it automatically. The only
+requirement is to install argcomplete, directly or with the ``argcomplete``
+extra, see :ref:`installation`.
 
 The shell completion can be enabled `globally
 <https://kislyuk.github.io/argcomplete/#global-completion>`__ for all
 argcomplete compatible tools or for each `individual
 <https://kislyuk.github.io/argcomplete/#synopsis>`__ tool.
 
-Using the same ``bool`` example as shown above, activate completion and use
-it as follows:
+Using the same ``bool`` example, activate completion and use it as follows:
 
 .. code-block:: bash
 
@@ -3712,12 +3490,11 @@ it as follows:
 Deviations from argparse
 ========================
 
-To ensure a high level of compatibility with argparse, the argparse tests from
-the Python standard library are run against jsonargparse. Some of these tests
-are skipped for the following reasons: 1) they cover intentional deviations from
-argparse, 2) they are not relevant for jsonargparse, or 3) they are under
-investigation and may be enabled in the future. The tests to skip are configured
-in the ``argparse_tests_generate.py`` file.
+To keep a high level of compatibility with argparse, the argparse tests from the
+Python standard library are run against jsonargparse. Some are skipped because
+they cover intentional deviations, are not relevant for jsonargparse, or are
+still under investigation and may be enabled later. Which tests to skip is
+configured in the ``argparse_tests_generate.py`` file.
 
 The following sections describe the main intentional deviations from argparse.
 In addition, deprecated features in argparse are not supported.
@@ -3725,24 +3502,21 @@ In addition, deprecated features in argparse are not supported.
 Subcommands
 -----------
 
-In argparse, when a parser has subcommands, the resulting namespace merges the
-main parser and subparser options into a single flat namespace. Since
-jsonargparse supports nested namespaces, it was a deliberate design choice to
-place subcommand options in a dedicated subnamespace for greater clarity and
-user convenience.
+In argparse, a parser with subcommands merges the main parser and subparser
+options into a single flat namespace. Since jsonargparse supports nested
+namespaces, subcommand options are deliberately placed in their own
+subnamespace, which is clearer and more convenient.
 
-Additionally, in argparse, ``add_subparsers`` must be called with the ``dest``
-parameter to include the name of the selected subcommand in the resulting
-namespace. In jsonargparse, the chosen subcommand is available by default,
-without requiring any extra parameters.
+In argparse, ``add_subparsers`` needs the ``dest`` parameter for the name of the
+chosen subcommand to appear in the namespace. In jsonargparse it is there by
+default, without any extra parameter.
 
-Furthermore, to promote modularity, subparsers in jsonargparse can be created
-independently, just like the main parser. The subparser object is then added as
-a subcommand. This enables defining functions that return subparsers, which can
-be used both as standalone parsers and as subcommands. In contrast, argparse
-subparsers are tightly coupled to the main parser and cannot be defined
-independently. To avoid confusion with respect to argparse, the method names for
-adding subcommands in jsonargparse are intentionally different.
+To promote modularity, jsonargparse subparsers are created independently, just
+like the main parser, and then added as a subcommand. This makes it possible to
+write functions that return a subparser, usable both standalone and as a
+subcommand. In argparse, subparsers are tightly coupled to the main parser and
+can't be defined independently. To avoid confusion with argparse, the method
+names for adding subcommands are intentionally different.
 
 To migrate from argparse to jsonargparse, instead of:
 
@@ -3756,7 +3530,7 @@ To migrate from argparse to jsonargparse, instead of:
     subparser1.add_argument("--key")
     ...
 
-The code would be changed to:
+the code becomes:
 
 .. testcode::
 
@@ -3774,22 +3548,20 @@ The code would be changed to:
 Parse known arguments
 ---------------------
 
-Argparse provides the ``parse_known_args`` method, which allows for more lenient
-parsing by ignoring unrecognized arguments. However, jsonargparse is designed
-for complex parsing scenarios, such as: multiple subcommands, a large number of
-arguments derived from signatures, class instantiation, and configuration files.
-Allowing unrecognized arguments could make it harder for users to detect errors,
-such as typos in configuration files. For this reason, jsonargparse
-intentionally does not support ``parse_known_args``.
+Argparse has a ``parse_known_args`` method, which parses leniently by ignoring
+unrecognized arguments. jsonargparse is designed for complex cases: several
+subcommands, many arguments derived from signatures, class instantiation and
+config files. Ignoring unrecognized arguments would make errors, such as a typo
+in a config file, harder to notice. For this reason ``parse_known_args`` is
+intentionally not supported.
 
 User defined types
 ------------------
 
-In argparse, when adding an argument, the ``type`` parameter can be set to a
-user-defined function or class. Providing a function is supported in
-jsonargparse, with the additional requirement that the function must be
-idempotent. That is, applying the function two or more times should not alter
-the value. For example:
+In argparse, the ``type`` parameter of an argument can be a user-defined
+function or class. A function is supported in jsonargparse, with the extra
+requirement that it must be idempotent, i.e. applying it twice or more does not
+change the value. For example:
 
 .. testcode::
 
@@ -3800,10 +3572,9 @@ the value. For example:
 
     parser.add_argument("--int_or_off", type=int_or_off)
 
-Specifying a class as the type conflicts with the signature and type hint
-support that is central to jsonargparse. Therefore, providing a class as the
-type does not work the same way as in argparse. The recommended alternative is
-to implement a custom type; see :ref:`custom-types`.
+A class as the type conflicts with the signature and type hint support that is
+central to jsonargparse, so it does not work the same way as in argparse. The
+recommended alternative is to implement a custom type, see :ref:`custom-types`.
 
 
 .. _logging:
@@ -3811,18 +3582,15 @@ to implement a custom type; see :ref:`custom-types`.
 Troubleshooting and logging
 ===========================
 
-The standard behavior for the parse methods, when they fail, is to print a short
-message and terminate the process with a non-zero exit code. This is problematic
-during development since there is not enough information to track down the root
-of the problem. Without the need to change the source code, this default
-behavior can be changed such that in case of failure, a ParseError exception is
-raised and the full stack trace is printed. This is done by setting the
-``JSONARGPARSE_DEBUG`` environment variable to ``true``.
+When a parse method fails, by default it prints a short message and exits with a
+non-zero code. During development this is not enough information to find the
+root of the problem. Setting the ``JSONARGPARSE_DEBUG`` environment variable to
+``true`` changes this, without touching the source code: an
+:class:`.ArgumentError` is raised and the full stack trace is printed.
 
-The parsers from jsonargparse log some basic events, though by default this is
-disabled. To enable, the ``logger`` argument should be set when creating an
-:class:`.ArgumentParser` object. The intended use is to provide an already
-existing logger object which is used for the whole application. For convenience,
-to enable a default logger the ``logger`` argument can also be ``True`` or
-a string which sets the name of the logger or a dictionary that can include the
-name and the level, e.g. ``{"name": "myapp", "level": "ERROR"}``.
+The parsers log some basic events, though this is disabled by default. To enable
+it, set the ``logger`` argument when creating an :class:`.ArgumentParser`. The
+intended use is to give the logger object that the whole application uses. For
+convenience, ``logger`` can also be ``True`` to enable a default logger, a
+string with the name of the logger, or a dictionary with the name and the level,
+e.g. ``{"name": "myapp", "level": "ERROR"}``.
