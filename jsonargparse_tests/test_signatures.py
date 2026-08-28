@@ -18,6 +18,8 @@ from jsonargparse import (
 )
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse._subcommands import find_action
+from jsonargparse._typehints import Untyped, type_to_str
+from jsonargparse._util import NoneType
 from jsonargparse_tests.conftest import (
     capture_logs,
     get_parse_args_stdout,
@@ -226,8 +228,12 @@ class SkippedUnderscoreParam:
         pass  # pragma: no cover
 
 
-def test_add_class_skipped_underscore_parameter(parser):
-    assert [] == parser.add_class_arguments(SkippedUnderscoreParam)
+def test_add_class_skipped_underscore_parameter(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        assert [] == parser.add_class_arguments(SkippedUnderscoreParam)
+    assert 'Skipping parameter "_a0"' in logs.getvalue()
+    assert "because of: Name starts with '_' and the parameter is not required." in logs.getvalue()
 
 
 class WithNew:
@@ -804,9 +810,14 @@ def func_implicit_optional(a1: int = None):  # type: ignore[assignment]
     return a1  # pragma: no cover
 
 
-def test_add_function_implicit_optional(parser):
-    parser.add_function_arguments(func_implicit_optional)
-    assert None is parser.parse_args(["--a1=null"]).a1
+def test_add_function_implicit_optional(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        parser.add_function_arguments(func_implicit_optional)
+        assert None is parser.parse_args(["--a1=null"]).a1
+    if sys.version_info >= (3, 11):  # in python<3.11 get_type_hints already makes the type optional
+        assert f'"a1" from "{__name__}.func_implicit_optional" has None as default, so its type is ' in logs.getvalue()
+        assert f"changed to {type_to_str(Optional[int])}." in logs.getvalue()
 
 
 def func_type_as_string(a2: "int"):
@@ -825,13 +836,21 @@ def func_untyped_params(a1, a2=None):
 def test_add_function_fail_untyped_true_untyped_params(parser):
     with pytest.raises(ValueError) as ctx:
         parser.add_function_arguments(func_untyped_params, fail_untyped=True)
+    ctx.match("With fail_untyped=True, all mandatory parameters must have a supported type")
     ctx.match("Parameter 'a1' from .* does not specify a type")
 
 
-def test_add_function_fail_untyped_false(parser):
-    added_args = parser.add_function_arguments(func_untyped_params, fail_untyped=False)
+def test_add_function_fail_untyped_false(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        added_args = parser.add_function_arguments(func_untyped_params, fail_untyped=False)
+        assert Namespace(a1=None, a2=None) == parser.parse_args([])
+        help_str = get_parser_help(parser)
     assert ["a1", "a2"] == added_args
-    assert Namespace(a1=None, a2=None) == parser.parse_args([])
+    assert f"--a1 A1     (type: {type_to_str(Union[NoneType, Untyped])}, default: null)" in help_str
+    assert f"--a2 A2     (type: {type_to_str(Union[NoneType, Untyped])}, default: null)" in help_str
+    assert f'"a1" from "{__name__}.func_untyped_params" does not have a type annotation. Added as ' in logs.getvalue()
+    assert f"{type_to_str(Union[NoneType, Untyped])}, thus any value is accepted" in logs.getvalue()
 
 
 def func_untyped_optional(a1: str, a2=None):
@@ -842,6 +861,42 @@ def test_add_function_fail_untyped_true_untyped_optional(parser):
     added_args = parser.add_function_arguments(func_untyped_optional, fail_untyped=True)
     assert ["a1", "a2"] == added_args
     assert Namespace(a1="x", a2=None) == parser.parse_args(["--a1=x"])
+
+
+def func_untyped_default(a1: str, a2=3):
+    return a1  # pragma: no cover
+
+
+@pytest.mark.parametrize("fail_untyped", [True, False])
+def test_add_function_untyped_default_type_from_default(parser, logger, fail_untyped):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        added_args = parser.add_function_arguments(func_untyped_default, fail_untyped=fail_untyped)
+        help_str = get_parser_help(parser)
+        assert 4 == parser.parse_args(["--a1=x", "--a2=4"]).a2
+        assert "y" == parser.parse_args(["--a1=x", "--a2=y"]).a2
+    assert ["a1", "a2"] == added_args
+    assert f"--a2 A2     (type: {type_to_str(Union[int, Untyped])}, default: 3)" in help_str
+    assert f'"a2" from "{__name__}.func_untyped_default" does not have a type annotation. Added as ' in logs.getvalue()
+    assert f"{type_to_str(Union[int, Untyped])}, thus any value is accepted" in logs.getvalue()
+
+
+def test_add_function_fail_untyped_all(parser):
+    with pytest.raises(ValueError) as ctx:
+        parser.add_function_arguments(func_untyped_default, fail_untyped="all")
+    ctx.match("With fail_untyped='all', all parameters must have a supported type")
+    ctx.match("Parameter 'a2' from .* does not specify a type")
+
+
+def test_add_function_fail_untyped_all_typed(parser):
+    added_args = parser.add_function_arguments(func_type_as_string, fail_untyped="all")
+    assert ["a2"] == added_args
+
+
+def test_add_function_fail_untyped_unexpected_value(parser):
+    with pytest.raises(ValueError) as ctx:
+        parser.add_function_arguments(func_untyped_default, fail_untyped="none")
+    ctx.match("Expected 'fail_untyped' to be True, False or 'all', got: 'none'")
 
 
 def test_add_function_group_config(parser, tmp_cwd):

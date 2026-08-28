@@ -396,6 +396,29 @@ def test_subclass_allow_untyped_parameters_help(parser):
     assert "--c1.a2 A2" in help_str
 
 
+class UntypedDefaultParam:
+    def __init__(self, a1: int = 1, a2="x"):
+        self.a1 = a1  # pragma: no cover
+
+
+def func_subclass_untyped_default(c1: UntypedDefaultParam):
+    return c1  # pragma: no cover
+
+
+def test_subclass_fail_untyped_all_propagated_to_subclass(parser):
+    parser.add_function_arguments(func_subclass_untyped_default, fail_untyped="all")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--c1={__name__}.UntypedDefaultParam"])
+    ctx.match("With fail_untyped='all', all parameters must have a supported type")
+    ctx.match("Parameter 'a2' from .* does not specify a type")
+
+
+def test_subclass_fail_untyped_true_default_propagated_to_subclass(parser):
+    parser.add_function_arguments(func_subclass_untyped_default, fail_untyped=True)
+    cfg = parser.parse_args([f"--c1={__name__}.UntypedDefaultParam", "--c1.a2=2"])
+    assert cfg.c1.init_args == Namespace(a1=1, a2="2")
+
+
 class MergeInitArgs(BaseC):
     def __init__(self, param_a: int = 1, param_b: str = "x", **kwargs):
         super().__init__(**kwargs)  # pragma: no cover

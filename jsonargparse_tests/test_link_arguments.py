@@ -16,7 +16,13 @@ from jsonargparse import (
     set_parsing_settings,
 )
 from jsonargparse._optionals import docstring_parser_support
-from jsonargparse_tests.conftest import get_parse_args_stdout, get_parser_help, json_or_yaml_dump, json_or_yaml_load
+from jsonargparse_tests.conftest import (
+    capture_logs,
+    get_parse_args_stdout,
+    get_parser_help,
+    json_or_yaml_dump,
+    json_or_yaml_load,
+)
 
 # tests for links applied on parse
 
@@ -189,7 +195,7 @@ class ClassS2:
         self.v3 = v3  # pragma: no cover
 
 
-def test_on_parse_add_subclass_arguments(parser, subtests):
+def test_on_parse_add_subclass_arguments(parser, subtests, logger):
     def add(v1, v2):
         return v1 + v2
 
@@ -203,9 +209,15 @@ def test_on_parse_add_subclass_arguments(parser, subtests):
     }
 
     with subtests.test("compute_fn result"):
-        cfg = parser.parse_args([f"--s1={json.dumps(s1_value)}", f"--s2={__name__}.ClassS2"])
+        parser.logger = logger  # the target is added to the parser when the class path is first given
+        with capture_logs(logger) as logs:
+            cfg = parser.parse_args([f"--s1={json.dumps(s1_value)}", f"--s2={__name__}.ClassS2"])
+        parser.logger = False
         assert cfg.s2.init_args.v3 == 4
         assert cfg.s2.init_args.v3 == cfg.s1.init_args.v1 + cfg.s1.init_args.v2
+        assert f'"v3" from "{__name__}.ClassS2.__init__" is the target of a link, so it is not required' in (
+            logs.getvalue()
+        )
 
     with subtests.test("dump removal of target"):
         cfg = parser.parse_args([f"--s1={json.dumps(s1_value)}", f"--s2={__name__}.ClassS2"])

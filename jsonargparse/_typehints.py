@@ -924,6 +924,7 @@ def resolve_forward_ref(ref, global_vars=None):
 unresolved_reason = "failed to resolve, e.g. a missing import or a typo"
 unsupported_reason = "not a supported type"
 unrebuildable_reason = "could not be rebuilt with its unvalidatable subtypes replaced"
+untyped_reason = "no type annotation"
 
 
 class UnvalidatedType:
@@ -958,10 +959,29 @@ class UnvalidatedType:
         return f"Unvalidated<{strip_module_names(self.name)}>"
 
     def __eq__(self, other):
-        return isinstance(other, UnvalidatedType) and other.name == self.name
+        # the class is part of the comparison, since subclasses stand for a different reason
+        return type(other) is type(self) and other.name == self.name
 
     def __hash__(self):
-        return hash((UnvalidatedType, self.name))
+        return hash((type(self), self.name))
+
+
+class UntypedType(UnvalidatedType):
+    """Type hint that stands in for a parameter that has no type annotation, accepting any value.
+
+    Only instantiated once, see the Untyped singleton. There is no type in the
+    source code to keep, thus the help shows it as Untyped.
+    """
+
+    def __init__(self):
+        self.reason = untyped_reason
+        self.name = ""
+
+    def __repr__(self):
+        return "Untyped"
+
+
+Untyped = UntypedType()
 
 
 def accepts_any_value(typehint) -> bool:

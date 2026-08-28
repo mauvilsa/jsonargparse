@@ -42,6 +42,10 @@ Added
   function with a compatible signature, so the import path of a function is
   accepted as value, see :ref:`type-hints` (`#963
   <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
+- New ``fail_untyped="all"`` for the add signature methods and ``auto_cli``,
+  which raises an exception for all parameters that don't have a type
+  annotation, not only the required ones (`#965
+  <https://github.com/mauvilsa/jsonargparse/pull/965>`__).
 
 Fixed
 ^^^^^
@@ -86,6 +90,17 @@ Changed
   (`#964 <https://github.com/mauvilsa/jsonargparse/pull/964>`__).
 - New :ref:`migrate-v5` guide that describes what needs to be changed to migrate
   from v4 to v5 (`#964 <https://github.com/mauvilsa/jsonargparse/pull/964>`__).
+- Signature parameters without a type annotation now get type ``Untyped``
+  instead of ``Any``, so that the help makes evident that the value is not
+  validated. A parameter that has a default gets ``Union[<type of the default>,
+  Untyped]`` as before, now also with ``fail_untyped=False``, which previously
+  gave ``Any`` (`#965 <https://github.com/mauvilsa/jsonargparse/pull/965>`__).
+- New debug logs for the cases in which the type or the requiredness of a
+  signature parameter is not what the signature says: no type annotation, a
+  parameter skipped because its name starts with ``_``, a ``None`` default that
+  makes the type optional, a ``NotRequired`` parameter without a default and a
+  parameter that is the target of a link (`#965
+  <https://github.com/mauvilsa/jsonargparse/pull/965>`__).
 
 Deprecated
 ^^^^^^^^^^

@@ -1960,15 +1960,21 @@ def wrappers_module(tmp_path):
 
 
 @skip_if_no_required
-def test_signature_params_wrappers_removed_from_help(parser, wrappers_module):
-    added = parser.add_class_arguments(wrappers_module.WrapperParams, "cls")
+def test_signature_params_wrappers_removed_from_help(parser, wrappers_module, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        added = parser.add_class_arguments(wrappers_module.WrapperParams, "cls")
+        cfg = parser.parse_args(["--cls.p1=1"])
     assert added == ["cls.p1", "cls.p2", "cls.p3"]
+    src = "required_wrappers_module.WrapperParams.__init__"
+    assert f'"p2" from "{src}" is NotRequired and does not have a default' in logs.getvalue()
+    assert f'"p3" from "{src}" has None as default, so its type is ' in logs.getvalue()
+    assert f"changed to {type_to_str(Optional[int])}." in logs.getvalue()
     help_str = get_parser_help(parser)
     assert "NotRequired" not in help_str
     assert "--cls.p1 P1   (required, type: int)" in help_str
     assert "--cls.p2 P2   (type: str)" in help_str
     assert f"--cls.p3 P3   (type: {type_to_str(Optional[int])}, default: null)" in help_str
-    cfg = parser.parse_args(["--cls.p1=1"])
     assert cfg.cls == Namespace(p1=1, p3=None)
 
 

@@ -635,53 +635,43 @@ an argument of type ``Union[int, list[int]]``, ``--val=1`` gives ``1``, while
 Unvalidated types
 -----------------
 
-When arguments are added from a signature, i.e. :meth:`add_function_arguments
-<.ArgumentParser.add_function_arguments>`, :meth:`add_method_arguments
-<.ArgumentParser.add_method_arguments>`, :meth:`add_class_arguments
-<.ArgumentParser.add_class_arguments>` or a parameter of a :ref:`subclass type
-<sub-classes>`, some parameters can have a type that jsonargparse can't
-validate. The same holds for the keys of a ``TypedDict``, however the argument
-is added. Skipping these parameters would make it impossible to give them at
-all, so instead only the parts of the type that can't be validated are replaced
-by a type that accepts any value. The help shows these parts as
-``Unvalidated<...>``, keeping the name used in the source code. For example, a
-class with an ``items: list[SomeType] = []`` parameter for which ``SomeType``
-can't be validated is shown in the help as:
+A :ref:`signature parameter <classes-methods-functions>` or a ``TypedDict`` key
+can have a type that jsonargparse can't validate. The argument is still added,
+with only the parts of the type that can't be validated replaced by a type that
+accepts any value. The help shows these parts as ``Unvalidated<...>``, keeping
+the name used in the source code. For example, a class with a parameter
+``items: list[SomeType] = []`` for which ``SomeType`` can't be validated is
+shown in the help as:
 
 .. code-block:: text
 
     --myclass.items ITEMS  (type: list[Unvalidated<SomeType>], default: [])
 
-A type or a part of it can't be validated when:
+Only these parts accept any value: in the example the value must still be a
+list, and in a ``Union`` the other subtypes are still validated. A type or a
+part of it can't be validated when:
 
 - It failed to resolve, e.g. a missing import or a typo in a postponed
   annotation.
 - It is not a type that jsonargparse supports, e.g. a ``TypeVar`` that stands
   for nothing, see :ref:`generic-types`.
 
-To know which of the two it is for a given parameter, enable debug level
-logging, see :ref:`logging`. The debug log gives the reason for each part of the
-type that can't be validated.
-
-Only these parts accept any value. In the example above the value must still be
-a list, only its items are not validated. Likewise, in a ``Union`` only the
-subtypes that can't be validated accept any value, the others are validated as
-usual.
+The debug log gives the reason for each part, see :ref:`logging`. A parameter
+without a type annotation is shown as ``Untyped`` and behaves the same, see
+:ref:`classes-methods-functions`.
 
 Since there is no type to serialize with, :meth:`dump <.ArgumentParser.dump>`
-and ``--print_config`` derive a type from the value itself, so that it is
-serialized as it would be for an argument of that type. A value of a type that
-jsonargparse doesn't support, e.g. a default that is an arbitrary object, is
-serialized like the instances given for a :ref:`subclass type <sub-classes>`: as
-an import path when the value can be imported back, and otherwise as a message
-saying that it was not serializable, together with a warning.
+and ``--print_config`` derive a type from the value itself. A value of a type
+that jsonargparse doesn't support, e.g. an arbitrary object, is serialized like
+the instances given for a :ref:`subclass type <sub-classes>`: as an import path
+when it can be imported back, and otherwise as a message saying that it was not
+serializable, together with a warning.
 
 Parsing a dump back has no type to validate with either, so only the values that
-the config formats represent round-trip. For instance, a ``set`` is dumped as a
-list and parses back as a list, and an ``Enum`` member is dumped as its name and
-parses back as a string. A warning is raised for each dumped value that loses
-its type this way. All of the above applies equally to arguments typed as
-``Any``/``object``.
+the config formats represent round-trip, e.g. a ``set`` is dumped and parsed
+back as a list, and an ``Enum`` member as its name. A warning is raised for each
+dumped value that loses its type this way. All of the above applies equally to
+``Any`` and ``object``.
 
 
 .. _restricted-numbers:
@@ -1556,17 +1546,17 @@ instantiation and for the method call.
 A wide range of type hints is supported for signature parameters, see
 :ref:`type-hints`. Notes about the add signature methods:
 
-- With the default ``fail_untyped=True``, all required parameters must have a
-  type, otherwise an exception is raised. Positional-only parameters are always
-  required.
+- A parameter without a type annotation, or with a type that can only be
+  validated in part, is added with a type that accepts any value, see
+  :ref:`unvalidated-types`. Without an annotation but with a default, the type
+  is ``Union[<type of the default>, Untyped]``, i.e. a value is converted to the
+  default's type when it accepts it.
 
-- A parameter that has a default but no type annotation is added with type
-  ``Union[<type of the default>, Any]``, so any value is accepted. With
-  ``fail_untyped=False``, a required parameter without a type gets type ``Any``.
-
-- A parameter whose type can only be validated in part is added with the
-  remaining parts replaced by a type that accepts any value, see
-  :ref:`unvalidated-types`.
+- ``fail_untyped`` decides which parameters without a type annotation raise an
+  exception instead: the required ones with the default ``True``, all of them
+  with ``"all"``, and none with ``False``. Positional-only parameters are always
+  required. Use ``"all"`` only for code you own, since one untyped parameter of
+  a dependency would make its signature impossible to add.
 
 - Parameters whose name starts with ``_`` are considered internal and skipped,
   unless they are required.
@@ -1992,7 +1982,7 @@ Most of the Python standard library has its types in stubs, for example:
 
 Without the stubs resolver, that :meth:`add_function_arguments
 <.ArgumentParser.add_function_arguments>` call needs ``fail_untyped=False``, and
-then ``a`` and ``b`` get type ``Any`` instead of ``float``, so an invalid value
+then ``a`` and ``b`` get ``Untyped`` instead of ``float``, so an invalid value
 such as a string would not fail.
 
 The defaults of parameters found only through stubs are not known. The help then
@@ -2154,9 +2144,8 @@ would also accept subclasses of ``MyClass``, and the config would be:
 
 .. note::
 
-    A parameter of type ``Any`` or ``object``, which is also what
-    ``fail_untyped=False`` gives, accepts a dict with ``class_path`` and
-    ``init_args``, and the class is parsed and instantiated.
+    A parameter of type ``Any``, ``object``, or ``Untyped``, accepts a dict with
+    ``class_path`` and ``init_args``, and the class is parsed and instantiated.
 
     This instantiation is deprecated. From v5.0.0 the subclass spec is kept as
     is, so that the code receiving it decides whether to instantiate it. Set

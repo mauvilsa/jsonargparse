@@ -6,7 +6,7 @@ import os
 import re
 from argparse import SUPPRESS, ArgumentParser
 from collections.abc import Callable
-from typing import Any, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 from ._actions import _ActionConfigLoad
 from ._common import (
@@ -26,6 +26,7 @@ from ._parameter_resolvers import ParamData, get_parameter_origins, get_signatur
 from ._required import set_required
 from ._typehints import (
     ActionTypeHint,
+    Untyped,
     callable_instances,
     get_subclass_names,
     is_list_pathlike,
@@ -35,13 +36,23 @@ from ._typehints import (
     replace_type_vars,
     replace_unvalidatable_typehints,
     sequence_origin_types,
+    sort_unions_in_typehint,
     strip_required_typehint,
+    type_to_str,
 )
 from ._util import NoneType, get_import_path, get_private_kwargs, get_typehint_origin, iter_to_set_str
 from .typing import _LazyInitBaseClass, register_pydantic_types
 
 kinds = inspect._ParameterKind
 inspect_empty = inspect._empty
+
+FailUntyped = Union[bool, Literal["all"]]
+fail_untyped_values: tuple = (True, False, "all")
+
+
+def validate_fail_untyped(fail_untyped) -> None:
+    if not any(fail_untyped is value for value in fail_untyped_values):
+        raise ValueError(f"Expected 'fail_untyped' to be True, False or 'all', got: {fail_untyped!r}")
 
 
 class SignatureArguments(LoggerProperty):
@@ -57,7 +68,7 @@ class SignatureArguments(LoggerProperty):
         default: dict | Namespace | type | None = None,
         skip: set[str | int] | None = None,
         instantiate: bool = True,
-        fail_untyped: bool = True,
+        fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
         **kwargs,
     ) -> list[str]:
@@ -74,7 +85,8 @@ class SignatureArguments(LoggerProperty):
             skip: Names of parameters or number of positionals that should be skipped.
             instantiate: Whether the class group should be instantiated by
                 :meth:`instantiate <.ArgumentParser.instantiate>`.
-            fail_untyped: Whether to raise exception if a required parameter does not have a type.
+            fail_untyped: Whether to raise an exception for parameters that don't have a type:
+                True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
 
         Returns:
@@ -147,7 +159,7 @@ class SignatureArguments(LoggerProperty):
         as_group: bool = True,
         as_positional: bool = False,
         skip: set[str | int] | None = None,
-        fail_untyped: bool = True,
+        fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
     ) -> list[str]:
         """Adds arguments from a class based on its type hints and docstrings.
@@ -161,7 +173,8 @@ class SignatureArguments(LoggerProperty):
             as_group: Whether arguments should be added to a new argument group.
             as_positional: Whether to add required parameters as positional arguments.
             skip: Names of parameters or number of positionals that should be skipped.
-            fail_untyped: Whether to raise exception if a required parameter does not have a type.
+            fail_untyped: Whether to raise an exception for parameters that don't have a type:
+                True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
 
         Returns:
@@ -195,7 +208,7 @@ class SignatureArguments(LoggerProperty):
         as_group: bool = True,
         as_positional: bool = False,
         skip: set[str | int] | None = None,
-        fail_untyped: bool = True,
+        fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
     ) -> list[str]:
         """Adds arguments from a function based on its type hints and docstrings.
@@ -208,7 +221,8 @@ class SignatureArguments(LoggerProperty):
             as_group: Whether arguments should be added to a new argument group.
             as_positional: Whether to add required parameters as positional arguments.
             skip: Names of parameters or number of positionals that should be skipped.
-            fail_untyped: Whether to raise exception if a required parameter does not have a type.
+            fail_untyped: Whether to raise an exception for parameters that don't have a type:
+                True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
 
         Returns:
@@ -245,7 +259,7 @@ class SignatureArguments(LoggerProperty):
         as_group: bool = True,
         as_positional: bool = False,
         skip: set[str | int] | None = None,
-        fail_untyped: bool = True,
+        fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
         instantiate: bool = True,
         linked_targets: set[str] | None = None,
@@ -260,7 +274,8 @@ class SignatureArguments(LoggerProperty):
             as_group: Whether arguments should be added to a new argument group.
             as_positional: Whether to add required parameters as positional arguments.
             skip: Names of parameters or number of positionals that should be skipped.
-            fail_untyped: Whether to raise exception if a required parameter does not have a type.
+            fail_untyped: Whether to raise an exception for parameters that don't have a type:
+                True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
             instantiate: Whether the class group should be instantiated.
 
@@ -268,8 +283,9 @@ class SignatureArguments(LoggerProperty):
             The list of arguments added.
 
         Raises:
-            ValueError: When there are required parameters without at least one valid type.
+            ValueError: When there are parameters without a type that fail_untyped requires to have one.
         """
+        validate_fail_untyped(fail_untyped)
         params = get_signature_parameters(function_or_class, method_name, logger=self.logger)
 
         skip_positionals = [s for s in (skip or []) if isinstance(s, int) and s != 0]
@@ -331,7 +347,7 @@ class SignatureArguments(LoggerProperty):
         param,
         added_args: list[str],
         skip: set[str] | None = None,
-        fail_untyped: bool = True,
+        fail_untyped: FailUntyped = True,
         as_positional: bool = False,
         sub_configs: bool = False,
         instantiate: bool = True,
@@ -342,6 +358,7 @@ class SignatureArguments(LoggerProperty):
         name = param.name
         kind = param.kind
         annotation = param.annotation
+        untyped = annotation == inspect_empty
         src = get_parameter_origins(param.component, param.parent)
         skip_message = f'Skipping parameter "{name}" from "{src}" because of: '
         # Before anything is done with the annotation, so that a type that jsonargparse
@@ -379,6 +396,10 @@ class SignatureArguments(LoggerProperty):
                     default = unset_sentinel if unset_sentinel is not None else None
                 elif get_typehint_origin(annotation) in not_required_types:
                     default = SUPPRESS
+                    self.logger.debug(
+                        f'Parameter "{name}" from "{src}" is NotRequired and does not have a default, '
+                        "so it is not included in the parsed namespace unless given."
+                    )
         # Determine argument characteristics based on parameter kind and default value
         if kind == kinds.POSITIONAL_ONLY:
             is_required = True  # Always required
@@ -396,37 +417,64 @@ class SignatureArguments(LoggerProperty):
             # Checked before linked_targets and fail_untyped adjust is_required, since the wrappers
             # are meant to agree with the requiredness that the signature itself defines.
             annotation = strip_required_typehint(annotation, is_required, f'parameter "{name}" from "{src}"')
-        if not fail_untyped and annotation == inspect_empty:
-            if is_required and os.environ.get("JSONARGPARSE_DEPRECATION_WARNINGS", "").lower() == "all":
+        if is_required and annotation == inspect_empty and fail_untyped is False:
+            if os.environ.get("JSONARGPARSE_DEPRECATION_WARNINGS", "").lower() == "all":
                 deprecation_warning(
                     "fail_untyped_false_required_parameter",
                     "With fail_untyped=False, required parameters without a type annotation are currently "
-                    "set to optional with default None. In v5 the type will be set to Any but the parameter "
-                    "will remain required.",
+                    "set to optional with default None. In v5 the type will be set to Untyped but the "
+                    "parameter will remain required.",
                     stacklevel=4,
                 )
-            annotation = Any
-            default = None if is_required else default
+            annotation = Untyped
+            default = None
             is_required = False
         is_required_link_target = False
         if is_required and linked_targets is not None and name in linked_targets:
             default = None
             is_required = False
             is_required_link_target = True
+            self.logger.debug(
+                f'Parameter "{name}" from "{src}" is the target of a link, so it is not required '
+                "and its value is not taken from the command line."
+            )
         if not is_required and name[0] == "_":
+            self.logger.debug(skip_message + "Name starts with '_' and the parameter is not required.")
             return
         if is_factory_class(default):
             default = param.parent.__dataclass_fields__[name].default_factory()
-        if annotation == inspect_empty and not is_required:
-            annotation = Union[type(default), Any]
+        if annotation == inspect_empty:
+            if fail_untyped == "all":
+                raise ValueError(
+                    "With fail_untyped='all', all parameters must have a supported type."
+                    f" Parameter '{name}' from '{src}' does not specify a type."
+                )
+            if not is_required:
+                # The type of the default is attempted first, so that a value that it accepts is
+                # converted as it would be for a parameter that has the type in its signature.
+                annotation = Union[type(default), Untyped]
         if "help" not in kwargs:
             kwargs["help"] = param.doc
         if not is_required:
             kwargs["default"] = default
             if default is None and not is_optional(annotation, object) and not is_required_link_target:
                 annotation = Optional[annotation]
+                if not untyped and param.default is None:
+                    # only when the default in the signature is what makes the type optional, i.e.
+                    # not when the caller gives the default, as add_subclass_arguments does
+                    self.logger.debug(
+                        f'Parameter "{name}" from "{src}" has None as default, so its type is '
+                        f"changed to {type_to_str(sort_unions_in_typehint(annotation))}."
+                    )
         elif not as_positional or is_non_positional:
             kwargs["required"] = True
+        if untyped and annotation != inspect_empty:
+            # only when the parameter got a type, otherwise fail_untyped raises further below
+            self.logger.debug(
+                f'Parameter "{name}" from "{src}" does not have a type annotation. Added as '
+                f"{type_to_str(sort_unions_in_typehint(annotation))}, thus any value is accepted, "
+                "without validation."
+            )
         is_subclass_typehint = False
         nested_skip: set[str] = set()
         subclasses_disabled = is_subclasses_disabled(annotation)
@@ -489,7 +537,7 @@ class SignatureArguments(LoggerProperty):
                 if nested_skip:
                     action.sub_add_kwargs["skip"] = nested_skip
             added_args.append(dest)
-        elif is_required and fail_untyped:
+        elif is_required and fail_untyped is True:
             raise ValueError(
                 "With fail_untyped=True, all mandatory parameters must have a supported"
                 f" type. Parameter '{name}' from '{src}' does not specify a type."

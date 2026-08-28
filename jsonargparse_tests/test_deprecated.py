@@ -1428,7 +1428,7 @@ def test_fail_untyped_false_required_parameter_deprecation(parser, monkeypatch):
         parser.add_function_arguments(with_untyped_required_warning, fail_untyped=False)
     assert len(warnings) == 1
     assert "fail_untyped=False" in str(warnings[0].message)
-    assert "In v5 the type will be set to Any but the parameter will remain required" in str(warnings[0].message)
+    assert "In v5 the type will be set to Untyped but the parameter will remain required" in str(warnings[0].message)
 
     assert parser.get_defaults() == Namespace(a1=None, a2=None, b1=None, b2=None)
 

@@ -9,6 +9,7 @@ from ._core import ArgumentParser
 from ._deprecated import deprecation_warning_cli_return_parser, get_implicit_auto_cli_components
 from ._namespace import Namespace, dict_to_namespace
 from ._optionals import get_doc_short_description
+from ._signatures import FailUntyped
 from ._util import capture_parser, default_config_option_help
 
 __all__ = ["auto_cli", "auto_parser"]
@@ -31,7 +32,7 @@ def auto_cli(
     set_defaults: dict[str, Any] | None = None,
     as_positional: bool = True,
     return_instance: bool = False,
-    fail_untyped: bool = True,
+    fail_untyped: FailUntyped = True,
     parser_class: type[ArgumentParser] = ArgumentParser,
     **kwargs,
 ):
@@ -56,7 +57,8 @@ def auto_cli(
         as_positional: Whether to add required parameters as positional arguments.
         return_instance: Whether class components should be instantiated directly and returned,
             i.e. without exposing class methods as subcommands.
-        fail_untyped: Whether to raise exception if a required parameter does not have a type.
+        fail_untyped: Whether to raise an exception for parameters that don't have a type:
+            True for the required ones, "all" for all of them, False for none.
         parser_class: The :class:`ArgumentParser` subclass to use.
         **kwargs: Used to instantiate :class:`.ArgumentParser`.
 
@@ -147,7 +149,7 @@ def _add_subcommands(
     config_help: str,
     as_positional: bool,
     return_instance: bool,
-    fail_untyped: bool,
+    fail_untyped: FailUntyped,
 ) -> None:
     subcommands = parser.add_subcommands(required=True)
     for name, component in components.items():
@@ -177,7 +179,7 @@ def _add_component_to_parser(
     parser: ArgumentParser,
     as_positional: bool,
     return_instance: bool,
-    fail_untyped: bool,
+    fail_untyped: FailUntyped,
     config_help: str,
 ):
     kwargs: dict = {"as_positional": as_positional, "fail_untyped": fail_untyped, "sub_configs": True}
