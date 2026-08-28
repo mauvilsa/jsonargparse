@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 from random import Random
-from typing import List, Optional, Union
+from typing import List, Mapping, Optional, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -45,6 +45,9 @@ from jsonargparse_tests.conftest import capture_logs, get_parser_help, json_or_y
 
 if sys.version_info >= (3, 12):
     from typing import TypeAliasType
+
+KeyType = TypeVar("KeyType")
+ValType = TypeVar("ValType")
 
 
 def test_public_api():
@@ -458,6 +461,40 @@ def test_register_not_a_class_type_failure():
 
     with pytest.raises(ValueError, match="Expected class_type to be a class"):
         register_type(Union[SomeClass, int])
+
+
+class FrozenMapping(Mapping[KeyType, ValType]):
+    def __init__(self, data):
+        self._data = dict(data)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)  # pragma: no cover
+
+
+def test_register_type_subscripted_generic(parser):
+    register_type(
+        FrozenMapping,
+        serializer=dict,
+        deserializer=FrozenMapping,
+        type_check=lambda value, _: isinstance(value, FrozenMapping),
+    )
+
+    parser.add_argument("--map", type=FrozenMapping[str, int])
+    parser.add_argument("--opt", type=Optional[FrozenMapping[str, int]])
+    parser.add_argument("--list", type=List[FrozenMapping[str, int]])
+    cfg = parser.parse_args(['--map={"a": 1}', '--opt={"b": 2}', '--list=[{"c": 3}]'])
+    assert dict(cfg.map) == {"a": 1}
+    assert dict(cfg.opt) == {"b": 2}
+    assert [dict(v) for v in cfg.list] == [{"c": 3}]
+    assert all(isinstance(v, FrozenMapping) for v in [cfg.map, cfg.opt, *cfg.list])
+    dump = {"map": {"a": 1}, "opt": {"b": 2}, "list": [{"c": 3}]}
+    assert dump == json_or_yaml_load(parser.dump(cfg))
 
 
 class RegisterOnFirstUse:

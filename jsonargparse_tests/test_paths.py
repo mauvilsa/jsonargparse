@@ -52,6 +52,11 @@ def test_os_pathlike(parser, file_r):
     assert file_r == parser.parse_args([f"--path={file_r}"]).path
 
 
+def test_os_pathlike_subscripted(parser, file_r):
+    parser.add_argument("--path", type=os.PathLike[str])
+    assert file_r == parser.parse_args([f"--path={file_r}"]).path
+
+
 # base path tests
 
 

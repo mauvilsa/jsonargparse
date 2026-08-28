@@ -495,8 +495,9 @@ def register_type(
     """Registers a new type for use in jsonargparse parsers.
 
     Args:
-        class_type: The class to be registered. Python 3.12+ also supports
-            ``TypeAliasType`` aliases.
+        class_type: The class to be registered. A generic class is registered
+            unsubscripted and its registration also applies to its subscripted
+            forms. Python 3.12+ also supports ``TypeAliasType`` aliases.
         serializer: Function that converts an instance of the class to a basic type.
         deserializer: Function that converts a basic type to an instance of the
             class. Default instantiates ``class_type``.
@@ -543,7 +544,13 @@ def get_registered_type(class_type) -> RegisteredType | None:
             import_path = get_import_path(class_type)
             if import_path in registration_pending:
                 registration_pending.pop(import_path)()
-    return registered_type_handlers.get(class_type)
+    type_handler = registered_type_handlers.get(class_type)
+    if type_handler is None:
+        # a subscripted generic is handled by the registration of its origin, e.g. MyMapping[str, int]
+        origin = getattr(class_type, "__origin__", None)
+        if inspect.isclass(origin):
+            type_handler = get_registered_type(origin)
+    return type_handler
 
 
 def add_type(class_type: type, uniqueness_key: tuple | None, type_check: Callable | None = None):

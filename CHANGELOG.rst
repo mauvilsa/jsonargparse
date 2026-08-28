@@ -86,6 +86,10 @@ Fixed
   non-importable ``<locals>`` import path. Now the default is kept as the object
   and dumping it gives the not serializable message and a warning (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- Types registered with ``register_type`` were ignored when the type is
+  subscripted, e.g. ``os.PathLike[str]`` for a registered ``PathLike``. Now the
+  registration of the unsubscripted type is used (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

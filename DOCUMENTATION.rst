@@ -1189,7 +1189,9 @@ for example ``datetime``:
 Registering an already registered type replaces the previous one, jsonargparse's
 own registrations included. A debug log names the module of each, useful when
 two packages register the same type. Give ``fail_already_registered=True`` to
-fail instead.
+fail instead. A generic class is registered unsubscripted, and the registration
+also applies to its subscripted forms, e.g. ``os.PathLike[str]``. The type
+arguments are not validated, since the deserializer gets the complete value.
 
 .. note::
 
