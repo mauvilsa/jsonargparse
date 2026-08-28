@@ -105,6 +105,12 @@ Changed
   makes the type optional, a ``NotRequired`` parameter without a default and a
   parameter that is the target of a link (`#965
   <https://github.com/mauvilsa/jsonargparse/pull/965>`__).
+- ``register_type`` no longer fails when the type is already registered. The new
+  registration now replaces the previous one and a debug log informs about it,
+  naming the module of each registration. This way a new type registered by
+  jsonargparse doesn't break code that already registers it. The previous
+  behavior is available with ``fail_already_registered=True`` (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Deprecated
 ^^^^^^^^^^

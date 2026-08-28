@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import pickle
 import random
 import sys
@@ -9,10 +10,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from random import Random
 from typing import List, Optional, Union
+from unittest.mock import patch
 
 import pytest
 
 from jsonargparse import ArgumentError, Namespace
+from jsonargparse._common import get_settings_logger
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse._util import get_import_path
 from jsonargparse.typing import (
@@ -32,12 +35,13 @@ from jsonargparse.typing import (
     lazy_instance,
     register_type,
     register_type_on_first_use,
+    registered_type_handlers,
     registered_types,
     registration_pending,
     restricted_number_type,
     restricted_string_type,
 )
-from jsonargparse_tests.conftest import get_parser_help, json_or_yaml_load
+from jsonargparse_tests.conftest import capture_logs, get_parser_help, json_or_yaml_load
 
 if sys.version_info >= (3, 12):
     from typing import TypeAliasType
@@ -383,7 +387,69 @@ def test_register_type_datetime(parser):
     assert json_or_yaml_load(parser.dump(cfg)) == {"datetime": "2008-09-03T20:56:35"}
 
     register_type(datetime, serializer, deserializer)  # identical re-registering is okay
-    pytest.raises(ValueError, lambda: register_type(datetime))  # different registration not okay
+
+
+@pytest.fixture
+def restore_registrations():
+    handlers = registered_type_handlers.copy()
+    pending = registration_pending.copy()
+    yield
+    registered_type_handlers.clear()
+    registered_type_handlers.update(handlers)
+    registration_pending.clear()
+    registration_pending.update(pending)
+
+
+class ReRegistered:
+    def __init__(self, value):
+        self.value = value
+
+
+def test_register_type_replaces_previous(parser, restore_registrations):
+    register_type(ReRegistered, lambda v: f"first:{v.value}", lambda v: ReRegistered(v.split(":")[-1]))
+    register_type(ReRegistered, lambda v: f"second:{v.value}", lambda v: ReRegistered(v.upper()))
+
+    parser.add_argument("--item", type=ReRegistered)
+    cfg = parser.parse_args(["--item=abc"])
+    assert cfg.item.value == "ABC"
+    assert json_or_yaml_load(parser.dump(cfg)) == {"item": "second:ABC"}
+
+
+def test_register_type_replace_fail_already_registered(restore_registrations):
+    register_type(ReRegistered, lambda v: v.value)
+    with pytest.raises(ValueError, match="already registered with different serializer"):
+        register_type(ReRegistered, lambda v: str(v.value), fail_already_registered=True)
+    assert get_registered_type(ReRegistered).module == __name__
+
+
+def re_registered_serializer(value):
+    return value.value  # pragma: no cover
+
+
+@patch.dict(os.environ, {"JSONARGPARSE_DEBUG": "true"})
+def test_register_type_replace_debug_log(restore_registrations):
+    with capture_logs(get_settings_logger()) as logs:
+        register_type(ReRegistered, re_registered_serializer)
+        register_type(ReRegistered, re_registered_serializer)  # identical, not a replacement
+        register_type(ReRegistered, lambda v: str(v.value))
+        register_type(complex, deserializer=lambda v: complex(v))
+    logs = logs.getvalue()
+    assert logs.count("replaced the previous registration") == 2
+    assert f"Type 'ReRegistered' registered by module '{__name__}' replaced the previous registration" in logs
+    assert f"Type 'complex' registered by module '{__name__}' replaced the previous registration" in logs
+    assert "registration by module 'jsonargparse.typing'" in logs
+
+
+@patch.dict(os.environ, {"JSONARGPARSE_DEBUG": "true"})
+def test_register_type_replaces_registered_on_first_use(parser, restore_registrations):
+    with capture_logs(get_settings_logger()) as logs:
+        register_type(uuid.UUID, serializer=lambda v: f"uuid:{v}", deserializer=lambda v: uuid.UUID(v[5:]))
+    assert "replaced the previous registration by module 'jsonargparse.typing'" in logs.getvalue()
+
+    parser.add_argument("--id", type=uuid.UUID)
+    cfg = parser.parse_args(["--id=uuid:12345678-1234-5678-1234-567812345678"])
+    assert cfg.id == uuid.UUID("12345678-1234-5678-1234-567812345678")
+    assert json_or_yaml_load(parser.dump(cfg)) == {"id": "uuid:12345678-1234-5678-1234-567812345678"}
 
 
 def test_register_not_a_class_type_failure():

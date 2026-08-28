@@ -9,7 +9,7 @@ import sys
 from collections.abc import Callable
 from typing import Any, TypeAlias, get_type_hints
 
-from ._common import ClassType, is_final_class, is_subclass, path_dump_preserve_relative
+from ._common import ClassType, get_settings_logger, is_final_class, is_subclass, path_dump_preserve_relative
 from ._deprecated import renamed_parameter_warning
 from ._namespace import Namespace
 from ._optionals import final, is_alias_type, pydantic_support
@@ -436,6 +436,8 @@ def path_type(mode: str, docstring: str | None = None, **kwargs) -> TypeAlias:
 
 
 class RegisteredType:
+    _eq_attrs = ["class_type", "serializer", "base_deserializer", "deserializer_exceptions", "type_check"]
+
     def __init__(
         self,
         class_type: _TypeClass,
@@ -443,15 +445,17 @@ class RegisteredType:
         deserializer: Callable | None,
         deserializer_exceptions: type[Exception] | tuple[type[Exception], ...],
         type_check: Callable,
+        module: str,
     ):
         self.class_type = class_type
         self.serializer = serializer
         self.base_deserializer = class_type if deserializer is None else deserializer
         self.deserializer_exceptions = deserializer_exceptions
         self.type_check = type_check
+        self.module = module
 
     def __eq__(self, other):
-        return all(getattr(self, k) == getattr(other, k) for k in ["class_type", "serializer", "base_deserializer"])
+        return all(getattr(self, k) == getattr(other, k) for k in self._eq_attrs)
 
     def is_value_of_type(self, value):
         return self.type_check(value, self.class_type)
@@ -466,6 +470,14 @@ class RegisteredType:
             raise ex2 from ex
 
 
+def get_registrant_module() -> str:
+    """Returns the name of the module that called the caller of this function."""
+    frame: Any = sys._getframe(2)
+    while frame.f_globals.get("__name__") == "jsonargparse._deprecated":  # skip the deprecation decorator
+        frame = frame.f_back
+    return frame.f_globals.get("__name__", "unknown")
+
+
 @renamed_parameter_warning({"type_class": "class_type"})
 def register_type(
     class_type: _TypeClass,
@@ -477,7 +489,7 @@ def register_type(
         AttributeError,
     ),
     type_check: Callable = lambda v, t: v.__class__ == t,
-    fail_already_registered: bool = True,
+    fail_already_registered: bool = False,
     uniqueness_key: tuple | None = None,
 ) -> None:
     """Registers a new type for use in jsonargparse parsers.
@@ -490,19 +502,26 @@ def register_type(
             class. Default instantiates ``class_type``.
         deserializer_exceptions: Exceptions that deserializer raises when it fails.
         type_check: Function to check if a value is of ``class_type``. Gets as arguments the value and ``class_type``.
-        fail_already_registered: Whether to fail if type has already been registered.
+        fail_already_registered: Whether to fail instead of replacing a previous registration of the type.
         uniqueness_key: Key to determine uniqueness of type.
     """
     if sys.version_info[:2] < (3, 12) and not inspect.isclass(class_type):
         raise ValueError(f"Expected class_type to be a class, got {type(class_type)}")
     elif sys.version_info[:2] >= (3, 12) and not (inspect.isclass(class_type) or is_alias_type(class_type)):
         raise ValueError(f"Expected class_type to be a class or a type alias, got {type(class_type)}")
-    type_handler = RegisteredType(class_type, serializer, deserializer, deserializer_exceptions, type_check)
-    fail_already_registered = globals().get("_fail_already_registered", fail_already_registered)
-    if not uniqueness_key and fail_already_registered and get_registered_type(class_type):
-        if type_handler == registered_type_handlers[class_type]:
+    module = get_registrant_module()
+    type_handler = RegisteredType(class_type, serializer, deserializer, deserializer_exceptions, type_check, module)
+    previous = None if uniqueness_key else get_registered_type(class_type)
+    if previous:
+        if previous == type_handler:
             return
-        raise ValueError(f'Type "{class_type}" already registered with different serializer and/or deserializer.')
+        if fail_already_registered:
+            raise ValueError(f'Type "{class_type}" already registered with different serializer and/or deserializer.')
+        class_type_name = getattr(class_type, "__name__", str(class_type))
+        get_settings_logger().debug(
+            f"Type {class_type_name!r} registered by module {module!r} replaced the previous "
+            f"registration by module {previous.module!r}"
+        )
     registered_type_handlers[class_type] = type_handler
     if uniqueness_key is not None:
         registered_types[uniqueness_key] = class_type
@@ -537,8 +556,6 @@ def add_type(class_type: type, uniqueness_key: tuple | None, type_check: Callabl
         kwargs["type_check"] = type_check  # type: ignore[assignment]
     register_type(class_type, class_type._type, **kwargs)  # type: ignore[attr-defined]
 
-
-_fail_already_registered = False
 
 PositiveInt = restricted_number_type("PositiveInt", int, (">", 0), docstring="int restricted to be >0")
 NonNegativeInt = restricted_number_type("NonNegativeInt", int, (">=", 0), docstring="int restricted to be ≥0")
@@ -766,6 +783,3 @@ def register_pydantic_types(typehint):
     if isinstance(args, tuple):
         for arg in args:
             register_pydantic_types(arg)
-
-
-del _fail_already_registered
