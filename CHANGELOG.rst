@@ -82,6 +82,10 @@ Fixed
   ``collections.abc`` spelling of the same types was. A bare one didn't validate
   and a composed one, e.g. ``Optional[Hashable]``, raised ``Unsupported type
   hint`` (`#963 <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
+- A ``Callable`` default that can't be imported back, was silently dumped as a
+  non-importable ``<locals>`` import path. Now the default is kept as the object
+  and dumping it gives the not serializable message and a warning (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

@@ -2429,6 +2429,28 @@ def test_callable_function_path(parser):
     ctx.match("Callable expects a function or a callable class")
 
 
+def make_closure_callable():
+    def unbound_closure():
+        return "closure"
+
+    return unbound_closure
+
+
+closure_callable = make_closure_callable()
+
+
+def test_callable_default_not_importable(parser):
+    # the import path of a closure includes a <locals> part, so it can't be imported back
+    parser.add_argument("--callable", type=Callable, default=closure_callable)
+
+    cfg = parser.parse_args([])
+    assert cfg.callable is closure_callable
+
+    with assert_dump_warnings("Unable to serialize instance <function"):
+        dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump["callable"].startswith("Unable to serialize instance <function")
+
+
 def test_callable_list_of_function_paths(parser):
     parser.add_argument("--callables", type=List[Callable])
 

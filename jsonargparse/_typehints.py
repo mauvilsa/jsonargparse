@@ -392,7 +392,11 @@ class ActionTypeHint(Action):
         elif is_module_type(self._typehint) and isinstance(default, ModuleType):
             default = default.__name__
         elif is_callable_type(self._typehint) and callable(default) and not inspect.isclass(default):
-            default = get_import_path(default)
+            try:
+                default = object_path_serializer(default)
+            except ValueError:
+                # kept as is when it can't be imported back, e.g. a closure, so that dump warns
+                pass
         elif ActionTypeHint.is_return_subclass_typehint(self._typehint) and inspect.isclass(default):
             default = {"class_path": get_import_path(default)}
         elif is_subclass_type and not allow_default_instance.get():
@@ -1557,7 +1561,7 @@ def adapt_typehints(
                 val, partial_skip_args = adapt_partial_callable_class(typehint, val)
                 val = adapt_class_type(val, True, False, sub_add_kwargs, partial_skip_args=partial_skip_args)
             else:
-                val = object_path_serializer(val)
+                val = serialize_as_import_path(val)
         else:
             adapted = adapt_subconfig_path(val, typehint, adapt_kwargs)
             if adapted is not not_a_subconfig_path:
@@ -1626,7 +1630,7 @@ def adapt_typehints(
     elif inspect.isclass(typehint_origin):
         if is_instance_or_supports_protocol(val, typehint):
             if serialize:
-                val = serialize_class_instance(val)
+                val = serialize_as_import_path(val)
             return val
         if serialize and isinstance(val, str):
             return val
@@ -2833,14 +2837,14 @@ def typehint_metavar(typehint):
     return metavar
 
 
-def serialize_class_instance(val):
-    with suppress(Exception):
-        import_path = get_import_path(val)
-        if import_path and import_object(import_path, check_path=False) is val:
-            return import_path
-    val = f"Unable to serialize instance {val}"
-    warning(val)
-    return val
+def serialize_as_import_path(val):
+    """Serializes an object as its import path, warning when it can't be imported back."""
+    try:
+        return object_path_serializer(val)
+    except ValueError:
+        val = f"Unable to serialize instance {val}"
+        warning(val)
+        return val
 
 
 def typehint_from_value(val):
@@ -2884,7 +2888,7 @@ def serialize_unvalidated(val, adapt_kwargs):
         return val
     typehint = typehint_from_value(val)
     if typehint is None:
-        return serialize_class_instance(val)
+        return serialize_as_import_path(val)
     if isinstance(val, dict):
         adapt_val = dict(val)  # adapt_typehints serializes the items in place, so give it a copy
     elif isinstance(val, list):
