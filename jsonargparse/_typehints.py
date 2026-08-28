@@ -974,8 +974,7 @@ class UntypedType(UnvalidatedType):
     """
 
     def __init__(self):
-        self.reason = untyped_reason
-        self.name = ""
+        super().__init__("", reason=untyped_reason)  # no type in the source code, thus an empty name
 
     def __repr__(self):
         return "Untyped"
