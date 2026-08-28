@@ -84,12 +84,12 @@ Fixed
   hint`` (`#963 <https://github.com/mauvilsa/jsonargparse/pull/963>`__).
 - A ``Callable`` default that can't be imported back, was silently dumped as a
   non-importable ``<locals>`` import path. Now the default is kept as the object
-  and dumping it gives the not serializable message and a warning (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  and dumping it gives the not serializable message and a warning (`#966
+  <https://github.com/mauvilsa/jsonargparse/pull/966>`__).
 - Types registered with ``register_type`` were ignored when the type is
   subscripted, e.g. ``os.PathLike[str]`` for a registered ``PathLike``. Now the
-  registration of the unsubscripted type is used (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  registration of the unsubscripted type is used (`#966
+  <https://github.com/mauvilsa/jsonargparse/pull/966>`__).
 
 Changed
 ^^^^^^^
@@ -113,8 +113,8 @@ Changed
   registration now replaces the previous one and a debug log informs about it,
   naming the module of each registration. This way a new type registered by
   jsonargparse doesn't break code that already registers it. The previous
-  behavior is available with ``fail_already_registered=True`` (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  behavior is available with ``fail_already_registered=True`` (`#966
+  <https://github.com/mauvilsa/jsonargparse/pull/966>`__).
 
 Deprecated
 ^^^^^^^^^^
