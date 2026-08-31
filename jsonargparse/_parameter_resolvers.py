@@ -331,6 +331,7 @@ def get_typed_dict_params(typed_dict, logger=None, **param_kwargs) -> ParamList:
         get_typed_dict_annotations,
         get_typed_dict_required_keys,
         not_required_types,
+        strip_read_only,
     )
 
     annotations = get_typed_dict_annotations(typed_dict, logger)
@@ -338,7 +339,7 @@ def get_typed_dict_params(typed_dict, logger=None, **param_kwargs) -> ParamList:
     doc_params = parse_docs(typed_dict, None, logger)
     params = []
     for name, annotation in annotations.items():
-        if name not in required_keys and get_typehint_origin(annotation) not in not_required_types:
+        if name not in required_keys and get_typehint_origin(strip_read_only(annotation)) not in not_required_types:
             # Mark optional keys (e.g. from total=False) as NotRequired so that they
             # are added as non-required arguments.
             annotation = NotRequired[annotation]
@@ -353,6 +354,27 @@ def get_typed_dict_params(typed_dict, logger=None, **param_kwargs) -> ParamList:
             )
         )
     return params
+
+
+def get_namedtuple_params(namedtuple, logger=None, **param_kwargs) -> ParamList:
+    """Parameters that correspond to the fields of a NamedTuple."""
+    from ._typehints import get_namedtuple_annotations, get_namedtuple_type
+
+    annotations = get_namedtuple_annotations(namedtuple, logger)
+    namedtuple = get_namedtuple_type(namedtuple)
+    defaults = namedtuple._field_defaults
+    doc_params = parse_docs(namedtuple, None, logger)
+    return [
+        ParamData(
+            name=name,
+            annotation=annotation,
+            default=defaults.get(name, inspect._empty),
+            kind=inspect._ParameterKind.KEYWORD_ONLY,
+            doc=doc_params.get(name),
+            **param_kwargs,
+        )
+        for name, annotation in annotations.items()
+    ]
 
 
 def unpack_typed_dict_kwargs(params: ParamList, kwargs_idx: int, logger=None) -> int:
@@ -1224,12 +1246,16 @@ def get_signature_parameters(
             the parameters for ``__init__``.
         logger: Useful for debugging. Only logs at ``DEBUG`` level.
     """
-    from ._typehints import is_typed_dict
+    from ._typehints import is_namedtuple, is_typed_dict
 
     logger = parse_logger(logger, "get_signature_parameters")
     if method_or_property is None and is_typed_dict(function_or_class):
         # a typed dict has no signature to inspect, its parameters correspond to its keys
         return get_typed_dict_params(function_or_class, logger, component=function_or_class)
+    if method_or_property is None and is_namedtuple(function_or_class):
+        # the generated __new__ of a named tuple doesn't keep the annotations as written, and a
+        # subscripted generic one has no signature, so its parameters come from its fields
+        return get_namedtuple_params(function_or_class, logger, component=function_or_class)
     get_component_and_parent(function_or_class, method_or_property)  # verify input
     params = None
     for get_parameters in [

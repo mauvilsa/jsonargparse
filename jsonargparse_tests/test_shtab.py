@@ -13,7 +13,7 @@ from enum import Enum
 from importlib.util import find_spec
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Dict, Generic, List, Literal, Optional, TypedDict, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Literal, NamedTuple, Optional, TypedDict, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -631,6 +631,18 @@ def test_bash_typed_dict_help_choices(parser):
     assert choices == ["AreaDict", f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
 
 
+class AreaTuple(NamedTuple):
+    latitude: float
+    longitude: float
+
+
+def test_bash_namedtuple_help_choices(parser):
+    parser.add_argument("--area", type=Union[AreaTuple, Base])
+    shtab_script = get_shtab_script(parser, "bash")
+    choices = get_bash_array(shtab_script, "_shtab_tool___area_help_choices")
+    assert choices == ["AreaTuple", f"{__name__}.Base", f"{__name__}.SubA", f"{__name__}.SubB"]
+
+
 PointVar = TypeVar("PointVar")
 
 if sys.version_info >= (3, 11):  # a generic TypedDict requires python 3.11 or later
@@ -665,6 +677,23 @@ def test_bash_typed_dict_keys(parser, options_type):
 
 def test_bash_typed_dict_key_types(parser, subtests):
     parser.add_argument("--opts", type=OptionsDict)
+    assert_bash_typehint_completions(
+        subtests,
+        parser,
+        [
+            ("opts.verbose", bool, "", ["true", "false"], "2/2"),
+            ("opts.mode", AXEnum, "X", ["XY", "XZ"], "2/3"),
+        ],
+    )
+
+
+class OptionsTuple(NamedTuple):
+    verbose: bool = False
+    mode: AXEnum = AXEnum.XY
+
+
+def test_bash_namedtuple_field_types(parser, subtests):
+    parser.add_argument("--opts", type=OptionsTuple)
     assert_bash_typehint_completions(
         subtests,
         parser,

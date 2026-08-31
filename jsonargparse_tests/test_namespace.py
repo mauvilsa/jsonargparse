@@ -173,6 +173,18 @@ def test_as_dict():
     assert Namespace().as_dict() == {}
 
 
+def test_as_dict_namespaces_mixed_with_other_values():
+    ns = Namespace()
+    ns["a"] = {"n": Namespace(r=1), "s": "str"}
+    ns["b"] = [Namespace(r=2), "str"]
+    ns["c"] = {"deep": [{"n": Namespace(r=3)}]}
+    assert ns.as_dict() == {
+        "a": {"n": {"r": 1}, "s": "str"},
+        "b": [{"r": 2}, "str"],
+        "c": {"deep": [{"n": {"r": 3}}]},
+    }
+
+
 def test_as_flat():
     ns = Namespace()
     ns["w"] = 1

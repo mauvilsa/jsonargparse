@@ -85,9 +85,12 @@ from ._namespace import Namespace, subclasses_disabled_meta_key
 from ._optionals import (
     capture_typing_extension_shadows,
     get_alias_target,
+    get_new_type_supertype,
     is_alias_type,
     is_annotated,
     is_annotated_validator,
+    is_literal_string,
+    is_new_type,
     typing_extensions_import,
     validate_annotated,
 )
@@ -111,6 +114,7 @@ from ._util import (
 from .typing import _LazyInitBaseClass, get_registered_type, is_pydantic_type
 
 NotRequired = typing_extensions_import("NotRequired")
+ReadOnly = typing_extensions_import("ReadOnly")
 Required = typing_extensions_import("Required")
 _TypedDictMeta = typing_extensions_import("_TypedDictMeta")
 Unpack = typing_extensions_import("Unpack")
@@ -177,6 +181,7 @@ root_types = {
     UnionType,
     GenericAlias,
     NotRequired,
+    ReadOnly,
     Required,
     Unpack,
 }
@@ -232,6 +237,10 @@ _capture_typing_extension_shadows("NotRequired", root_types, not_required_types)
 required_types = {Required}
 _capture_typing_extension_shadows("Required", root_types, required_types)
 not_required_required_types = not_required_types.union(required_types)
+
+read_only_types = {ReadOnly}
+_capture_typing_extension_shadows("ReadOnly", root_types, read_only_types)
+typed_dict_key_qualifiers = not_required_required_types.union(read_only_types)
 
 typed_dict_types = {TypedDict}
 _capture_typing_extension_shadows("TypedDict", typed_dict_types)
@@ -313,12 +322,26 @@ def cached_get_class_parser(*, val_class, sub_add_kwargs, skip_args, parent_pars
     return parser
 
 
-def strip_required_typehint(typehint, is_required: bool, source: str):
-    """Removes a top level Required/NotRequired wrapper, failing if it disagrees with the requiredness.
+def strip_read_only(typehint):
+    """Removes a top level ReadOnly wrapper, which only marks a TypedDict key as not mutable.
 
-    The requiredness of an argument is already given by the argument itself, thus the wrappers are
-    only accepted as a redundant specification and not included in the type shown in the help.
+    Nothing is ever written back into a parsed TypedDict, so ReadOnly imposes no
+    restriction and changes neither the type of a key nor its requiredness.
     """
+    if get_typehint_origin(typehint) in read_only_types:
+        assert len(typehint.__args__) == 1, "ReadOnly requires a single type argument"
+        return typehint.__args__[0]
+    return typehint
+
+
+def strip_required_typehint(typehint, is_required: bool, source: str):
+    """Removes top level Required/NotRequired and ReadOnly wrappers, checking the requiredness.
+
+    The requiredness of an argument is already given by the argument itself, thus Required and
+    NotRequired are only accepted as a redundant specification, failing when they disagree, and
+    neither they nor ReadOnly are included in the type shown in the help.
+    """
+    typehint = strip_read_only(typehint)
     typehint_origin = get_typehint_origin(typehint)
     if typehint_origin not in not_required_required_types:
         return typehint
@@ -331,7 +354,7 @@ def strip_required_typehint(typehint, is_required: bool, source: str):
             f"argument is {'required' if expect_required else 'not required'}."
         )
     assert len(typehint.__args__) == 1, "(Not)Required requires a single type argument"
-    return typehint.__args__[0]
+    return strip_read_only(typehint.__args__[0])
 
 
 class ActionTypeHint(Action):
@@ -446,6 +469,7 @@ class ActionTypeHint(Action):
             or is_subclass(typehint, Enum)
             or is_subclasses_disabled(typehint)
             or is_typed_dict(typehint)
+            or is_namedtuple(typehint)
             or ActionTypeHint.is_subclass_typehint(typehint)
         )
         if full and supported:
@@ -1160,11 +1184,11 @@ def get_typed_dict_annotations(typed_dict, logger=None) -> dict:
             global_vars = {}
             update_module_global_vars(module, global_vars, logger)
         annotations.update(resolve_module_annotations(module, module_annotations, global_vars, logger))
-    return {k: resolve_typed_dict_key_type_vars(annotations[k], type_var_maps[k]) for k in typed_dict.__annotations__}
+    return {k: resolve_annotation_type_vars(annotations[k], type_var_maps[k]) for k in typed_dict.__annotations__}
 
 
-def resolve_typed_dict_key_type_vars(annotation, type_var_map: dict):
-    """Returns the annotation of a TypedDict key with the TypeVars in it resolved.
+def resolve_annotation_type_vars(annotation, type_var_map: dict):
+    """Returns the annotation of a TypedDict key or a NamedTuple field with the TypeVars in it resolved.
 
     First the TypeVars that the subscript binds are substituted, then the ones
     that it doesn't are replaced by what they stand for, i.e. their default,
@@ -1181,16 +1205,83 @@ def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
     # reflected there (e.g. below Python 3.11 or with postponed annotations), so they are
     # adjusted based on the resolved annotations.
     required_keys = set(getattr(typed_dict, "__required_keys__", set(annotations)))
-    required_keys.update({k for k, v in annotations.items() if get_typehint_origin(v) in required_types})
-    required_keys.difference_update({k for k, v in annotations.items() if get_typehint_origin(v) in not_required_types})
+    unqualified = {k: strip_read_only(v) for k, v in annotations.items()}
+    required_keys.update({k for k, v in unqualified.items() if get_typehint_origin(v) in required_types})
+    required_keys.difference_update({k for k, v in unqualified.items() if get_typehint_origin(v) in not_required_types})
     return required_keys
 
 
 def get_typed_dict_key_type(annotation):
-    # Required and NotRequired only change the requiredness of a key, not its type
+    # Required and NotRequired only change the requiredness of a key and ReadOnly only marks it as
+    # not mutable, so none of them change its type. ReadOnly can wrap or be wrapped by the others.
+    annotation = strip_read_only(annotation)
     if get_typehint_origin(annotation) in not_required_required_types:
-        return annotation.__args__[0]
+        annotation = strip_read_only(annotation.__args__[0])
     return annotation
+
+
+def _is_namedtuple_class(typehint) -> bool:
+    return inspect.isclass(typehint) and issubclass(typehint, tuple) and hasattr(typehint, "_fields")
+
+
+def get_namedtuple_type(typehint):
+    """Returns the NamedTuple that a subscripted generic NamedTuple stands for, or the type hint unchanged.
+
+    Its type parameters don't change which fields there are, only the types of
+    the ones annotated with a TypeVar.
+    """
+    origin = getattr(typehint, "__origin__", None)
+    return origin if _is_namedtuple_class(origin) else typehint
+
+
+def is_namedtuple(typehint) -> bool:
+    """Whether a type hint is a NamedTuple, i.e. a tuple subclass that has named fields.
+
+    Includes a subscripted generic one, see get_namedtuple_type.
+    """
+    return _is_namedtuple_class(get_namedtuple_type(typehint))
+
+
+def is_structured_value_type(typehint) -> bool:
+    """Whether a type hint is a structure of named keys or fields, i.e. a TypedDict or a NamedTuple.
+
+    Their value is not a class to instantiate, so it is never given as a class
+    path and a ``--*.help`` option refers to them by name.
+    """
+    return is_typed_dict(typehint) or is_namedtuple(typehint)
+
+
+def get_namedtuple_annotations(namedtuple, logger=None) -> dict:
+    """Returns the resolved annotation of each field of a NamedTuple.
+
+    A field without an annotation, i.e. from an untyped ``collections.namedtuple``,
+    accepts any value, the same as an unparameterized ``dict``.
+    """
+    from ._postponed_annotations import get_global_vars
+
+    typehint = namedtuple
+    namedtuple = get_namedtuple_type(typehint)
+    type_var_map = get_type_var_map(typehint, namedtuple)
+    annotations: dict = {}
+    for cls in reversed(namedtuple.__mro__):
+        annotations.update(getattr(cls, "__annotations__", None) or {})
+    annotations = {f: annotations[f] for f in namedtuple._fields if f in annotations}
+    global_vars = get_global_vars(namedtuple, logger)
+    resolved = resolve_module_annotations(namedtuple.__module__, annotations, global_vars, logger)
+    return {f: resolve_annotation_type_vars(resolved.get(f, Any), type_var_map) for f in namedtuple._fields}
+
+
+def get_namedtuple_value_as_dict(val, namedtuple, fields) -> dict:
+    """Returns the fields given for a NamedTuple as a dict, from any of its accepted spellings."""
+    if isinstance(val, namedtuple):
+        return val._asdict()
+    if isinstance(val, (list, tuple)):
+        if len(val) > len(fields):
+            raise_unexpected_value(f"Expected at most {len(fields)} values", val)
+        return dict(zip(fields, val))
+    if not isinstance(val, dict):
+        raise_unexpected_value(f"Expected a NamedTuple {namedtuple.__name__}, given as an array or an object", val)
+    return val.copy()
 
 
 def is_typed_dict_subtype(subtype, typed_dict, logger=None) -> bool:
@@ -1545,10 +1636,42 @@ def adapt_typehints(
         elif typehint_origin is OrderedDict:
             val = dict(val) if serialize else OrderedDict(val)
 
-    # TypedDict NotRequired and Required
-    elif typehint_origin in not_required_required_types:
-        assert len(subtypehints) == 1, "(Not)Required requires a single type argument"
+    # TypedDict Required, NotRequired and ReadOnly
+    elif typehint_origin in typed_dict_key_qualifiers:
+        assert len(subtypehints) == 1, "A TypedDict key qualifier requires a single type argument"
         val = adapt_typehints(val, subtypehints[0], **adapt_kwargs)
+
+    # NamedTuple
+    elif is_namedtuple(typehint):
+        annotations = get_namedtuple_annotations(typehint, logger)
+        # a subscripted generic NamedTuple is built as its unsubscripted form, see get_namedtuple_type
+        typehint = get_namedtuple_type(typehint)
+        fields = typehint._fields
+        if isinstance(val, NestedArg):
+            prev = prev_val._asdict() if isinstance(prev_val, typehint) else prev_val
+            field, field_val = val.key, val.val
+            if isinstance(field, str) and "." in field:
+                # kept as a NestedArg, so that the field merges it with its own previous value
+                field, sub_key = field.split(".", 1)
+                field_val = NestedArg(key=sub_key, val=field_val)
+            val = {**prev, field: field_val} if isinstance(prev, dict) else {field: field_val}
+        val = get_namedtuple_value_as_dict(val, typehint, fields)
+        extra_fields = val.keys() - set(fields)
+        if extra_fields:
+            raise_unexpected_value(f"Unexpected fields: {extra_fields}", val)
+        missing_fields = set(fields) - typehint._field_defaults.keys() - val.keys()
+        if missing_fields:
+            raise_unexpected_value(f"Missing required fields: {missing_fields}", val)
+        for k, v in val.items():
+            kwargs = adapt_kwargs.copy()
+            if kwargs.get("prev_val"):
+                prev_field = kwargs["prev_val"]
+                prev_field = prev_field._asdict() if isinstance(prev_field, typehint) else prev_field
+                kwargs["prev_val"] = prev_field.get(k) if isinstance(prev_field, dict) else None
+            # what can't be validated accepts any value, as the help shows it
+            val[k] = adapt_typehints(v, replace_unvalidatable_typehints(annotations[k]), **kwargs)
+        if not serialize:
+            val = typehint(**val)
 
     # Callable
     elif (
@@ -1725,6 +1848,14 @@ def adapt_typehints(
     # TypeAliasType -- 3.12 `type x = y` or manually via typing_extensions
     elif is_alias_type(typehint):
         return adapt_typehints(val, get_alias_target(typehint), **adapt_kwargs)
+
+    # NewType -- validated as the supertype that it stands for
+    elif is_new_type(typehint):
+        return adapt_typehints(val, get_new_type_supertype(typehint), **adapt_kwargs)
+
+    # LiteralString -- at runtime there is no way to tell it apart from a str
+    elif is_literal_string(typehint):
+        return adapt_typehints(val, str, **adapt_kwargs)
 
     else:
         raise RuntimeError(f"The code should never reach here: typehint={typehint}")  # pragma: no cover
@@ -2082,6 +2213,7 @@ def is_single_class_type(typehint, typehint_origin, closed_class):
         )
         and typehint not in leaf_or_root_types
         and not is_typed_dict(typehint)
+        and not is_namedtuple(typehint)
         and not get_registered_type(typehint)
         and not is_pydantic_type(typehint)
         and not is_subclass(typehint, (Path, Enum))
@@ -2126,9 +2258,9 @@ def yield_class_types(typehint, is_single, also_lists=False, also_containers=Fal
             if subtype is not Ellipsis:
                 yield from yield_class_types(subtype, **kwargs)
     if is_single(typehint, typehint_origin):
-        if is_typed_dict(typehint):
-            # a subscripted generic TypedDict is yielded as is, since its keys are
-            # resolved from it, substituting what it is subscripted with
+        if is_structured_value_type(typehint):
+            # a subscripted generic TypedDict or NamedTuple is yielded as is, since its keys or
+            # fields are resolved from it, substituting what it is subscripted with
             yield typehint
         else:
             # a subscripted user defined generic, e.g. Strategy[T], is yielded as its origin
@@ -2162,7 +2294,7 @@ def get_subclass_or_closed_types(typehint, also_lists=False, callable_return=Fal
 
 
 def is_single_help_type(typehint, typehint_origin):
-    return is_typed_dict(typehint) or is_single_subclass_or_closed_type(typehint, typehint_origin)
+    return is_structured_value_type(typehint) or is_single_subclass_or_closed_type(typehint, typehint_origin)
 
 
 def get_help_types(typehint):
@@ -2458,7 +2590,9 @@ def subclasses_disabled_remove_class_path(value):
         elif isinstance(val, list):
             value[key] = [subclasses_disabled_remove_class_path(item) for item in val]
         elif isinstance(val, tuple):
-            value[key] = tuple(subclasses_disabled_remove_class_path(item) for item in val)
+            items = [subclasses_disabled_remove_class_path(item) for item in val]
+            # a NamedTuple is rebuilt as itself, since it is not constructed from an iterable
+            value[key] = type(val)(*items) if is_namedtuple(type(val)) else tuple(items)
 
     if value.pop(subclasses_disabled_meta_key, False):
         init_args = Namespace({**value.get("init_args", {}), **value.get("dict_kwargs", {})})

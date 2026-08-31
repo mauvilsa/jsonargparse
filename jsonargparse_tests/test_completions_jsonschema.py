@@ -10,7 +10,21 @@ from abc import ABC, abstractmethod
 from calendar import Calendar
 from enum import Enum
 from importlib.util import find_spec
-from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Type, TypedDict, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    TypedDict,
+    TypeVar,
+    Union,
+)
 from unittest.mock import patch
 
 import pytest
@@ -24,7 +38,7 @@ from jsonargparse import (
     lazy_instance,
     set_parsing_settings,
 )
-from jsonargparse._typehints import NotRequired
+from jsonargparse._typehints import NotRequired, ReadOnly
 from jsonargparse.typing import (
     ClosedUnitInterval,
     Email,
@@ -781,6 +795,46 @@ def test_typed_dict_not_required(parser):
     schema = get_schema(parser)["properties"]["movie"]
     assert schema["properties"] == {"title": {"type": "string"}, "year": {"type": "integer"}}
     assert schema["required"] == ["title"]
+
+
+@pytest.mark.skipif(not ReadOnly, reason="ReadOnly introduced in python 3.13 or backported in typing_extensions")
+def test_typed_dict_read_only(parser):
+    parser.add_argument("--movie", type=TypedDict("Movie", {"title": ReadOnly[str], "year": NotRequired[int]}))
+    schema = get_schema(parser)["properties"]["movie"]
+    assert schema["properties"] == {"title": {"type": "string"}, "year": {"type": "integer"}}
+    assert schema["required"] == ["title"]
+
+
+class Coordinate(NamedTuple):
+    """A coordinate."""
+
+    x: int
+    y: int = 3
+
+
+def test_namedtuple(parser):
+    parser.add_argument("--coord", type=Coordinate)
+    object_schema, array_schema = get_schema(parser)["properties"]["coord"]["anyOf"]
+    object_schema.pop("description", None)  # only when docstring_parser is available, see below
+    assert object_schema == {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        "required": ["x"],
+    }
+    assert array_schema == {
+        "type": "array",
+        "prefixItems": [{"type": "integer"}, {"type": "integer"}],
+        "items": False,
+        "minItems": 1,
+    }
+
+
+@skip_if_docstring_parser_unavailable
+def test_namedtuple_description_from_docstring(parser):
+    parser.add_argument("--coord", type=Coordinate)
+    object_schema = get_schema(parser)["properties"]["coord"]["anyOf"][0]
+    assert object_schema["description"] == "A coordinate."
 
 
 # unions mixing structured and unvalidated types

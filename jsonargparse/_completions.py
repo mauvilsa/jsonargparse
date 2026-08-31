@@ -31,8 +31,8 @@ from ._typehints import (
     get_typed_dict_key_type,
     get_typehint_origin,
     is_single_subclass_or_closed_type,
+    is_structured_value_type,
     is_subclass,
-    is_typed_dict,
     type_to_str,
 )
 from ._util import NoneType, Path, import_object, merge_config, unique
@@ -370,11 +370,12 @@ def get_typehint_choices(typehint, prefix, parser, skip, added_subclasses=None) 
             choices = add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses)
             return choices, True, False
 
-        if is_typed_dict(typehint) or (
+        if is_structured_value_type(typehint) or (
             is_single_subclass_or_closed_type(typehint, origin) and is_subclasses_disabled(typehint)
         ):
-            # a dataclass-like type is only inlined as a group when not in a union and a typed
-            # dict never is, so their init args or keys need to be added as options to complete them
+            # a dataclass-like type is only inlined as a group when not in a union and a typed dict
+            # or named tuple never is, so their init args, keys or fields need to be added as
+            # options to complete them
             added_subclasses.add(typehint)
             add_subactions_and_get_subclass_choices(typehint, prefix, parser, skip, added_subclasses, closed_type=True)
             return [], False, True
@@ -451,8 +452,9 @@ def add_subactions_and_get_subclass_choices(
 def get_help_class_choices(typehint) -> list[str]:
     choices: list[str] = []
     for help_type in get_help_types(typehint) or []:
-        if is_typed_dict(help_type):
-            choices.append(help_type.__name__)  # typed dicts don't accept a class path, only their name
+        if is_structured_value_type(help_type):
+            # a typed dict or named tuple doesn't accept a class path, only its name
+            choices.append(help_type.__name__)
         else:
             choices += [p for p in get_all_subclass_paths(help_type) if p not in choices]
     return choices

@@ -8,7 +8,7 @@ import random
 import sys
 import time
 import uuid
-from collections import OrderedDict, abc, deque
+from collections import OrderedDict, abc, deque, namedtuple
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
@@ -35,6 +35,8 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    NamedTuple,
+    NewType,
     NoReturn,
     Optional,
     Protocol,
@@ -54,10 +56,11 @@ from warnings import catch_warnings, simplefilter
 import pytest
 
 from jsonargparse import ArgumentError, Namespace, lazy_instance
-from jsonargparse._optionals import pyyaml_available, typing_extensions_support
+from jsonargparse._optionals import LiteralString, pyyaml_available, typing_extensions_support
 from jsonargparse._typehints import (
     ActionTypeHint,
     NotRequired,
+    ReadOnly,
     Required,
     Unpack,
     UnvalidatedType,
@@ -1172,6 +1175,359 @@ def test_required_support():
     assert ActionTypeHint.is_supported_typehint(Required[Any])
 
 
+skip_if_no_read_only = pytest.mark.skipif(
+    not ReadOnly, reason="ReadOnly introduced in python 3.13 or backported in typing_extensions"
+)
+
+if ReadOnly:
+    # both nestings are valid, see PEP 705
+    read_only_not_required = [ReadOnly[NotRequired[int]], NotRequired[ReadOnly[int]]]
+    read_only_required = [ReadOnly[Required[int]], Required[ReadOnly[int]]]
+else:
+    read_only_not_required = read_only_required = [None]  # the tests that use them are skipped
+
+
+@skip_if_no_read_only
+def test_read_only_support():
+    assert ActionTypeHint.is_supported_typehint(ReadOnly[Any])
+
+
+@skip_if_no_read_only
+def test_typeddict_with_read_only_arg(parser):
+    parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": ReadOnly[int], "b": int}))
+    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"a": "x", "b": 2}'])
+    ctx.match("Expected a <class 'int'>")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"b": 2}'])
+    ctx.match("Missing required keys")
+
+
+@skip_if_no_read_only
+@pytest.mark.parametrize("annotation", read_only_not_required, ids=type_to_str)
+def test_typeddict_read_only_not_required(parser, annotation):
+    parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": annotation, "b": int}))
+    assert {"b": 2} == parser.parse_args(['--typeddict={"b": 2}'])["typeddict"]
+    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"a": "x", "b": 2}'])
+    ctx.match("Expected a <class 'int'>")
+
+
+@skip_if_no_read_only
+@pytest.mark.parametrize("annotation", read_only_required, ids=type_to_str)
+def test_typeddict_read_only_required(parser, annotation):
+    parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": annotation}, total=False))
+    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--typeddict={}"])
+    ctx.match("Missing required keys")
+
+
+@skip_if_no_read_only
+def test_typeddict_read_only_add_class_arguments(parser):
+    parser.add_class_arguments(TypedDict("MyDict", {"a": ReadOnly[int]}), "data")
+    assert "--data.a A     (required, type: int)" in get_parser_help(parser)
+    assert {"a": 1} == parser.instantiate(parser.parse_args(["--data.a=1"])).data
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--data.a=x"])
+    ctx.match("Expected a <class 'int'>")
+
+
+@skip_if_no_read_only
+def test_typeddict_read_only_subtype():
+    read_only = TypedDict("MyDict", {"a": ReadOnly[int]})
+    read_write = TypedDict("MyDict", {"a": int})
+    assert is_typed_dict_subtype(read_write, read_only)
+    assert is_typed_dict_subtype(read_only, read_write)
+    assert not is_typed_dict_subtype(TypedDict("Other", {"a": ReadOnly[str]}), read_only)
+
+
+# NamedTuple tests
+
+
+class Coord(NamedTuple):
+    """A coordinate.
+
+    Args:
+        x: the x
+        y: the y
+    """
+
+    x: int
+    y: int = 3
+    label: Optional[str] = None
+
+
+class NestedCoord(NamedTuple):
+    name: str = "n"
+    coord: Coord = Coord(1, 2)
+
+
+UntypedCoord = namedtuple("UntypedCoord", ["x", "y"])
+
+
+class CoordHolder:
+    def __init__(self, coord: Coord = Coord(1, 2)):
+        self.coord = coord
+
+
+@parser_modes
+def test_namedtuple_from_object(parser):
+    parser.add_argument("--coord", type=Coord)
+    cfg = parser.parse_args(['--coord={"x": 1, "y": 2, "label": "a"}'])
+    assert cfg.coord == Coord(1, 2, "a")
+    assert isinstance(cfg.coord, Coord)
+    assert parser.parse_args(['--coord={"x": 1}']).coord == Coord(1, 3, None)
+
+
+def test_namedtuple_from_array(parser):
+    parser.add_argument("--coord", type=Coord)
+    assert parser.parse_args(["--coord=[1, 2]"]).coord == Coord(1, 2, None)
+    assert parser.parse_args(["--coord=[1]"]).coord == Coord(1, 3, None)
+
+
+def test_namedtuple_instance_as_default_and_dump(parser):
+    parser.add_argument("--coord", type=Coord, default=Coord(1, 2))
+    cfg = parser.parse_args([])
+    assert cfg.coord == Coord(1, 2, None)
+    # always dumped as an object, so that the fields are named
+    assert json_or_yaml_load(parser.dump(cfg)) == {"coord": {"x": 1, "y": 2, "label": None}}
+    cfg = parser.parse_args(["--coord=[4, 5]"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"coord": {"x": 4, "y": 5, "label": None}}
+
+
+def test_namedtuple_invalid_values(parser):
+    parser.add_argument("--coord", type=Coord)
+    with pytest.raises(ArgumentError, match="Missing required fields: {'x'}"):
+        parser.parse_args(['--coord={"y": 2}'])
+    with pytest.raises(ArgumentError, match="Unexpected fields: {'z'}"):
+        parser.parse_args(['--coord={"x": 1, "z": 2}'])
+    with pytest.raises(ArgumentError, match="Expected at most 3 values"):
+        parser.parse_args(['--coord=[1, 2, "a", 4]'])
+    with pytest.raises(ArgumentError, match="Expected a <class 'int'>"):
+        parser.parse_args(['--coord={"x": "not an int"}'])
+    with pytest.raises(ArgumentError, match="Expected a NamedTuple Coord"):
+        parser.parse_args(["--coord=1"])
+
+
+def test_namedtuple_nested_arg(parser):
+    parser.add_argument("--coord", type=Coord)
+    assert parser.parse_args(["--coord.x=1", "--coord.y=2"]).coord == Coord(1, 2, None)
+
+
+def test_namedtuple_nested_arg_over_default(parser):
+    parser.add_argument("--nested", type=NestedCoord, default=NestedCoord())
+    # the fields not given keep the value they have in the default
+    cfg = parser.parse_args(["--nested.name=z", "--nested.coord.y=7"])
+    assert cfg.nested == NestedCoord("z", Coord(1, 7, None))
+    assert json_or_yaml_load(parser.dump(cfg))["nested"]["coord"] == {"x": 1, "y": 7, "label": None}
+
+
+def test_namedtuple_in_list(parser):
+    parser.add_argument("--coords", type=List[Coord])
+    cfg = parser.parse_args(['--coords=[{"x": 1}, [2, 4]]'])
+    assert cfg.coords == [Coord(1, 3, None), Coord(2, 4, None)]
+    assert json_or_yaml_load(parser.dump(cfg))["coords"][1] == {"x": 2, "y": 4, "label": None}
+
+
+def test_namedtuple_in_union(parser):
+    parser.add_argument("--val", type=Optional[Union[Coord, int]], default=None)
+    assert parser.parse_args([]).val is None
+    assert parser.parse_args(["--val=3"]).val == 3
+    assert parser.parse_args(['--val={"x": 1}']).val == Coord(1, 3, None)
+
+
+def test_namedtuple_untyped_fields_accept_any(parser):
+    parser.add_argument("--coord", type=UntypedCoord)
+    assert parser.parse_args(['--coord={"x": "a", "y": 2}']).coord == UntypedCoord("a", 2)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--coord={"x": 1}'])
+    ctx.match("Missing required fields: {'y'}")
+
+
+def test_namedtuple_signature_parameter(parser):
+    parser.add_class_arguments(CoordHolder, "holder")
+    assert "--holder.coord.help" in get_parser_help(parser)
+    cfg = parser.parse_args([])
+    assert cfg.holder.coord == Coord(1, 2, None)
+    assert json_or_yaml_load(parser.dump(cfg)) == {"holder": {"coord": {"x": 1, "y": 2, "label": None}}}
+    cfg = parser.parse_args(['--holder.coord={"x": 5, "y": 6}'])
+    assert cfg.holder.coord == Coord(5, 6, None)
+    assert isinstance(parser.instantiate(cfg).holder, CoordHolder)
+
+
+def test_namedtuple_add_class_arguments(parser):
+    parser.add_class_arguments(Coord, "coord")
+    cfg = parser.parse_args(["--coord.x=1"])
+    assert cfg.coord == Namespace(x=1, y=3, label=None)
+    assert isinstance(parser.instantiate(cfg).coord, Coord)
+
+
+class CoordEngine:
+    def __init__(self, power: int = 10):
+        self.power = power
+
+
+class PoweredCoord(NamedTuple):
+    name: str
+    engine: CoordEngine = CoordEngine()
+
+
+def test_namedtuple_class_field_instantiate(parser):
+    parser.add_argument("--car", type=PoweredCoord)
+    engine = f'{{"class_path": "{__name__}.CoordEngine", "init_args": {{"power": 5}}}}'
+    cfg = parser.parse_args([f'--car={{"name": "a", "engine": {engine}}}'])
+    assert cfg.car.engine == Namespace(class_path=f"{__name__}.CoordEngine", init_args=Namespace(power=5))
+    assert json.loads(parser.dump(cfg, format="json"))["car"]["engine"]["init_args"] == {"power": 5}
+    init = parser.instantiate(cfg)
+    assert isinstance(init.car, PoweredCoord)
+    assert isinstance(init.car.engine, CoordEngine)
+    assert init.car.engine.power == 5
+
+
+# NewType tests. A NewType stands for its supertype, so it is validated as the
+# supertype while the help keeps the name given in the source code.
+
+
+UserId = NewType("UserId", int)
+Vector = NewType("Vector", List[float])
+NestedUserId = NewType("NestedUserId", UserId)
+CalendarType = NewType("CalendarType", calendar.Calendar)
+UnsupportedNewType = NewType("UnsupportedNewType", Iterator[int])  # type: ignore[misc]
+
+
+def test_new_type(parser):
+    parser.add_argument("--x", type=UserId)
+    assert "(type: UserId, default: null)" in get_parser_help(parser)
+    assert parser.parse_args(["--x=1"]).x == 1
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--x=abc"])
+    ctx.match("Expected a <class 'int'>")
+
+
+def test_new_type_of_container(parser):
+    parser.add_argument("--x", type=Vector)
+    assert parser.parse_args(["--x=[1.0, 2.0]"]).x == [1.0, 2.0]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--x=["a"]'])
+    ctx.match("Expected a <class 'float'>")
+
+
+def test_new_type_of_new_type(parser):
+    parser.add_argument("--x", type=NestedUserId)
+    assert "(type: NestedUserId, default: null)" in get_parser_help(parser)
+    assert parser.parse_args(["--x=1"]).x == 1
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--x=abc"])
+    ctx.match("Expected a <class 'int'>")
+
+
+def test_new_type_nested_in_container(parser):
+    parser.add_argument("--x", type=Dict[str, UserId])
+    assert parser.parse_args(['--x={"a": 1}']).x == {"a": 1}
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--x={"a": "b"}'])
+    ctx.match("Expected a <class 'int'>")
+
+
+def test_optional_new_type(parser):
+    parser.add_argument("--x", type=Optional[UserId])
+    assert parser.parse_args(["--x=1"]).x == 1
+    assert parser.parse_args(["--x=null"]).x is None
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--x=abc"])
+    ctx.match("Expected a <class 'int'>")
+
+
+def test_new_type_of_class(parser):
+    parser.add_argument("--x", type=CalendarType)
+    cfg = parser.parse_args(["--x=calendar.Calendar"])
+    assert cfg.x.class_path == "calendar.Calendar"
+    assert isinstance(parser.instantiate(cfg).x, calendar.Calendar)
+
+
+def test_new_type_signature_parameter(parser):
+    def func(x: UserId = UserId(1)):
+        return x  # pragma: no cover
+
+    parser.add_function_arguments(func)
+    assert "(type: UserId, default: 1)" in get_parser_help(parser)
+    assert parser.parse_args(["--x=2"]).x == 2
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--x=abc"])
+    ctx.match("Expected a <class 'int'>")
+
+
+def test_new_type_dump(parser):
+    parser.add_argument("--x", type=Vector)
+    cfg = parser.parse_args(["--x=[1.0]"])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"x": [1.0]}
+
+
+def test_new_type_of_unsupported_supertype(parser):
+    def func(x: Optional[UnsupportedNewType] = None):
+        return x  # pragma: no cover
+
+    parser.add_function_arguments(func)
+    assert "Unvalidated<UnsupportedNewType>" in get_parser_help(parser)
+    assert parser.parse_args(["--x=any value"]).x == "any value"
+
+
+# LiteralString tests. At runtime it is a str, so it is validated as one.
+
+
+@pytest.mark.skipif(
+    not LiteralString, reason="LiteralString introduced in python 3.11 or backported in typing_extensions"
+)
+def test_literal_string(parser):
+    parser.add_argument("--x", type=LiteralString)
+    assert "(type: LiteralString, default: null)" in get_parser_help(parser)
+    assert parser.parse_args(["--x=abc"]).x == "abc"
+
+
+# subscripted generic NamedTuple tests
+
+# a generic NamedTuple requires python 3.11 or later
+skip_if_no_generic_namedtuple = pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="generic NamedTuple introduced in python 3.11"
+)
+
+if sys.version_info >= (3, 11):
+
+    class GenericCoord(NamedTuple, Generic[GenericVar]):
+        """Generic coordinate."""
+
+        item: GenericVar
+        n: int = 1
+
+
+@skip_if_no_generic_namedtuple
+def test_subscripted_generic_namedtuple(parser):
+    parser.add_argument("--coord", type=GenericCoord[int])
+    assert parser.parse_args(['--coord={"item": 5}']).coord == GenericCoord(5, 1)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--coord={"item": "x"}'])
+    ctx.match("Expected a <class 'int'>")
+    help_str = get_parse_args_stdout(parser, ["--coord.help"])
+    assert "--coord.item ITEM  (required, type: int)" in help_str
+
+
+@skip_if_no_generic_namedtuple
+def test_unsubscripted_generic_namedtuple(parser):
+    # the field annotated with an unbound TypeVar accepts any value
+    parser.add_argument("--coord", type=GenericCoord)
+    assert parser.parse_args(['--coord={"item": "anything"}']).coord == GenericCoord("anything", 1)
+
+
+@skip_if_no_generic_namedtuple
+def test_subscripted_generic_namedtuple_add_class_arguments(parser):
+    parser.add_class_arguments(GenericCoord[int], "coord")
+    assert "--coord.item ITEM  (required, type: int)" in get_parser_help(parser)
+    assert parser.instantiate(parser.parse_args(["--coord.item=3"])).coord == GenericCoord(3, 1)
+
+
 # unsubscripted typing alias tests
 
 
@@ -1538,6 +1894,73 @@ def test_typeddict_union_help_unexpected_name(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--val.help=Unexpected"])
     ctx.match('"Unexpected" is not a typed dict')
+
+
+# NamedTuple --*.help tests
+
+
+def test_namedtuple_help(parser):
+    parser.add_argument("--coord", type=Coord)
+    help_str = get_parser_help(parser)
+    assert "Show the help for Coord and exit" in help_str
+    assert "CLASS_PATH_OR_NAME" not in help_str  # a named tuple is a value, not a subclass type
+    assert "(type: <class 'Coord'>, default: null)" in help_str
+    help_str = get_parse_args_stdout(parser, ["--coord.help"])
+    assert f"Help for --coord.help={__name__}.Coord" in help_str
+    assert "--coord.x X" in help_str
+    assert "(required, type: int)" in help_str
+    assert "--coord.y Y" in help_str
+    assert "(type: int, default: 3)" in help_str
+
+
+@skip_if_docstring_parser_unavailable
+def test_namedtuple_help_docstrings(parser):
+    parser.add_argument("--coord", type=Coord)
+    help_str = get_parse_args_stdout(parser, ["--coord.help"])
+    assert "A coordinate:" in help_str
+    assert "the x (required, type: int)" in help_str
+    assert "the y (type: int, default: 3)" in help_str
+
+
+@pytest.mark.parametrize("typehint", [Optional[Coord], List[Coord]], ids=type_to_str)
+def test_namedtuple_in_container_help(parser, typehint):
+    parser.add_argument("--coord", type=typehint)
+    help_str = get_parse_args_stdout(parser, ["--coord.help"])
+    assert f"Help for --coord.help={__name__}.Coord" in help_str
+    assert "--coord.x X" in help_str
+
+
+@pytest.mark.parametrize(
+    ["typehint", "kind"],
+    [
+        (Union[Coord, NestedCoord], "named tuple"),
+        (Union[Coord, HelpTypedDict], "typed dict or named tuple"),
+    ],
+    ids=["named_tuples", "typed_dict_and_named_tuple"],
+)
+def test_namedtuple_union_named_types_help(parser, typehint, kind):
+    parser.add_argument("--val", type=typehint)
+    help_str = get_parser_help(parser)
+    assert "--val.help NAME" in help_str
+    assert f"Show the help for the given {kind}" in help_str
+    help_str = get_parse_args_stdout(parser, ["--val.help=Coord"])
+    assert f"Help for --val.help={__name__}.Coord" in help_str
+    assert "--val.x X" in help_str
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--val.help=Unexpected"])
+    ctx.match(f'"Unexpected" is not a {kind}')
+
+
+def test_namedtuple_union_class_help(parser):
+    parser.add_argument("--val", type=Union[Coord, BaseC])
+    help_str = get_parser_help(parser)
+    assert "--val.help CLASS_PATH_OR_NAME" in help_str
+    assert "Show the help for the given class or named tuple" in help_str
+    help_str = get_parse_args_stdout(parser, ["--val.help=Coord"])
+    assert f"Help for --val.help={__name__}.Coord" in help_str
+    assert "--val.x X" in help_str
+    help_str = get_parse_args_stdout(parser, [f"--val.help={__name__}.SubC"])
+    assert f"Help for --val.help={__name__}.SubC" in help_str
 
 
 # type[TypedDict] tests. TypedDicts don't support issubclass, so the check is structural.
@@ -2431,7 +2854,7 @@ def test_callable_function_path(parser):
 
 def make_closure_callable():
     def unbound_closure():
-        return "closure"
+        return "closure"  # pragma: no cover
 
     return unbound_closure
 

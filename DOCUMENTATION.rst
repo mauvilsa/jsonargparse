@@ -448,23 +448,26 @@ Types can be nested with any complexity. Notes about the support:
   class that owns the method, e.g. a nested class referred to without qualifying
   it.
 
-- Fully supported types are: ``str``, ``bool`` (see :ref:`boolean-arguments`),
-  ``int``, ``float``, ``Decimal``, ``complex``, ``bytes``/``bytearray`` (Base64
-  encoding), ``range``, ``list`` (see :ref:`list-append`), ``Deque``,
-  ``Iterable``, ``Sequence``, ``MutableSequence``, ``Collection``,
-  ``Container``, ``Reversible``, ``Any``/``object``, ``Union``/``Optional`` (see
-  :ref:`union-types`), ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``,
-  ``timedelta``, the restricted types of :ref:`restricted-numbers` and
-  :ref:`restricted-strings`, and the path and URL types of :ref:`parsing-paths`
-  and :ref:`parsing-urls`.
+- Fully supported types are: ``str``/``LiteralString``, ``bool`` (see
+  :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
+  ``bytes``/``bytearray`` (Base64 encoding), ``range``, ``list`` (see
+  :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``,
+  ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``,
+  ``Any``/``object``, ``Union``/``Optional`` (see :ref:`union-types`),
+  ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``, ``timedelta``, the
+  restricted types of :ref:`restricted-numbers` and :ref:`restricted-strings`,
+  and the path and URL types of :ref:`parsing-paths` and :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
   ``OrderedDict`` and ``TypedDict`` are supported, but only with ``str`` or
   ``int`` keys, see :ref:`dict-items`.
 
 - ``TypedDict`` accepts ``Required`` and ``NotRequired`` to mark single keys as
-  required or optional, and ``Unpack`` to type ``**kwargs`` precisely, see PEP
-  `692 <https://peps.python.org/pep-0692/>`__. A ``--*.help`` option, e.g.
+  required or optional, ``ReadOnly`` (PEP `705
+  <https://peps.python.org/pep-0705/>`__) which only marks a key as not mutable
+  and thus changes neither its type nor its requiredness, and ``Unpack`` to
+  type ``**kwargs`` precisely, see PEP `692
+  <https://peps.python.org/pep-0692/>`__. A ``--*.help`` option, e.g.
   ``--data.help``, shows the accepted keys. It takes no value, unless the
   ``TypedDict`` is in a union with other types that have their own help, in
   which case the value is the name of the typed dict, e.g. ``--data.help
@@ -490,6 +493,15 @@ Types can be nested with any complexity. Notes about the support:
   ...]`` is also accepted. A ``set`` or ``frozenset`` of a class type is kept as
   a list when parsing, since subclass specs are not hashable, and becomes a set
   on :meth:`instantiate <.ArgumentParser.instantiate>`.
+
+- ``NamedTuple`` is supported. The value is either an object with the fields as
+  keys or an array of positional values, fields with a default can be omitted,
+  and parsing gives an instance of the named tuple. It is always dumped as an
+  object, so that the fields are named. A ``--*.help`` option shows the accepted
+  fields, and :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>`
+  accepts a ``NamedTuple``, both the same as for a ``TypedDict``. A generic
+  ``NamedTuple`` works unsubscripted and subscripted, e.g. ``SomeTuple[int]``. A
+  field of an untyped ``collections.namedtuple`` accepts any value.
 
 - ``None`` is written as ``null``, as JSON/YAML define it. For the same reason
   the help shows ``NoneType`` as ``null``, e.g. a parameter with type and
@@ -558,7 +570,15 @@ Types can be nested with any complexity. Notes about the support:
 - ``TypeAliasType`` is supported. Values are parsed as the aliased type and the
   help shows the alias as the argument type. This includes aliases defined with
   the `PEP 695 <https://peps.python.org/pep-0695/>`__ ``type X = ...`` statement
-  (Python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``.
+  (Python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``. A
+  generic alias, e.g. ``type X[T] = list[T]``, is parsed as its target with the
+  type parameters substituted by what it is subscripted with, e.g. ``X[int]``
+  behaves as ``list[int]``. Unsubscripted, its type parameters stand for their
+  default, constraints or bound, the same as any other ``TypeVar``.
+
+- ``NewType`` is supported. Values are parsed as the supertype it stands for,
+  including a ``NewType`` of a ``NewType``, and the help shows the name given in
+  the source code.
 
 
 .. _union-types:
@@ -635,13 +655,13 @@ an argument of type ``Union[int, list[int]]``, ``--val=1`` gives ``1``, while
 Unvalidated types
 -----------------
 
-A :ref:`signature parameter <classes-methods-functions>` or a ``TypedDict`` key
-can have a type that jsonargparse can't validate. The argument is still added,
-with only the parts of the type that can't be validated replaced by a type that
-accepts any value. The help shows these parts as ``Unvalidated<...>``, keeping
-the name used in the source code. For example, a class with a parameter
-``items: list[SomeType] = []`` for which ``SomeType`` can't be validated is
-shown in the help as:
+A :ref:`signature parameter <classes-methods-functions>`, a ``TypedDict`` key or
+a ``NamedTuple`` field can have a type that jsonargparse can't validate. The
+argument is still added, with only the parts of the type that can't be validated
+replaced by a type that accepts any value. The help shows these parts as
+``Unvalidated<...>``, keeping the name used in the source code. For example, a
+class with a parameter ``items: list[SomeType] = []`` for which ``SomeType``
+can't be validated is shown in the help as:
 
 .. code-block:: text
 
@@ -3441,8 +3461,8 @@ which subclasses accept each one. For example:
     $ example.py --cls other.module.SubclassA --cls.param2 <TAB><TAB>
     Expected type: int; Accepted by subclasses: SubclassA
 
-Analogously, for subclasses-disabled types and ``TypedDict``, the fields or keys
-are completed, as well as the values that they accept, e.g.:
+Analogously, for subclasses-disabled types, ``TypedDict`` and ``NamedTuple``,
+the fields or keys are completed, as well as the values that they accept, e.g.:
 
 .. code-block:: bash
 

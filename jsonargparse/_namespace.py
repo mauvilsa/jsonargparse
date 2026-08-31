@@ -169,16 +169,7 @@ class Namespace(argparse.Namespace):
 
     def as_dict(self) -> dict[str, Any]:
         """Converts the nested namespaces into nested dictionaries."""
-        dic = {}
-        for key, val in vars(self).items():
-            if isinstance(val, Namespace):
-                val = val.as_dict()
-            elif isinstance(val, dict) and val != {} and all(isinstance(v, Namespace) for v in val.values()):
-                val = {k: v.as_dict() for k, v in val.items()}
-            elif isinstance(val, list) and val != [] and all(isinstance(v, Namespace) for v in val):
-                val = [v.as_dict() for v in val]
-            dic[del_clash_mark(key)] = val
-        return dic
+        return {del_clash_mark(key): _value_as_dict(val) for key, val in vars(self).items()}
 
     def as_flat(self) -> argparse.Namespace:
         """Converts the nested namespaces into a single argparse flat namespace."""
@@ -258,6 +249,17 @@ class Namespace(argparse.Namespace):
 
 clash_names: set[str] = set(dir(Namespace))
 clash_mark = "\u200b"
+
+
+def _value_as_dict(val):
+    """Converts the namespaces nested in a value into dictionaries, including in containers."""
+    if isinstance(val, Namespace):
+        return val.as_dict()
+    if isinstance(val, dict):
+        return {k: _value_as_dict(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_value_as_dict(v) for v in val]
+    return val
 
 
 def add_clash_mark(key: str) -> str:

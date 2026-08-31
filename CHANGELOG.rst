@@ -46,6 +46,19 @@ Added
   which raises an exception for all parameters that don't have a type
   annotation, not only the required ones (`#965
   <https://github.com/mauvilsa/jsonargparse/pull/965>`__).
+- Support for ``NamedTuple`` as a type. The value is an object with the fields
+  as keys or an array of positional values, parsing gives an instance of the
+  named tuple and dumping gives an object. It has a ``--*.help`` option that
+  shows the accepted fields, is accepted by ``add_class_arguments`` and works
+  subscripted when generic, see :ref:`type-hints` (`#967
+  <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
+- ``TypedDict`` now accepts ``ReadOnly`` for its keys (`#967
+  <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
+- Support for ``NewType`` and ``LiteralString`` as types. Previously they were
+  not validated, i.e. any value was accepted. Now a ``NewType`` is validated as
+  the supertype it stands for and a ``LiteralString`` as a ``str``, in both
+  cases the help showing the name as in the source code, see :ref:`type-hints`
+  (`#967 <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
 
 Fixed
 ^^^^^
@@ -90,6 +103,19 @@ Fixed
   subscripted, e.g. ``os.PathLike[str]`` for a registered ``PathLike``. Now the
   registration of the unsubscripted type is used (`#966
   <https://github.com/mauvilsa/jsonargparse/pull/966>`__).
+- A subscripted generic ``TypeAliasType``, e.g. ``Alias[int]`` for ``type
+  Alias[T] = list[T]``, raised ``Unsupported type hint``. Unsubscripted, its
+  type parameters now also stand for their default, constraints or bound, the
+  same as any other ``TypeVar`` (`#967
+  <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
+- ``Namespace.as_dict`` did not convert the namespaces nested in a ``dict`` or
+  ``list`` that also holds values which are not namespaces, e.g. a ``TypedDict``
+  with one key of a class type and another of a simple type. Dumping such a
+  config as json failed with ``Object of type Namespace is not JSON
+  serializable`` (`#967 <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
+- ``add_class_arguments`` given a subscripted generic class, e.g.
+  ``SomeClass[int]``, did not instantiate it, giving a ``Namespace`` instead of
+  an instance (`#967 <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
 
 Changed
 ^^^^^^^

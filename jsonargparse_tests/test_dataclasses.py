@@ -771,12 +771,22 @@ def test_deeply_nested_dataclass_in_union(parser):
     assert cfg.parent.path == Namespace(folder="/tmp", file=Namespace(name="data.txt"))
 
 
+AliasVar = TypeVar("AliasVar")
+BoundAliasVar = TypeVar("BoundAliasVar", bound=int)
+
 if type_alias_type:
     IntOrString = type_alias_type("IntOrString", Union[int, str])
+    ListOfVar = type_alias_type("ListOfVar", List[AliasVar], type_params=(AliasVar,))  # type: ignore[valid-type]
+    DictOfVar = type_alias_type("DictOfVar", Dict[str, ListOfVar[AliasVar]], type_params=(AliasVar,))  # type: ignore[valid-type]
+    ListOfBoundVar = type_alias_type("ListOfBoundVar", List[BoundAliasVar], type_params=(BoundAliasVar,))  # type: ignore[valid-type]
 
     @dataclasses.dataclass
     class DataClassWithAliasType:
         p1: IntOrString  # type: ignore[valid-type]
+
+    @dataclasses.dataclass
+    class DataClassWithGenericAliasType:
+        p1: ListOfVar[int]  # type: ignore[valid-type]
 
     if annotated:
 
@@ -820,6 +830,47 @@ class TestTypeAliasType:
         assert cfg.data == "MyString"
         cfg = parser.parse_args(["--data=3"])
         assert cfg.data == 3
+
+    def test_subscripted_generic_alias_type(self, parser):
+        parser.add_argument("--data", type=ListOfVar[int])
+        help_str = get_parser_help(parser)
+        assert "type: ListOfVar[int]" in help_str
+        cfg = parser.parse_args(["--data=[1, 2]"])
+        assert cfg.data == [1, 2]
+        assert json_or_yaml_load(parser.dump(cfg)) == {"data": [1, 2]}
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data=["x"]'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_nested_subscripted_generic_alias_type(self, parser):
+        parser.add_argument("--data", type=DictOfVar[int])
+        cfg = parser.parse_args(['--data={"a": [1, 2]}'])
+        assert cfg.data == {"a": [1, 2]}
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data={"a": ["x"]}'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_unsubscripted_generic_alias_type_with_bound(self, parser):
+        parser.add_argument("--data", type=ListOfBoundVar)
+        assert "type: ListOfBoundVar" in get_parser_help(parser)
+        assert parser.parse_args(["--data=[1, 2]"]).data == [1, 2]
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data=["x"]'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_unsubscripted_generic_alias_type_unbound(self, parser):
+        with pytest.raises(ValueError) as ctx:
+            parser.add_argument("--data", type=ListOfVar)
+        ctx.match("Unsupported type hint ListOfVar")
+
+    def test_dataclass_with_generic_alias_type(self, parser):
+        parser.add_argument("--data", type=DataClassWithGenericAliasType)
+        assert "type: ListOfVar[int]" in get_parser_help(parser)
+        cfg = parser.parse_args(["--data.p1=[1, 2]"])
+        assert cfg.data.p1 == [1, 2]
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data.p1=["x"]'])
+        ctx.match("Expected a <class 'int'>")
 
     @pytest.mark.skipif(not annotated, reason="Annotated is required")
     def test_dataclass_with_annotated_alias_type(self, parser):

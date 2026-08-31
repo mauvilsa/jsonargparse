@@ -406,6 +406,14 @@ def unique(iterable):
     return unique_items
 
 
+def iter_to_or_str(val) -> str:
+    """Joins the given strings into an enumeration, e.g. "a, b or c"."""
+    val = unique(val)
+    if len(val) == 1:
+        return str(val[0])
+    return ", ".join(str(x) for x in val[:-1]) + f" or {val[-1]}"
+
+
 def iter_to_set_str(val, sep=","):
     val = unique(val)
     if len(val) == 1:

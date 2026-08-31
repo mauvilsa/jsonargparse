@@ -21,9 +21,12 @@ from ._optionals import (
     capture_typing_extension_shadows,
     get_alias_target,
     get_annotated_base_type,
+    get_new_type_supertype,
     is_alias_type,
     is_annotated,
     is_attrs_class,
+    is_literal_string,
+    is_new_type,
     is_pydantic_model,
     typing_extensions_import,
 )
@@ -637,6 +640,10 @@ def get_unaliased_type(cls):
             new_cls = get_annotated_base_type(new_cls)
         if is_alias_type(new_cls):
             new_cls = get_alias_target(new_cls)
+        if is_new_type(new_cls):
+            new_cls = get_new_type_supertype(new_cls)
+        if is_literal_string(new_cls):
+            new_cls = str
         origin = get_unsubscripted_alias_origin(new_cls)
         if origin is not None:
             new_cls = origin

@@ -508,6 +508,8 @@ def test_add_class_generics(parser):
     parser.add_class_arguments(WithGenerics[int, complex], "p")
     cfg = parser.parse_args(["--p.a=5", "--p.b=(6+7j)"])
     assert cfg.p == Namespace(a=5, b=6 + 7j)
+    # a subscripted generic is instantiated as the class that it stands for
+    assert isinstance(parser.instantiate(cfg).p, WithGenerics)
 
 
 class WithGenericsDocstring(Generic[X]):

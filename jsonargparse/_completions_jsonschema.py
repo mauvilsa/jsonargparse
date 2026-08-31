@@ -27,16 +27,18 @@ from ._typehints import (
     callable_origin_types,
     get_all_subclass_paths,
     get_callable_return_type,
+    get_namedtuple_annotations,
     get_typed_dict_annotations,
     get_typed_dict_required_keys,
     get_typehint_origin,
+    is_namedtuple,
     is_single_subclass_or_closed_type,
     is_single_subclass_type,
     literal_types,
     mapping_origin_types,
-    not_required_required_types,
     sequence_origin_types,
     tuple_set_origin_types,
+    typed_dict_key_qualifiers,
     typed_dict_meta_types,
 )
 from ._util import NoneType, get_import_path, import_object
@@ -396,7 +398,7 @@ class ParserJsonschema:
 
         if typehint in {Any, object}:
             return {}
-        if origin in not_required_required_types:  # requiredness comes from the TypedDict, not the type
+        if origin in typed_dict_key_qualifiers:  # requiredness and mutability come from the TypedDict
             return self.typehint_schema(typehint.__args__[0], action)
         if typehint is uuid.UUID:
             return dict(uuid_schema)
@@ -409,6 +411,8 @@ class ParserJsonschema:
             return {"enum": list(typehint.__members__)}
         if type(typehint) in typed_dict_meta_types:
             return self.typed_dict_schema(typehint, action)
+        if is_namedtuple(typehint):
+            return self.namedtuple_schema(typehint, action)
         if root in literal_types:
             return {"enum": [json_value(arg) for arg in typehint.__args__]}
         if origin is Union:
@@ -474,6 +478,23 @@ class ParserJsonschema:
             if key in required_keys:
                 add_required(schema, key)
         return schema
+
+    def namedtuple_schema(self, typehint, action) -> dict:
+        """Describes both forms accepted for a NamedTuple: an object of fields or an array of values."""
+        annotations = get_namedtuple_annotations(typehint)
+        defaults = typehint._field_defaults
+        obj_schema = new_object(get_doc_short_description(typehint), schema_key=False)
+        for field, annotation in annotations.items():
+            obj_schema["properties"][field] = self.typehint_schema(annotation, action)
+            if field not in defaults:
+                add_required(obj_schema, field)
+        array_schema = {
+            "type": "array",
+            "prefixItems": [obj_schema["properties"][f] for f in annotations],
+            "items": False,
+            "minItems": len(annotations) - len(defaults),
+        }
+        return anyof_schema([obj_schema, array_schema])
 
     # classes
 

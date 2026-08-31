@@ -661,9 +661,11 @@ class SignatureArguments(LoggerProperty):
                 if config_load_type is None and inspect.isclass(obj):
                     config_load_type = obj
                 group.add_argument("--" + nested_key, action=_ActionConfigLoad(basetype=config_load_type))
-            if inspect.isclass(obj) and nested_key is not None and instantiate:
+            # a subscripted generic is instantiated as its origin class, since the subscript
+            # only says what its type parameters stand for
+            if inspect.isclass(get_generic_origin(obj)) and nested_key is not None and instantiate:
                 group.dest = nested_key.replace("-", "_")
-                group.group_class = obj
+                group.group_class = get_generic_origin(obj)
                 group.instantiate_class = group_instantiate_class
         return group
 

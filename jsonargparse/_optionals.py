@@ -413,14 +413,62 @@ else:
     typing_type_alias_type = None
 
 
-def is_alias_type(typehint: Any) -> bool:
-    return (type_alias_type and isinstance(typehint, type_alias_type)) or (
-        typing_type_alias_type and isinstance(typehint, typing_type_alias_type)  # type: ignore[truthy-function]
+def _is_alias_type(typehint: Any) -> bool:
+    return bool(
+        (type_alias_type and isinstance(typehint, type_alias_type))
+        or (typing_type_alias_type and isinstance(typehint, typing_type_alias_type))  # type: ignore[truthy-function]
     )
 
 
-def get_alias_target(typehint: type) -> bool:
-    return typehint.__value__  # type: ignore[attr-defined]
+def is_alias_type(typehint: Any) -> bool:
+    """Whether a type hint is a TypeAliasType, including a subscripted generic one.
+
+    A subscripted generic alias, e.g. ``Alias[int]`` for ``type Alias[T] = list[T]``,
+    is a generic alias whose origin is the TypeAliasType.
+    """
+    return _is_alias_type(typehint) or _is_alias_type(getattr(typehint, "__origin__", None))
+
+
+def get_alias_target(typehint: Any) -> Any:
+    """Returns what an alias stands for, with the type parameters of a generic alias resolved.
+
+    A subscripted generic alias substitutes its type parameters with the types that
+    it is subscripted with. An unsubscripted one replaces them by what they stand
+    for, i.e. their default, constraints or bound, the same as any other TypeVar.
+    """
+    alias = typehint if _is_alias_type(typehint) else typehint.__origin__
+    target = alias.__value__
+    type_params = getattr(alias, "__type_params__", None)
+    if not type_params:
+        return target
+    from ._typehints import replace_type_vars, substitute_type_vars
+
+    args = getattr(typehint, "__args__", None) or ()
+    return replace_type_vars(substitute_type_vars(target, dict(zip(type_params, args))))
+
+
+def is_new_type(typehint: Any) -> bool:
+    """Whether a type hint is a ``NewType``, which stands for its supertype."""
+    # NewType is a class since python 3.10, thus an instance check identifies one
+    return isinstance(typehint, __import__("typing").NewType)
+
+
+def get_new_type_supertype(typehint: Any) -> Any:
+    """Returns the type that a ``NewType`` stands for, i.e. the second argument given to it."""
+    return typehint.__supertype__
+
+
+LiteralString = typing_extensions_import("LiteralString")
+literal_string_types = {LiteralString}
+capture_typing_extension_shadows(LiteralString, "LiteralString", literal_string_types)
+
+
+def is_literal_string(typehint: Any) -> bool:
+    """Whether a type hint is ``LiteralString``, which stands for ``str`` at runtime.
+
+    Compared by identity, since a special form is not necessarily hashable.
+    """
+    return any(typehint is literal_string for literal_string in literal_string_types)
 
 
 def get_pydantic_support() -> int:
