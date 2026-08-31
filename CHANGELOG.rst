@@ -116,6 +116,12 @@ Fixed
 - ``add_class_arguments`` given a subscripted generic class, e.g.
   ``SomeClass[int]``, did not instantiate it, giving a ``Namespace`` instead of
   an instance (`#967 <https://github.com/mauvilsa/jsonargparse/pull/967>`__).
+- A ``Union`` of a class type and an instance factory for it, e.g.
+  ``Union[Optimizer, Callable[[Iterable], Optimizer]]``, accepted no value at
+  all. The class subtype added as sub-default a placeholder for the parameter
+  that the factory receives when called, which made the value invalid for itself
+  and for the factory subtype (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^

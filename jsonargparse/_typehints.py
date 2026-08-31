@@ -1507,13 +1507,17 @@ def adapt_typehints(
         sorted_subtypes = sort_subtypes_for_union(subtypehints, val, prev_val, append)
         for subtype in sorted_subtypes:
             try:
-                vals.append(adapt_typehints(val, subtype, **adapt_kwargs))
-                break
+                # a pristine value, since adapting can modify it in place
+                subtype_val = adapt_typehints(pristine_value(val), subtype, **adapt_kwargs)
             except Exception as ex:
                 if subtype is str and not isinstance(val, str) and isinstance(orig_val, str):
                     vals.append(orig_val)
                     continue
                 vals.append(ex)
+                continue
+            vals.append(subtype_val)
+            if not sub_defaults_invalidate_value(subtype_val, subtype, sorted_subtypes, adapt_kwargs):
+                break
         if all(isinstance(v, Exception) for v in vals):
             raise_union_unexpected_value(sorted_subtypes, val, vals)
         val = next((v for v in reversed(vals) if not isinstance(v, Exception)))
@@ -2796,6 +2800,33 @@ def rebuild_typehint_args(typehint, new_args):
         return get_typehint_origin(typehint)[new_args]
     except Exception:
         return typehint
+
+
+def pristine_value(val):
+    """Copy of a value, so that adapting it against a union subtype does not affect the others."""
+    return val.clone() if isinstance(val, Namespace) else val
+
+
+def sub_defaults_invalidate_value(value, subtype, subtypes, adapt_kwargs) -> bool:
+    """Whether the sub-defaults that a union subtype added make the value invalid for it.
+
+    Sub-defaults are added leniently, so a class subtype can add a placeholder for a required
+    parameter, e.g. the object that an instance factory receives when called. The placeholder
+    then invalidates the value, both for the subtype that added it and for the subtypes that
+    would have accepted the value without it, see sub_defaults_context.
+    """
+    if not (
+        sub_defaults.get()
+        and is_subclass_spec(value)
+        and any(ActionTypeHint.is_return_subclass_typehint(s) for s in subtypes)
+    ):
+        return False
+    with parser_context(lenient_check=False):
+        try:
+            adapt_typehints(value.clone(), subtype, **adapt_kwargs)
+        except Exception:
+            return True
+    return False
 
 
 def sort_subtypes_for_union(subtypes, val, prev_val, append):

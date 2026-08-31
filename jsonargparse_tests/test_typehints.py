@@ -3061,6 +3061,31 @@ def test_callable_args_return_type_class(parser, subtests):
         assert "--optimizer.params" not in help_str
 
 
+optimizer_or_factory = Optional[Union[Optimizer, Callable[[List[float]], Optimizer]]]
+
+
+def test_callable_args_return_type_class_in_union_factory(parser):
+    parser.add_argument("--optimizer", type=optimizer_or_factory)
+    cfg = parser.parse_args(["--optimizer=Adam", "--optimizer.lr=0.01"])
+    assert cfg.optimizer.class_path == f"{__name__}.Adam"
+    assert cfg.optimizer.init_args == Namespace(lr=0.01, momentum=0.0)
+    init = parser.instantiate(cfg)
+    optimizer = init.optimizer([4.5, 6.7])
+    assert isinstance(optimizer, Adam)
+    assert optimizer.params == [4.5, 6.7]
+    assert optimizer.lr == 0.01
+
+
+def test_callable_args_return_type_class_in_union_instance(parser):
+    parser.add_argument("--optimizer", type=optimizer_or_factory)
+    value = {"class_path": "Adam", "init_args": {"params": [4.5, 6.7], "lr": 0.02}}
+    cfg = parser.parse_args([f"--optimizer={json.dumps(value)}"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.optimizer, Adam)
+    assert init.optimizer.params == [4.5, 6.7]
+    assert init.optimizer.lr == 0.02
+
+
 class OptimizerFactory(Protocol):
     def __call__(self, params: List[float]) -> Optimizer: ...
 
