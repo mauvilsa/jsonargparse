@@ -345,6 +345,38 @@ def test_bash_script_binds_redraw_current_line(parser):
     assert "bind '\"\\e[0n\": redraw-current-line'" in shtab_script
 
 
+def run_bash_typehint_completion(shtab_script, tmp_path, dest, word="", prefix=""):
+    shtab_script_path = tmp_path / "comp.sh"
+    shtab_script_path.write_text(shtab_script)
+    sh = f'{prefix}source {shtab_script_path}; COMP_TYPE=63 _jsonargparse_tool_{dest}_typehint "{word}"'
+    popen = subprocess.Popen(["bash", "-c", sh], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = popen.communicate()
+    return out.decode(), err.decode()
+
+
+def get_bash_tput_color():
+    out = subprocess.run(["bash", "-c", "tput setaf 5 2>/dev/null"], capture_output=True)
+    return out.stdout.decode()
+
+
+def test_bash_message_colored_when_tput_available(parser, tmp_path):
+    color = get_bash_tput_color()
+    if not color:
+        pytest.skip("tput command not available")  # pragma: no cover
+    parser.add_argument("--num", type=int)
+    _, err = run_bash_typehint_completion(get_shtab_script(parser, "bash"), tmp_path, "num")
+    assert f"{color}\nExpected type: int" in err
+
+
+def test_bash_message_uncolored_when_tput_not_available(parser, tmp_path):
+    parser.add_argument("--num", type=int)
+    shtab_script = get_shtab_script(parser, "bash")
+    _, err = run_bash_typehint_completion(shtab_script, tmp_path, "num", prefix='PATH=""; ')
+    assert "\nExpected type: int" in err
+    assert "tput" not in err
+    assert "not found" not in err
+
+
 def get_bash_major_version():
     out = subprocess.run(["bash", "-c", 'echo "${BASH_VERSINFO[0]}"'], capture_output=True)
     try:

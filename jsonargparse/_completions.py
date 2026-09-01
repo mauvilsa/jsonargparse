@@ -275,6 +275,10 @@ bash_compgen_typehint_name = "_jsonargparse_{prog}_compgen_typehint"
 # redraw-current-line, making readline itself redraw once the completion function returns.
 bash_compgen_typehint = """
 [[ $- == *i* ]] && bind '"\\e[0n": redraw-current-line' 2>/dev/null
+# tput gives the message colors when available, ignoring its errors, e.g. not installed or
+# TERM unset, which leaves the colors empty
+%(b)s="$(tput setaf 5 2>/dev/null || true)"
+%(n)s="$(tput sgr0 2>/dev/null || true)"
 %(name)s() {
   local CHOICES="$1" WORD="$2" MESSAGE="$3" REQUIRE_PREFIX="$4" TOTAL="$5"
   local IFS=$'\\n'  # choices may contain spaces, so split matches on newline only
@@ -290,7 +294,7 @@ bash_compgen_typehint = """
   fi
   if [ ${#MATCH[@]} = 0 ]; then
     if [ "$COMP_TYPE" = 63 ]; then
-      printf "%(b)s\\n%%s%%s\\n%(n)s" "$MESSAGE" "$MATCHED" >&2
+      printf "${%(b)s}\\n%%s%%s\\n${%(n)s}" "$MESSAGE" "$MATCHED" >&2
       printf '\\033[5n' >&2
     fi
   else
@@ -298,14 +302,14 @@ bash_compgen_typehint = """
       echo "$match"
     done
     if [ "$COMP_TYPE" = 63 ]; then
-      printf "%(b)s\\n%%s%%s%(n)s" "$MESSAGE" "$MATCHED" >&2
+      printf "${%(b)s}\\n%%s%%s${%(n)s}" "$MESSAGE" "$MATCHED" >&2
     fi
   fi
 }
 """ % {
     "name": bash_compgen_typehint_name,
-    "b": "$(tput setaf 5)",
-    "n": "$(tput sgr0)",
+    "b": "_jsonargparse_{prog}_color_message",
+    "n": "_jsonargparse_{prog}_color_reset",
 }
 
 

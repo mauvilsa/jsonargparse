@@ -122,6 +122,12 @@ Fixed
   that the factory receives when called, which made the value invalid for itself
   and for the factory subtype (`#???
   <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+- The ``shtab-bash`` completion script printed ``tput: command not found`` on
+  every completion in environments that don't have ``tput``, e.g. some
+  containers. Now the colors of the completion messages are resolved once when
+  the script is sourced and errors from ``tput`` are ignored, giving uncolored
+  messages when it is not available (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Changed
 ^^^^^^^
