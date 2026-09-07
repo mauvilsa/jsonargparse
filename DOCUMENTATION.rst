@@ -2172,14 +2172,11 @@ would also accept subclasses of ``MyClass``, and the config would be:
 .. note::
 
     A parameter of type ``Any``, ``object``, or ``Untyped``, accepts a dict with
-    ``class_path`` and ``init_args``, and the class is parsed and instantiated.
-
-    This instantiation is deprecated. From v5.0.0 the subclass spec is kept as
-    is, so that the code receiving it decides whether to instantiate it. Set
-    ``instantiate_subclass_spec_in_any=False`` in :func:`.set_parsing_settings`
-    to get this behavior now and silence the deprecation warning. Setting it to
-    ``True`` keeps the instantiation, but is discouraged, since it means that a
-    config can instantiate any class, which is a security risk.
+    ``class_path`` and ``init_args``, and the spec is kept as is, so that the
+    code receiving it decides whether to instantiate it. Set
+    ``instantiate_subclass_spec_in_any=True`` in :func:`.set_parsing_settings`
+    to have ``instantiate`` build the class, though this is discouraged, since
+    it means that a config can instantiate any class, which is a security risk.
 
     A value that looks like a subclass spec, i.e. has a ``class_path``, but
     can't be parsed as one, e.g. because the class fails to import, is by
@@ -2276,11 +2273,11 @@ The denylist is not the only thing that limits what a config can reach. Type
 hints do as well, since a ``class_path`` is only accepted where the annotation
 allows one, and must name a subclass of the annotated type. The exceptions are
 ``Any`` and ``object``, which accept a subclass spec of any class, see
-:ref:`sub-classes`. Setting ``instantiate_subclass_spec_in_any=False``, which is
-the default from v5.0.0, keeps these values as plain dicts, so nothing is
-imported or instantiated and the code that receives the dict decides what to do
-with it. The denylist still applies when ``validate_subclass_spec_in_any=True``,
-since validating a spec requires importing the class it names.
+:ref:`sub-classes`. By default ``instantiate_subclass_spec_in_any`` is
+``False``, so these values are kept as plain dicts, nothing is imported or
+instantiated and the code that receives the dict decides what to do with it.
+The denylist still applies when ``validate_subclass_spec_in_any=True``, since
+validating a spec requires importing the class it names.
 
 .. note::
 
@@ -2298,14 +2295,6 @@ since validating a spec requires importing the class it names.
     a value of ``${oc.env:AWS_SECRET_ACCESS_KEY}`` puts that variable's value
     into the config, and the resolvers that the application registers are
     equally reachable. Avoid these parser modes for untrusted configs.
-
-.. note::
-
-    Until v5.0.0 a denied import path only gives a deprecation warning and the
-    import proceeds, so that existing configs don't break. Giving a value to
-    ``import_path_denylist`` or ``import_path_allowlist``, an empty list
-    included, makes denied import paths fail instead. From v5.0.0 they always
-    fail.
 
 
 .. _sub-config-files:

@@ -74,7 +74,7 @@ from ._common import (
     parser_context,
     validating_defaults,
 )
-from ._instantiation import get_class_instantiator
+from ._instantiation import dynamic_class_instantiator
 from ._loaders_dumpers import (
     basic_json_or_yaml_load,
     get_loader_exceptions,
@@ -2518,18 +2518,17 @@ def adapt_class_type(
                 value["init_args"] = init_args
             return value
 
-        instantiator_fn = get_class_instantiator()
         # only the top level keys, since a value can be a namespace, e.g. a subclass spec
         # kept as is for an Any typed parameter, which must not be expanded into kwargs
         init_kwargs = dict(init_args.items(branches=True, nested=False))
 
         if partial_skip_args is not None:  # an empty set for a factory that takes no arguments
             return partial(
-                instantiator_fn,
+                dynamic_class_instantiator,
                 val_class,
                 **{**init_kwargs, **dict_kwargs},
             )
-        return instantiator_fn(val_class, **{**init_kwargs, **dict_kwargs})
+        return dynamic_class_instantiator(val_class, **{**init_kwargs, **dict_kwargs})
 
     prev_init_args = prev_val.get("init_args") if isinstance(prev_val, Namespace) else None
 
@@ -2606,19 +2605,9 @@ def subclasses_disabled_remove_class_path(value):
     return value
 
 
-def instantiate_subclass_spec_in_any() -> bool:
-    """Whether a subclass spec given as value for a type that accepts any value is instantiated."""
-    setting = get_parsing_setting("instantiate_subclass_spec_in_any")
-    if setting is None:  # remove in v5.0.0, when the setting default becomes False
-        from ._deprecated import unset_instantiate_subclass_spec_in_any
-
-        setting = unset_instantiate_subclass_spec_in_any()
-    return setting
-
-
 def adapt_classes_any(val, typehint, serialize, instantiate_classes, sub_add_kwargs, logger=None):
     if is_subclass_spec(val):
-        if instantiate_classes and not instantiate_subclass_spec_in_any():
+        if instantiate_classes and not get_parsing_setting("instantiate_subclass_spec_in_any"):
             return val
         orig_val = val
         val = subclass_spec_as_namespace(val)

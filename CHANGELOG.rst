@@ -12,6 +12,45 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
+v5.0.0 (unreleased)
+-------------------
+
+Changed
+^^^^^^^
+- The print config argument now defaults to ``--print_<config_arg_name>``,
+  instead of always being ``--print_config`` (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- ``instantiate_subclass_spec_in_any`` now defaults to ``False``, so a subclass
+  spec given for a type that accepts any value is kept as is, instead of being
+  imported and instantiated (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- Import paths denied by ``import_path_denylist`` now always fail, instead of
+  only failing when ``import_path_denylist`` or ``import_path_allowlist`` is
+  given a value (`#969 <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- In the add signature methods, a parameter with an ``Optional`` type and no
+  default is now required, and with ``fail_untyped=False`` a required parameter
+  without a type annotation now gets type ``Untyped`` and stays required,
+  instead of both becoming optional with default ``None`` (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- A config that has multiple subcommand settings now requires the subcommand to
+  be given explicitly, instead of taking the first one (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- Config objects always include metadata, i.e. ``clone(with_meta=False)`` is now
+  the only way to strip it (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+
+Removed
+^^^^^^^
+- All features deprecated in v4 are now removed, see :ref:`migrate-v5` for the
+  complete list and how to update code (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- ``ruyaml`` extras require, superseded by ``ruamel`` (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- The ``yaml.SafeDumper`` representer for ``Namespace``, which was only added
+  for backward compatibility in pytorch-lightning (`#969
+  <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+
+
 v4.52.0 (2026-09-01)
 --------------------
 

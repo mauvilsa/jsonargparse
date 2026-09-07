@@ -275,13 +275,9 @@ def del_clash_mark(key: str) -> str:
 
 
 def expand_dict(data: dict) -> Namespace:
-    for k, v in data.items():
-        if isinstance(v, dict) and all(isinstance(k, str) for k in v):
-            data[k] = expand_dict(v)
-        elif isinstance(v, list):
-            for nn, vv in enumerate(v):
-                if isinstance(vv, dict) and all(isinstance(k, str) for k in vv):
-                    data[k][nn] = expand_dict(vv)
+    for key, val in data.items():
+        if isinstance(val, dict) and all(isinstance(k, str) for k in val):
+            data[key] = expand_dict(val)
     return Namespace(**data)
 
 
@@ -305,12 +301,3 @@ def get_non_meta_sorted_keys(namespace: Namespace) -> list[str]:
 def get_value_and_parent(namespace: Namespace, key: str) -> tuple[Any, Namespace, str]:
     leaf_key, parent_ns, _ = namespace._parse_required_key(key)
     return parent_ns[leaf_key], parent_ns, leaf_key
-
-
-# Temporal to provide backward compatibility in pytorch-lightning
-from importlib.util import find_spec  # noqa: E402
-
-if find_spec("yaml"):
-    import yaml
-
-    yaml.SafeDumper.add_representer(Namespace, lambda d, x: d.represent_mapping("tag:yaml.org,2002:map", x.as_dict()))

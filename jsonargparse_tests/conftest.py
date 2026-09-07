@@ -148,11 +148,11 @@ def subsubparser() -> ArgumentParser:
 
 @pytest.fixture
 def clear_instantiators():
-    from jsonargparse._instantiation import _global_class_instantiators
+    from jsonargparse._instantiation import _class_instantiators
 
-    _global_class_instantiators.clear()
+    _class_instantiators.clear()
     yield
-    _global_class_instantiators.clear()
+    _class_instantiators.clear()
 
 
 @pytest.fixture
@@ -169,7 +169,7 @@ def example_parser() -> ArgumentParser:
 @pytest.fixture
 def print_parser(parser, subparser) -> ArgumentParser:
     parser.description = "cli tool"
-    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--config", action="config")
     parser.add_argument("--v0", help=SUPPRESS, default="0")
     parser.add_argument("--v1", help="Option v1.", default=1)
     parser.add_argument("--g1.v2", help="Option v2.", default="2")

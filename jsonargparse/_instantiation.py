@@ -1,20 +1,20 @@
 import inspect
+from typing import Protocol
 
-from ._common import (
-    ClassType,
-    InstantiatorCallable,
-    InstantiatorsDictType,
-    applied_instantiation_links,
-    class_instantiators,
-    get_parsing_setting,
-    is_subclass,
-    parser_context,
-)
+from ._common import ClassType, applied_instantiation_links, get_parsing_setting, is_subclass, parser_context
 from ._namespace import Namespace, get_value_and_parent, split_key
 
 __all__ = ["add_instantiator"]
 
-_global_class_instantiators: InstantiatorsDictType = {}
+
+class InstantiatorCallable(Protocol):
+    def __call__(self, class_type: type[ClassType], *args, **kwargs) -> ClassType:
+        pass  # pragma: no cover
+
+
+InstantiatorsDictType = dict[tuple[type, bool], InstantiatorCallable]
+
+_class_instantiators: InstantiatorsDictType = {}
 
 
 class InstantiateMethod:
@@ -98,14 +98,12 @@ class InstantiateMethod:
                         with parser_context(
                             parent_parser=self,
                             nested_links=ActionLink.get_nested_links(self, component),
-                            class_instantiators=get_class_instantiators(self),
                             applied_instantiation_links=cfg.get("__applied_instantiation_links__"),
                         ):
                             parent[key] = component.instantiate_classes(value)
             elif hasattr(component, "instantiate_class"):
                 with parser_context(
                     load_value_mode=self.parser_mode,  # type: ignore[attr-defined]
-                    class_instantiators=get_class_instantiators(self),
                     applied_instantiation_links=cfg.get("__applied_instantiation_links__"),
                 ):
                     component.instantiate_class(component, cfg)
@@ -146,72 +144,25 @@ def add_instantiator(
         subclasses: Whether to instantiate subclasses of ``class_type``.
         prepend: Whether to prepend the instantiator to the existing instantiators.
     """
-    _register_instantiator(
-        _global_class_instantiators, instantiator, class_type, subclasses=subclasses, prepend=prepend
-    )
-
-
-def _register_instantiator(
-    registry: InstantiatorsDictType,
-    instantiator: InstantiatorCallable,
-    class_type: type[ClassType],
-    subclasses: bool = True,
-    prepend: bool = False,
-) -> None:
-    """Registers an instantiator in the given registry dict (in-place)."""
     key = (class_type, subclasses)
-    items = {k: v for k, v in registry.items() if k != key}
+    items = {k: v for k, v in _class_instantiators.items() if k != key}
     if prepend:
-        registry.clear()
-        registry.update({key: instantiator, **items})
+        _class_instantiators.clear()
+        _class_instantiators.update({key: instantiator, **items})
     else:
         items[key] = instantiator
-        registry.clear()
-        registry.update(items)
+        _class_instantiators.clear()
+        _class_instantiators.update(items)
 
 
-def _get_global_class_instantiators() -> InstantiatorsDictType:
-    """Returns the global instantiators registry."""
-    return _global_class_instantiators
-
-
-def default_class_instantiator(class_type: type[ClassType], *args, **kwargs) -> ClassType:
+def dynamic_class_instantiator(class_type: type[ClassType], *args, **kwargs) -> ClassType:
+    for (cls, subclasses), instantiator in _class_instantiators.items():
+        if class_type is cls or (subclasses and is_subclass(class_type, cls)):
+            param_names = set(inspect.signature(instantiator).parameters)
+            if "applied_instantiation_links" in param_names:
+                applied_links = applied_instantiation_links.get() or set()
+                kwargs["applied_instantiation_links"] = {
+                    action.target[0]: action.applied_value for action in applied_links
+                }
+            return instantiator(class_type, *args, **kwargs)
     return class_type(*args, **kwargs)
-
-
-class ClassInstantiator:
-    def __init__(self, instantiators: InstantiatorsDictType) -> None:
-        self.instantiators = instantiators
-
-    def __call__(self, class_type: type[ClassType], *args, **kwargs) -> ClassType:
-        for (cls, subclasses), instantiator in self.instantiators.items():
-            if class_type is cls or (subclasses and is_subclass(class_type, cls)):
-                param_names = set(inspect.signature(instantiator).parameters)
-                if "applied_instantiation_links" in param_names:
-                    applied_links = applied_instantiation_links.get() or set()
-                    kwargs["applied_instantiation_links"] = {
-                        action.target[0]: action.applied_value for action in applied_links
-                    }
-                return instantiator(class_type, *args, **kwargs)
-        return default_class_instantiator(class_type, *args, **kwargs)
-
-
-def get_class_instantiator() -> InstantiatorCallable:
-    instantiators = class_instantiators.get()
-    if not instantiators:
-        return default_class_instantiator
-    return ClassInstantiator(instantiators)
-
-
-def get_class_instantiators(parser) -> InstantiatorsDictType:
-    """Gathers all instantiators applicable to the given parser."""
-    instantiators = parser._get_parser_instantiators()
-    context_instantiators = class_instantiators.get()
-    if context_instantiators:
-        instantiators = instantiators.copy()
-        instantiators.update({k: v for k, v in context_instantiators.items() if k not in instantiators})
-    global_instantiators = _get_global_class_instantiators()
-    if global_instantiators:
-        instantiators = instantiators.copy()
-        instantiators.update({k: v for k, v in global_instantiators.items() if k not in instantiators})
-    return instantiators

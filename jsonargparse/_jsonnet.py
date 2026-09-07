@@ -162,7 +162,7 @@ class ActionJsonnet(Action):
         except TypeError:
             pass
         else:
-            fname = jsonnet(absolute=False) if isinstance(jsonnet, Path) else jsonnet
+            fname = jsonnet(absolute=False) if isinstance(jsonnet, Path) else jsonnet  # type: ignore[operator]
             snippet = fpath.read_text()
         try:
             with parser_context(load_value_mode="yaml" if pyyaml_available else "json"):

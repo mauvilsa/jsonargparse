@@ -129,6 +129,13 @@ def test_restricted_number_already_registered():
         restricted_number_type("NewName", float, [("<=", 1), (">=", 0)])
 
 
+def test_restricted_number_name_from_restrictions():
+    NumberType = restricted_number_type(None, float, [(">=", 0.5), ("<", 2)], join="and")
+    assert NumberType.__name__ == "float_ge05_and_lt2"
+    assert 1.0 == NumberType(1)
+    pytest.raises(ValueError, lambda: NumberType(0.4))
+
+
 def test_restricted_number_not_equal_operator():
     NotTwoOrThree = restricted_number_type("NotTwoOrThree", float, [("!=", 2), ("!=", 3)])
     assert 1.0 == NotTwoOrThree(1)

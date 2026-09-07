@@ -30,11 +30,11 @@ def test_help_action_version(parser):
 
 
 def test_help_action_config_file(parser):
-    parser.add_argument("-c", "--cfg", help="Config in yaml/json.", action="config")
+    parser.add_argument("-c", "--config", help="Config in yaml/json.", action="config")
     help_str = get_parser_help(parser)
     assert "ARG:   --print_config" in help_str
-    assert "ARG:   -c CFG, --cfg CFG" in help_str or "ARG:   -c, --cfg CFG" in help_str
-    assert "ENV:   APP_CFG" in help_str
+    assert "ARG:   -c CONFIG, --config CONFIG" in help_str or "ARG:   -c, --config CONFIG" in help_str
+    assert "ENV:   APP_CONFIG" in help_str
     assert "Config in yaml/json." in help_str
     assert "APP_PRINT_CONFIG" not in help_str
 

@@ -36,7 +36,7 @@ def test_on_parse_help_target_lacking_type_and_help(parser):
 
 
 def test_on_parse_shallow_print_config(parser):
-    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--config", action="config")
     parser.add_argument("--a", type=int, default=0)
     parser.add_argument("--b", type=str)
     parser.link_arguments("a", "b")

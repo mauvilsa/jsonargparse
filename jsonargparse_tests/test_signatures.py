@@ -846,23 +846,27 @@ def test_add_function_fail_untyped_false(parser, logger):
     parser.logger = logger
     with capture_logs(logger) as logs:
         added_args = parser.add_function_arguments(func_untyped_params, fail_untyped=False)
-        assert Namespace(a1=None, a2=None) == parser.parse_args([])
+        assert Namespace(a1="x", a2=None) == parser.parse_args(["--a1=x"])
         help_str = get_parser_help(parser)
+        with pytest.raises(ArgumentError, match="the following arguments are required: a1"):
+            parser.parse_args([])
     assert ["a1", "a2"] == added_args
-    assert f"--a1 A1     (type: {type_to_str(Union[NoneType, Untyped])}, default: null)" in help_str
+    assert f"--a1 A1     (required, type: {type_to_str(Untyped)})" in help_str
     assert f"--a2 A2     (type: {type_to_str(Union[NoneType, Untyped])}, default: null)" in help_str
-    assert f'"a1" from "{__name__}.func_untyped_params" does not have a type annotation. Added as ' in logs.getvalue()
+    assert f'"a2" from "{__name__}.func_untyped_params" does not have a type annotation. Added as ' in logs.getvalue()
     assert f"{type_to_str(Union[NoneType, Untyped])}, thus any value is accepted" in logs.getvalue()
 
 
-def func_untyped_optional(a1: str, a2=None):
+def func_untyped_optional(a1: int, a2=None):
     return a1  # pragma: no cover
 
 
 def test_add_function_fail_untyped_true_untyped_optional(parser):
     added_args = parser.add_function_arguments(func_untyped_optional, fail_untyped=True)
     assert ["a1", "a2"] == added_args
-    assert Namespace(a1="x", a2=None) == parser.parse_args(["--a1=x"])
+    assert parser.parse_args(["--a1=123"]) == Namespace(a1=123, a2=None)
+    with pytest.raises(ArgumentError, match="Expected a .*int.* Got value: x"):
+        parser.parse_args(["--a1=x"])
 
 
 def func_untyped_default(a1: str, a2=3):

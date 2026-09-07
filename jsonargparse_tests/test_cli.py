@@ -81,6 +81,10 @@ def test_single_function_return(cli_fn):
     assert 1.2 == cli_fn(single_function, args=["1.2"])
 
 
+def test_single_function_in_list_no_subcommand():
+    assert 1.2 == auto_cli([single_function], args=["1.2"])
+
+
 def test_single_function_set_defaults():
     def run_cli():
         auto_cli(single_function, set_defaults={"a1": 3.4})

@@ -535,7 +535,7 @@ def test_subcommand_subclass(parser, subparser):
 
 
 def test_print_config_comments_subclass(parser):
-    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--config", action="config")
     parser.add_argument("--optimizer", type=Optimizer, help="The optimizer.")
     out = get_parse_args_stdout(parser, [f"--optimizer={__name__}.SGD", "--print_config=comments"])
     assert "# Stochastic gradient descent\n  init_args:" in out

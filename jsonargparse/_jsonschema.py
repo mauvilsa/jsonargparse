@@ -31,11 +31,6 @@ class ActionJsonSchema(Action):
             ValueError: If a parameter is invalid.
             jsonschema.exceptions.SchemaError: If the schema is invalid.
         """
-        from ._deprecated import action_json_schema_enable_path_deprecation
-
-        deprecated_val = action_json_schema_enable_path_deprecation(kwargs)
-        if deprecated_val is not None:
-            sub_config = deprecated_val
         if schema is not None:
             if isinstance(schema, str):
                 mode = "yaml" if pyyaml_available else "json"

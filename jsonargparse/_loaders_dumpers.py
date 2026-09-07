@@ -243,8 +243,6 @@ def replace_unset(data):
         return Unset._SERIALIZED
     if isinstance(data, dict):
         return {k: replace_unset(v) for k, v in data.items()}
-    if isinstance(data, list):
-        return [replace_unset(v) for v in data]
     return data
 
 

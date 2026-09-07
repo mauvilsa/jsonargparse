@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# pragma: no cover
 """Generate argparse compatibility tests from CPython's test_argparse.py.
 
 This script downloads the test_argparse.py file from the CPython repository,

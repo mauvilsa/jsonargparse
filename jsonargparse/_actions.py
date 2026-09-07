@@ -1,7 +1,6 @@
 """Collection of useful actions to define arguments."""
 
 import inspect
-import os
 import re
 import sys
 from argparse import SUPPRESS, _HelpAction, _VersionAction
@@ -118,21 +117,6 @@ class ActionConfigFile(Action):
         if isinstance(action, ActionConfigFile) and getattr(container, "_print_config", None) is not None:
             if "%s" in container._print_config:
                 container._print_config = container._print_config % action.dest
-            elif (
-                container._print_config == "--print_config"
-                and action.dest != "config"
-                and os.getenv("JSONARGPARSE_DEPRECATION_WARNINGS", "").lower() == "all"
-            ):
-                from ._deprecated import deprecation_warning
-
-                deprecation_warning(
-                    "print_config_default_name",
-                    "From v5.0.0 the print config argument will by default reuse the name of the config "
-                    'argument as "--print_%s". The current default is always "--print_config", but in v5.0.0 '
-                    f'with a config argument named "{action.dest}" it will become "--print_{action.dest}". '
-                    'To keep the current name set print_config="--print_config" explicitly.',
-                    stacklevel=2,
-                )
             assert container._print_config.startswith("--")
             container.add_argument(container._print_config, action=_ActionPrintConfig)
 
@@ -204,10 +188,8 @@ class _ActionPrintConfig(NonParsingAction):
         )
 
     def __call__(self, parser, namespace, value, option_string=None):
-        from ._deprecated import deprecated_skip_null, deprecated_valid_flags
-
         kwargs = {"subparser": parser, "key": None, "skip_unset": False, "skip_validation": False}
-        valid_flags = {"": None, "skip_default": "skip_default", "skip_unset": "skip_unset"} | deprecated_valid_flags
+        valid_flags = {"": None, "skip_default": "skip_default", "skip_unset": "skip_unset"}
         if ruamel_support:
             valid_flags["comments"] = "with_comments"
         flags = value[0].split(",")
@@ -215,11 +197,7 @@ class _ActionPrintConfig(NonParsingAction):
         if len(invalid_flags) > 0:
             raise argument_error(f'Invalid option "{invalid_flags[0]}" for {option_string}')
         for flag in [f for f in flags if f != ""]:
-            mapped = valid_flags[flag]
-            if deprecated_skip_null(flag):
-                kwargs["skip_unset"] = True
-            else:
-                kwargs[mapped] = True
+            kwargs[valid_flags[flag]] = True
         while hasattr(parser, "parent_parser"):
             kwargs["key"] = parser.subcommand if kwargs["key"] is None else parser.subcommand + "." + kwargs["key"]
             parser = parser.parent_parser

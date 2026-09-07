@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import (  # type: ignore[attr-defined]
     Generic,
-    Protocol,
     TypeVar,
     _GenericAlias,
 )
@@ -68,14 +67,6 @@ class _UnsetType:
 Unset = _UnsetType()
 
 
-class InstantiatorCallable(Protocol):
-    def __call__(self, class_type: type[ClassType], *args, **kwargs) -> ClassType:
-        pass  # pragma: no cover
-
-
-InstantiatorsDictType = dict[tuple[type, bool], InstantiatorCallable]
-
-
 parent_parser: ContextVar[ArgumentParser | None] = ContextVar("parent_parser", default=None)
 parser_capture: ContextVar[bool] = ContextVar("parser_capture", default=False)
 defaults_cache: ContextVar[Namespace | None] = ContextVar("defaults_cache", default=None)
@@ -84,7 +75,6 @@ parsing_defaults: ContextVar[bool] = ContextVar("parsing_defaults", default=Fals
 single_subcommand: ContextVar[bool] = ContextVar("single_subcommand", default=True)
 validating_defaults: ContextVar[bool] = ContextVar("validating_defaults", default=False)
 load_value_mode: ContextVar[str | None] = ContextVar("load_value_mode", default=None)
-class_instantiators: ContextVar[InstantiatorsDictType | None] = ContextVar("class_instantiators", default=None)
 nested_links: ContextVar[list[dict]] = ContextVar("nested_links", default=[])
 applied_instantiation_links: ContextVar[set | None] = ContextVar("applied_instantiation_links", default=None)
 path_dump_preserve_relative: ContextVar[bool] = ContextVar("path_dump_preserve_relative", default=False)
@@ -99,7 +89,6 @@ parser_context_vars = {
     "single_subcommand": single_subcommand,
     "validating_defaults": validating_defaults,
     "load_value_mode": load_value_mode,
-    "class_instantiators": class_instantiators,
     "nested_links": nested_links,
     "applied_instantiation_links": applied_instantiation_links,
     "path_dump_preserve_relative": path_dump_preserve_relative,
@@ -280,14 +269,13 @@ config_schema_key = "$schema"
 parsing_settings: dict = {
     "validate_defaults": False,
     "validate_subclass_spec_in_any": False,
-    "instantiate_subclass_spec_in_any": None,  # v5.0.0: change default to False
+    "instantiate_subclass_spec_in_any": False,
     "parse_optionals_as_positionals": False,
     "add_print_completion_argument": False,
     "stubs_resolver_allow_py_files": False,
     "omegaconf_absolute_to_relative_paths": False,
     "unset_sentinel": None,
     "import_path_verdicts": {entry: False for entry in default_import_path_denylist},
-    "import_paths_enforced": False,  # v5.0.0: change default to True
 }
 
 
@@ -321,7 +309,6 @@ def set_import_path_verdicts(denylist: list[str] | None, allowlist: list[str] | 
             else:
                 logger.debug(f"Import path {entry!r} changed to {state}")
     parsing_settings["import_path_verdicts"] = verdicts
-    parsing_settings["import_paths_enforced"] = True
 
 
 def denying_import_path_entry(path: str) -> str | None:
@@ -344,11 +331,7 @@ def check_import_path(path: str) -> None:
         f"Importing '{path}' is not allowed, denied by the {entry!r} entry of the import path denylist. "
         "Add the import path to import_path_allowlist in set_parsing_settings to allow it."
     )
-    if get_parsing_setting("import_paths_enforced"):
-        raise ImportDenied(message)
-    from ._deprecated import import_paths_not_enforced
-
-    import_paths_not_enforced(path, message)
+    raise ImportDenied(message)
 
 
 def get_env_var_bool(name: str) -> bool:
@@ -396,12 +379,10 @@ def set_parsing_settings(
         instantiate_subclass_spec_in_any: Whether ``instantiate`` builds the
             class when a value for a type that accepts any value, i.e. ``Any``,
             ``object`` or ``Unvalidated<...>``, is a valid subclass spec. If
-            ``False``, the value is kept as a subclass spec, which the code that
-            receives it can instantiate itself if desired. Currently the default
-            is ``True`` and a deprecation warning is emitted, since from v5.0.0
-            the default will be ``False``. Enabling it is discouraged because it
-            means that any class can be instantiated, so only do it for trusted
-            configs.
+            ``False``, the default, the value is kept as a subclass spec, which
+            the code that receives it can instantiate itself if desired.
+            Enabling it is discouraged because it means that any class can be
+            instantiated, so only do it for trusted configs.
         config_read_mode_urls_enabled: Whether to read config files from URLs
             using requests package. Default is ``False``.
         config_read_mode_fsspec_enabled: Whether to read config files from
@@ -779,11 +760,6 @@ class LoggerProperty:
 
     @logger.setter
     def logger(self, logger: bool | str | dict | logging.Logger):
-        if logger is None:
-            from ._deprecated import deprecation_warning, logger_property_none_message
-
-            deprecation_warning((LoggerProperty.logger, None), logger_property_none_message, stacklevel=6)
-            logger = False
         if not logger and debug_mode_active():
             logger = {"level": "DEBUG"}
         self._logger = parse_logger(logger, type(self).__name__)
