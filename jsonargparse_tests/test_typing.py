@@ -378,8 +378,8 @@ def test_register_non_bool_cast_type(parser):
     parser.add_argument("--elems", type=Elems)
     cfg = parser.parse_args(["--elems=[1, 2, 3]"])
     assert isinstance(cfg.elems, Elems)
-    assert [1, 2, 3] == cfg.elems.elems
-    assert '{"elems":[1,2,3]}' == parser.dump(cfg, format="json")
+    assert cfg.elems.elems == [1, 2, 3]
+    assert parser.dump(cfg, format="json_compact") == '{"elems":[1,2,3]}'
 
 
 def test_register_type_datetime(parser):

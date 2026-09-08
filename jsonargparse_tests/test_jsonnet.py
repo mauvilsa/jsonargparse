@@ -12,7 +12,7 @@ from jsonargparse import (
     ArgumentError,
     ArgumentParser,
 )
-from jsonargparse._optionals import jsonnet_support, pyyaml_available
+from jsonargparse._optionals import jsonnet_support
 from jsonargparse_tests.conftest import (
     get_parser_help,
     json_or_yaml_load,
@@ -177,12 +177,7 @@ def test_action_jsonnet_save_config_metadata(parser, tmp_path):
     # rewrite the config to make sure that ext_vars is after jsonnet
     main_cfg = json_or_yaml_load(output_config.read_text())
     main_cfg = {k: main_cfg[k] for k in ["jsonnet", "ext_vars"]}
-    if pyyaml_available:
-        import yaml
-
-        output_config.write_text(yaml.safe_dump(main_cfg, sort_keys=False))
-    else:
-        output_config.write_text(json.dumps(main_cfg))
+    output_config.write_text(json.dumps(main_cfg))
 
     # parse using saved config and verify result is the same
     cfg2 = parser.parse_args([f"--cfg={output_config}"])

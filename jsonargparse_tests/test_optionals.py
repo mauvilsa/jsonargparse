@@ -15,10 +15,12 @@ from jsonargparse._optionals import (
     import_fsspec,
     import_jsonnet,
     import_jsonschema,
+    import_pyyaml,
     import_requests,
     import_ruamel,
     jsonnet_support,
     jsonschema_support,
+    pyyaml_available,
     ruamel_support,
     url_support,
 )
@@ -28,8 +30,24 @@ from jsonargparse_tests.conftest import (
     get_parser_help,
     skip_if_docstring_parser_unavailable,
     skip_if_fsspec_unavailable,
+    skip_if_no_pyyaml,
     skip_if_requests_unavailable,
 )
+
+# pyyaml support
+
+
+@skip_if_no_pyyaml
+def test_pyyaml_support_true():
+    import_pyyaml("test_pyyaml_support_true")
+
+
+@pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
+def test_pyyaml_support_false():
+    with pytest.raises(ImportError) as ctx:
+        import_pyyaml("test_pyyaml_support_false")
+    ctx.match("test_pyyaml_support_false")
+
 
 # jsonschema support
 

@@ -565,17 +565,17 @@ def test_dump_formats(dump_parser):
     if pyyaml_available:
         assert dump_parser.dump(cfg) == "op1: 123\nop2: abc\n"
         assert dump_parser.dump(cfg, format="yaml") == dump_parser.dump(cfg)
-    assert dump_parser.dump(cfg, format="json") == '{"op1":123,"op2":"abc"}'
-    assert dump_parser.dump(cfg, format="json_indented") == '{\n  "op1": 123,\n  "op2": "abc"\n}\n'
+    assert dump_parser.dump(cfg, format="json") == '{\n  "op1": 123,\n  "op2": "abc"\n}\n'
+    assert dump_parser.dump(cfg, format="json_indented") == dump_parser.dump(cfg, format="json")
+    assert dump_parser.dump(cfg, format="json_compact") == '{"op1":123,"op2":"abc"}'
     pytest.raises(ValueError, lambda: dump_parser.dump(cfg, format="invalid"))
 
 
 def test_dump_skip_default_simple(dump_parser):
     dump = dump_parser.dump(dump_parser.get_defaults(), skip_default=True)
-    expected = "{}\n" if pyyaml_available else "{}"
-    assert dump == expected
+    assert dump == "{}\n"
     dump = dump_parser.dump(Namespace(op1=123, op2="xyz"), skip_default=True)
-    expected = "op2: xyz\n" if pyyaml_available else '{"op2":"xyz"}'
+    expected = "op2: xyz\n" if pyyaml_available else '{\n  "op2": "xyz"\n}\n'
     assert dump == expected
 
 
@@ -585,13 +585,12 @@ def test_dump_skip_default_nested(parser):
     parser.add_argument("--g2.op1", type=int, default=987)
     parser.add_argument("--g2.op2", type=str, default="xyz")
     dump = parser.dump(parser.get_defaults(), skip_default=True)
-    expected = "{}\n" if pyyaml_available else "{}"
-    assert dump == expected
+    assert dump == "{}\n"
     dump = parser.dump(parser.parse_args(["--g1.op1=0"]), skip_default=True)
-    expected = "g1:\n  op1: 0\n" if pyyaml_available else '{"g1":{"op1":0}}'
+    expected = "g1:\n  op1: 0\n" if pyyaml_available else '{\n  "g1": {\n    "op1": 0\n  }\n}\n'
     assert dump == expected
     dump = parser.dump(parser.parse_args(["--g2.op2=pqr"]), skip_default=True)
-    expected = "g2:\n  op2: pqr\n" if pyyaml_available else '{"g2":{"op2":"pqr"}}'
+    expected = "g2:\n  op2: pqr\n" if pyyaml_available else '{\n  "g2": {\n    "op2": "pqr"\n  }\n}\n'
     assert dump == expected
 
 
@@ -841,7 +840,7 @@ def test_save_path_content(parser, tmp_cwd):
     parser.save_path_content.add("the.path")
     parser.save(cfg, out_yaml)
 
-    expected = "the:\n  path: file.txt\n" if pyyaml_available else '{"the":{"path":"file.txt"}}'
+    expected = "the:\n  path: file.txt\n" if pyyaml_available else '{\n  "the": {\n    "path": "file.txt"\n  }\n}\n'
     assert out_yaml.read_text() == expected
     assert out_file.read_text() == "file content"
 

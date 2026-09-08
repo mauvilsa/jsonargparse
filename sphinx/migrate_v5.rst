@@ -15,7 +15,7 @@ approach is:
        JSONARGPARSE_DEPRECATION_WARNINGS=all python your_script.py
 
 3. **Fix all deprecation warnings** as described in the sections below.
-4. **Review the** `Breaking changes summary`_, since one change does not emit a
+4. **Review the** `Breaking changes summary`_, since some changes do not emit a
    deprecation warning.
 5. **Upgrade to v5** (``pip install "jsonargparse>=5"``).
 
@@ -32,10 +32,14 @@ Breaking changes summary
 In addition to the deprecation removals below, note these other breaking
 changes:
 
-- **``pyyaml`` is no longer a required dependency.** This is the only change
-  that gives no deprecation warning. If your code imports ``yaml``, or you want
-  yaml configs, install with the ``yaml`` extra (``pip install
-  "jsonargparse[yaml]"``).
+- **``pyyaml`` is no longer a required dependency.** Gives no deprecation
+  warning. Without it the default ``parser_mode`` and dump format is ``json``.
+  If your code imports ``yaml``, or you want yaml configs, install with the
+  ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
+- **``json`` dumps are now indented.** Gives no deprecation warning.
+  ``dump(format="json")``, ``save`` and the print config argument produce
+  indented JSON instead of a single line. Use ``format="json_compact"`` for the
+  previous output.
 - **``--print_config`` renamed.** The print-config argument in v5 defaults to
   ``--print_<config_arg_name>`` instead of always being ``--print_config``, so
   it only stays ``--print_config`` when the config argument is named ``config``.

@@ -31,10 +31,10 @@ among them:
 Development environment
 -----------------------
 
-All requirements of the project are defined in ``pyproject.toml``. The basic
-runtime requirements are in ``dependencies``. Requirements for optional
-features, as well as for testing, development and documentation building
-(``test``, ``dev`` and ``doc``), are in ``[project.optional-dependencies]``.
+All requirements of the project are defined in ``pyproject.toml``. There are no
+required runtime dependencies. Requirements for optional features, as well as
+for testing, development and documentation building (``test``, ``dev`` and
+``doc``), are in ``[project.optional-dependencies]``.
 
 The recommended way to work with the source code is to clone the repository,
 create a virtual environment, activate it, and install the development

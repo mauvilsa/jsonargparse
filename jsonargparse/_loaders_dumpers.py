@@ -10,6 +10,7 @@ from typing import Any
 from ._common import Unset, get_parsing_setting, load_value_mode, parent_parser
 from ._optionals import (
     import_jsonnet,
+    import_pyyaml,
     import_toml_dumps,
     import_toml_loads,
     omegaconf_support,
@@ -54,7 +55,7 @@ def get_yaml_default_loader():
     if yaml_default_loader:
         return yaml_default_loader
 
-    import yaml
+    yaml = import_pyyaml("get_yaml_default_loader")
 
     class DefaultLoader(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
         pass
@@ -92,8 +93,7 @@ def get_yaml_default_loader():
 
 
 def yaml_load(stream):
-    import yaml
-
+    yaml = import_pyyaml("yaml_load")
     value = yaml.load(stream, Loader=get_yaml_default_loader())
     if isinstance(value, dict) and value and all(v is None for v in value.values()):
         if len(value) == 1 and stream.strip() == next(iter(value)) + ":":
@@ -159,7 +159,7 @@ def get_loader_exceptions(mode: str | None = None) -> tuple[type[Exception], ...
         mode = get_load_value_mode()
     if mode not in loader_exceptions:
         if mode == "yaml":
-            loader_exceptions[mode] = (__import__("yaml").YAMLError,)
+            loader_exceptions[mode] = (import_pyyaml("get_loader_exceptions").YAMLError,)
         elif mode == "json":
             loader_exceptions[mode] = (__import__("json").JSONDecodeError,)
         elif mode == "toml":
@@ -247,8 +247,7 @@ def replace_unset(data):
 
 
 def yaml_dump(data):
-    import yaml
-
+    yaml = import_pyyaml("yaml_dump")
     return yaml.safe_dump(data, **dump_yaml_kwargs)
 
 
@@ -278,7 +277,7 @@ def toml_dump(data):
 
 dumpers: dict[str, Callable] = {
     "yaml": yaml_dump,
-    "json": json_compact_dump,
+    "json": json_indented_dump,
     "json_compact": json_compact_dump,
     "json_indented": json_indented_dump,
     "toml": toml_dump,
@@ -302,7 +301,8 @@ def check_valid_dump_format(dump_format: str):
 
 def dump_using_format(parser: ArgumentParser, data: dict, dump_format: str, with_comments: bool = False) -> str:
     if dump_format == "parser_mode":
-        dump_format = parser.parser_mode if parser.parser_mode in dumpers else "yaml"
+        default_format = "yaml" if pyyaml_available else "json"
+        dump_format = parser.parser_mode if parser.parser_mode in dumpers else default_format
     if with_comments:
         if f"{dump_format}_comments" not in dumpers:
             if dump_format == "yaml":

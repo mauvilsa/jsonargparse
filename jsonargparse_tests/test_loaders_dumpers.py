@@ -53,6 +53,31 @@ def test_invalid_parser_mode():
     pytest.raises(ValueError, lambda: ArgumentParser(parser_mode="invalid"))
 
 
+@skip_if_no_pyyaml
+def test_default_parser_mode_yaml():
+    assert ArgumentParser().parser_mode == "yaml"
+
+
+@pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
+def test_without_pyyaml_default_parser_mode_json():
+    assert ArgumentParser().parser_mode == "json"
+
+
+@pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
+def test_without_pyyaml_parser_mode_yaml_error():
+    with pytest.raises(ImportError) as ctx:
+        ArgumentParser(parser_mode="yaml")
+    ctx.match("PyYAML package is required by parser_mode=yaml")
+
+
+@pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
+def test_without_pyyaml_dump_yaml_error(parser):
+    parser.add_argument("--int", type=int, default=1)
+    with pytest.raises(ImportError) as ctx:
+        parser.dump(parser.get_defaults(), format="yaml")
+    ctx.match("PyYAML package is required by yaml_dump")
+
+
 def test_get_loader():
     from jsonargparse._loaders_dumpers import jsonnet_load
 
@@ -82,7 +107,7 @@ def test_dump_header_json(parser):
     parser.add_argument("--int", type=int, default=1)
     parser.dump_header = ["line 1", "line 2"]
     dump = parser.dump(parser.get_defaults(), format="json")
-    assert dump == '{"int":1}'
+    assert dump == '{\n  "int": 1\n}\n'
 
 
 def test_dump_header_invalid(parser):

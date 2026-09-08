@@ -101,6 +101,12 @@ def missing_package_raise(package, importer):
         raise ImportError(f"{package} package is required by {importer} :: {ex}") from ex
 
 
+def import_pyyaml(importer):
+    with missing_package_raise("PyYAML", importer):
+        import yaml
+    return yaml
+
+
 def import_toml_loads(importer):
     if find_spec("tomllib"):
         import tomllib

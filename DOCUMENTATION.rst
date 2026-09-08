@@ -1331,7 +1331,8 @@ Configuration files
 
 jsonargparse can parse configuration files (config files). The dot notation
 hierarchy of the arguments (see :ref:`nested-namespaces`) defines the structure
-expected in these files. The default format is YAML. To change it, use the
+expected in these files. The default format is YAML, or JSON when the ``yaml``
+extra is not installed, see :ref:`installation`. To change it, use the
 ``parser_mode`` parameter of the parser, e.g.
 ``ArgumentParser(parser_mode="toml")``.
 
@@ -1419,8 +1420,8 @@ comma, e.g. ``--print_config=comments,skip_default``:
 
 From Python, a config object is serialized with the :meth:`dump
 <.ArgumentParser.dump>` and :meth:`save <.ArgumentParser.save>` methods. The
-supported formats are ``yaml``, ``toml``, ``json``/``json_compact``,
-``json_indented`` and ``parser_mode``, the default, which uses the format of the
+supported formats are ``yaml``, ``toml``, ``json``/``json_indented``,
+``json_compact`` and ``parser_mode``, the default, which uses the format of the
 parser. More formats are added with :func:`.set_dumper`, for example to dump
 with PyYAML's ``default_flow_style``:
 
@@ -1441,8 +1442,8 @@ with PyYAML's ``default_flow_style``:
 Custom loaders
 --------------
 
-The ``yaml`` parser mode (see :py:meth:`.ArgumentParser.__init__`) loads with a
-subclass of `yaml.SafeLoader
+The ``yaml`` parser mode (see :py:meth:`.ArgumentParser.__init__`) requires the
+``yaml`` extra and loads with a subclass of `yaml.SafeLoader
 <https://pyyaml.org/wiki/PyYAMLDocumentation#loader>`__ that has three
 differences:
 

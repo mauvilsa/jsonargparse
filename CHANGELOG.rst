@@ -38,6 +38,14 @@ Changed
 - Config objects always include metadata, i.e. ``clone(with_meta=False)`` is now
   the only way to strip it (`#969
   <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+- ``pyyaml`` is no longer a required dependency, install the ``yaml`` extra to
+  have it. Without it the default ``parser_mode`` and dump format is ``json``,
+  and explicitly using ``yaml`` raises an informative ``ImportError`` (`#970
+  <https://github.com/mauvilsa/jsonargparse/pull/970>`__).
+- The ``json`` dump format is now indented, so that the print config argument
+  gives a more readable output. Use the new ``json_compact`` format for the
+  previous single line output (`#970
+  <https://github.com/mauvilsa/jsonargparse/pull/970>`__).
 
 Removed
 ^^^^^^^

@@ -42,10 +42,9 @@ jobs:
           enable-cache: true
           cache-suffix: py${{ matrix.python }}
           cache-dependency-glob: pyproject.toml
-      - name: Test without optional dependencies and without pyyaml
+      - name: Test without optional dependencies
         run: |
           uv pip install .[coverage]
-          uv pip uninstall pyyaml types-PyYAML
           pytest --cov --cov-report=term --cov-report=xml --junit-xml=junit.xml
           mv coverage.xml coverage_py${{ matrix.python }}_bare.xml
           mv junit.xml junit_py${{ matrix.python }}_bare.xml
@@ -218,11 +217,10 @@ jobs:
         with:
           name: package
           path: dist
-      - name: Test without optional dependencies and without pyyaml
+      - name: Test without optional dependencies
         run: |
           cd dist
           uv pip install $(ls jsonargparse-*.whl)[test-no-urls] $(ls jsonargparse_tests-*.whl)
-          uv pip uninstall pyyaml
           python -m jsonargparse_tests
       - name: Test with all optional dependencies
         run: |

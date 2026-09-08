@@ -195,7 +195,6 @@ def test_float_scientific_notation(parser):
 
 @parser_modes
 def test_float_implicit_leading_zero(parser):
-    parser.parser_mode = "yaml"
     parser.add_argument("--num", type=float)
     assert 0.5 == parser.parse_args(["--num=.5"]).num
     assert -0.5 == parser.parse_args(["--num=-.5"]).num
@@ -745,7 +744,7 @@ def test_frozenset(parser):
     parser.add_argument("--frozen", type=FrozenSet[int])
     cfg = parser.parse_args(["--frozen=[1, 2]"])
     assert frozenset([1, 2]) == cfg.frozen
-    assert parser.dump(cfg, format="json") == '{"frozen":[1,2]}'
+    assert parser.dump(cfg, format="json_compact") == '{"frozen":[1,2]}'
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--frozen=["a", "b"]'])
     ctx.match("Expected a <class 'int'>")
@@ -756,7 +755,7 @@ def test_abstract_set(parser, set_type):
     parser.add_argument("--set", type=set_type[int])
     cfg = parser.parse_args(["--set=[1, 2]"])
     assert {1, 2} == cfg.set
-    assert parser.dump(cfg, format="json") == '{"set":[1,2]}'
+    assert parser.dump(cfg, format="json_compact") == '{"set":[1,2]}'
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--set=["a", "b"]'])
     ctx.match("Expected a <class 'int'>")
@@ -851,7 +850,7 @@ def test_deque(parser):
     cfg = parser.parse_args(["--deque=[1, 2]"])
     assert isinstance(cfg.deque, deque)
     assert deque([1, 2]) == cfg.deque
-    assert parser.dump(cfg, format="json") == '{"deque":[1,2]}'
+    assert parser.dump(cfg, format="json_compact") == '{"deque":[1,2]}'
 
 
 def test_list_dump(parser):
@@ -1558,7 +1557,7 @@ def test_unsubscripted_sequence_alias(parser, alias, expected):
     parser.add_argument("--x", type=alias)
     cfg = parser.parse_args(["--x=[1, 2]"])
     assert cfg.x == expected
-    assert parser.dump(cfg, format="json") == '{"x":[1,2]}'
+    assert parser.dump(cfg, format="json_compact") == '{"x":[1,2]}'
 
 
 @pytest.mark.parametrize("alias", [Dict, Mapping, MutableMapping], ids=str)
@@ -1566,7 +1565,7 @@ def test_unsubscripted_mapping_alias(parser, alias):
     parser.add_argument("--x", type=alias)
     cfg = parser.parse_args(['--x={"a": 1}'])
     assert cfg.x == {"a": 1}
-    assert parser.dump(cfg, format="json") == '{"x":{"a":1}}'
+    assert parser.dump(cfg, format="json_compact") == '{"x":{"a":1}}'
 
 
 @pytest.mark.parametrize("alias", [List, Iterable, Deque], ids=str)
@@ -2660,7 +2659,7 @@ def test_mapping_proxy_type(parser):
     cfg = parser.parse_args(['--mapping={"x":1}'])
     assert isinstance(cfg.mapping, MappingProxyType)
     assert cfg.mapping == {"x": 1}
-    assert parser.dump(cfg, format="json") == '{"mapping":{"x":1}}'
+    assert parser.dump(cfg, format="json_compact") == '{"mapping":{"x":1}}'
 
 
 def test_mapping_default_mapping_proxy_type(parser):
@@ -2669,7 +2668,7 @@ def test_mapping_default_mapping_proxy_type(parser):
     cfg = parser.parse_args([])
     assert isinstance(cfg.mapping, Mapping)
     assert mapping_proxy == cfg.mapping
-    assert parser.dump(cfg, format="json") == '{"mapping":{"x":1}}'
+    assert parser.dump(cfg, format="json_compact") == '{"mapping":{"x":1}}'
 
 
 def test_ordered_dict(parser):
@@ -2680,7 +2679,7 @@ def test_ordered_dict(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(['--odict={"x":"-"}'])
     ctx.match("Expected a <class 'int'>")
-    assert parser.dump(cfg, format="json") == '{"odict":{"a":1,"b":2}}'
+    assert parser.dump(cfg, format="json_compact") == '{"odict":{"a":1,"b":2}}'
     if pyyaml_available:
         assert parser.dump(cfg, format="yaml") == "odict:\n  a: 1\n  b: 2\n"
 

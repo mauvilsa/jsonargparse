@@ -64,6 +64,7 @@ from ._optionals import (
     fsspec_support,
     import_fsspec,
     import_jsonnet,
+    import_pyyaml,
     omegaconf_apply,
     pyyaml_available,
 )
@@ -791,8 +792,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         Args:
             namespace: The configuration object to dump.
-            format: The output format: ``yaml``, ``json``, ``json_indented``, ``toml``, ``parser_mode`` or ones added
-                via :func:`.set_dumper`.
+            format: The output format: ``yaml``, ``json``, ``json_compact``, ``toml``, ``parser_mode`` or ones
+                added via :func:`.set_dumper`.
             skip_unset: Whether to exclude entries whose value is the configured None/Unset value.
             skip_default: Whether to exclude entries whose value is the same as the default.
             skip_validation: Whether to skip parser checking.
@@ -904,7 +905,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Args:
             namespace: The configuration object to save.
             path: Path to the location where to save config.
-            format: The output format: ``yaml``, ``json``, ``json_indented``, ``parser_mode`` or ones added via
+            format: The output format: ``yaml``, ``json``, ``json_compact``, ``parser_mode`` or ones added via
                 :func:`.set_dumper`.
             skip_unset: Whether to exclude entries whose value is the configured None/Unset value.
             skip_validation: Whether to skip parser checking.
@@ -1533,6 +1534,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             raise ValueError(f"The only accepted values for parser_mode are {accepted}.")
         if parser_mode == "jsonnet":
             import_jsonnet("parser_mode=jsonnet")
+        elif parser_mode == "yaml":
+            import_pyyaml("parser_mode=yaml")
         self._parser_mode = parser_mode
         if self._subcommands_action:
             for subparser in self._subcommands_action._name_parser_map.values():
