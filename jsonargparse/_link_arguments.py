@@ -3,10 +3,10 @@
 import re
 from argparse import SUPPRESS
 from argparse import Action as ArgparseAction
-from collections import defaultdict
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
+from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
 from ._actions import (
@@ -78,40 +78,23 @@ def skip_apply_links():
 
 
 class DirectedGraph:
+    """Graph of source --> target edges, to get an order in which sources come before their targets."""
+
     def __init__(self):
-        self.nodes = []
-        self.edges_dict = defaultdict(list)
+        self.predecessors: dict[Any, list] = {}
 
     def add_edge(self, source, target):
-        for node in [source, target]:
-            if node not in self.nodes:
-                self.nodes.append(node)
-        source_targets_list = self.edges_dict[self.nodes.index(source)]
-        target_index = self.nodes.index(target)
-        if target_index not in source_targets_list:
-            source_targets_list.append(target_index)
+        self.predecessors.setdefault(source, [])
+        targets = self.predecessors.setdefault(target, [])
+        if source not in targets:
+            targets.append(source)
 
     def get_topological_order(self):
-        exploring = [False] * len(self.nodes)
-        visited = [False] * len(self.nodes)
-        order = []
-        for source in range(len(self.nodes)):
-            if not visited[source]:
-                self.topological_sort(source, exploring, visited, order)
-        return [self.nodes[n] for n in order]
-
-    def topological_sort(self, source, exploring, visited, order):
-        exploring[source] = True
-        for target in self.edges_dict[source]:
-            if exploring[target]:
-                raise ValueError(
-                    f"Graph has cycles, found while checking {self.nodes[source]} --> {self.nodes[target]}"
-                )
-            elif not visited[target]:
-                self.topological_sort(target, exploring, visited, order)
-        visited[source] = True
-        exploring[source] = False
-        order.insert(0, source)
+        try:
+            return list(TopologicalSorter(self.predecessors).static_order())
+        except CycleError as ex:
+            cycle = " --> ".join(str(node) for node in reversed(ex.args[1]))
+            raise ValueError(f"Graph has cycles, found while checking {cycle}") from ex
 
 
 class ActionLink(Action):

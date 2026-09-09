@@ -2343,11 +2343,12 @@ def adapt_partial_callable_class(callable_type, subclass_spec):
                 from ._parameter_resolvers import get_signature_parameters
 
                 params = get_signature_parameters(callable_type, "__call__")
+                positional_only = inspect.Parameter.POSITIONAL_ONLY
                 partial_skip_args = set()
-                positionals = [p for p in params if "POSITIONAL_ONLY" in str(p.kind)]
+                positionals = [p for p in params if p.kind is positional_only]
                 if positionals:
                     partial_skip_args.add(len(positionals))
-                partial_skip_args.update(p.name for p in params if "POSITIONAL_ONLY" not in str(p.kind))
+                partial_skip_args.update(p.name for p in params if p.kind is not positional_only)
             else:
                 partial_skip_args = {len(callable_type.__args__) - 1}
     return subclass_spec, partial_skip_args

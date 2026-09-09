@@ -145,14 +145,14 @@ def add_instantiator(
         prepend: Whether to prepend the instantiator to the existing instantiators.
     """
     key = (class_type, subclasses)
-    items = {k: v for k, v in _class_instantiators.items() if k != key}
+    _class_instantiators.pop(key, None)
     if prepend:
+        existing = dict(_class_instantiators)
         _class_instantiators.clear()
-        _class_instantiators.update({key: instantiator, **items})
+        _class_instantiators[key] = instantiator
+        _class_instantiators.update(existing)
     else:
-        items[key] = instantiator
-        _class_instantiators.clear()
-        _class_instantiators.update(items)
+        _class_instantiators[key] = instantiator
 
 
 def dynamic_class_instantiator(class_type: type[ClassType], *args, **kwargs) -> ClassType:

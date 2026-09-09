@@ -8,27 +8,11 @@ from ._type_checking import ArgumentParser
 _suppressed_required_actions: ContextVar[tuple[Action, ...]] = ContextVar("_suppressed_required_actions", default=())
 
 
-def _iter_required_action_keys(parser: ArgumentParser) -> Iterator[str]:
-    """Yields required destinations backed by real argparse actions."""
-    for action in parser._actions:
-        if action.required:
-            yield action.dest
-
-
-def _iter_extra_required_keys(parser: ArgumentParser) -> Iterator[str]:
-    """Yields required keys tracked outside concrete argparse actions."""
-    yield from parser._extra_required_keys
-
-
 def iter_required_keys(parser: ArgumentParser) -> Iterator[str]:
-    """Yields required keys with action-backed ones first."""
-    yielded = set()
-    for key in _iter_required_action_keys(parser):
-        yielded.add(key)
-        yield key
-    for key in sorted(_iter_extra_required_keys(parser)):
-        if key not in yielded:
-            yield key
+    """Yields required keys, the ones backed by real argparse actions first."""
+    action_keys = [action.dest for action in parser._actions if action.required]
+    yield from action_keys
+    yield from sorted(parser._extra_required_keys - set(action_keys))
 
 
 def set_required(parser: ArgumentParser, key_or_action: str | Action, value: bool = True) -> None:

@@ -435,23 +435,26 @@ def set_parsing_settings(
             are not accepted, since a value that names them would be able to
             change these settings.
     """
-    # validate_defaults
-    if isinstance(validate_defaults, bool):
-        parsing_settings["validate_defaults"] = validate_defaults
-    elif validate_defaults is not None:
-        raise ValueError(f"validate_defaults must be a boolean, but got {validate_defaults}.")
-    # validate_subclass_spec_in_any
-    if isinstance(validate_subclass_spec_in_any, bool):
-        parsing_settings["validate_subclass_spec_in_any"] = validate_subclass_spec_in_any
-    elif validate_subclass_spec_in_any is not None:
-        raise ValueError(f"validate_subclass_spec_in_any must be a boolean, but got {validate_subclass_spec_in_any}.")
-    # instantiate_subclass_spec_in_any
-    if isinstance(instantiate_subclass_spec_in_any, bool):
-        parsing_settings["instantiate_subclass_spec_in_any"] = instantiate_subclass_spec_in_any
-    elif instantiate_subclass_spec_in_any is not None:
-        raise ValueError(
-            f"instantiate_subclass_spec_in_any must be a boolean, but got {instantiate_subclass_spec_in_any}."
-        )
+    # boolean settings
+    bool_settings = {
+        "validate_defaults": validate_defaults,
+        "validate_subclass_spec_in_any": validate_subclass_spec_in_any,
+        "instantiate_subclass_spec_in_any": instantiate_subclass_spec_in_any,
+        "parse_optionals_as_positionals": parse_optionals_as_positionals,
+        "add_print_completion_argument": add_print_completion_argument,
+        "stubs_resolver_allow_py_files": stubs_resolver_allow_py_files,
+        "omegaconf_absolute_to_relative_paths": omegaconf_absolute_to_relative_paths,
+    }
+    for name, value in bool_settings.items():
+        if isinstance(value, bool):
+            parsing_settings[name] = value
+        elif value is not None:
+            raise ValueError(f"{name} must be a boolean, but got {value}.")
+    # unset_sentinel
+    if isinstance(unset_sentinel, bool):
+        parsing_settings["unset_sentinel"] = Unset if unset_sentinel else None
+    elif unset_sentinel is not None:
+        raise ValueError(f"unset_sentinel must be a boolean, but got {unset_sentinel}.")
     # config_read_mode
     if config_read_mode_urls_enabled is not None:
         _set_config_read_mode(urls_enabled=config_read_mode_urls_enabled)
@@ -462,33 +465,6 @@ def set_parsing_settings(
         _set_docstring_parse_options(style=docstring_parse_style)
     if docstring_parse_attribute_docstrings is not None:
         _set_docstring_parse_options(attribute_docstrings=docstring_parse_attribute_docstrings)
-    # parse_optionals_as_positionals
-    if isinstance(parse_optionals_as_positionals, bool):
-        parsing_settings["parse_optionals_as_positionals"] = parse_optionals_as_positionals
-    elif parse_optionals_as_positionals is not None:
-        raise ValueError(f"parse_optionals_as_positionals must be a boolean, but got {parse_optionals_as_positionals}.")
-    # add_print_completion_argument
-    if isinstance(add_print_completion_argument, bool):
-        parsing_settings["add_print_completion_argument"] = add_print_completion_argument
-    elif add_print_completion_argument is not None:
-        raise ValueError(f"add_print_completion_argument must be a boolean, but got {add_print_completion_argument}.")
-    # stubs resolver
-    if isinstance(stubs_resolver_allow_py_files, bool):
-        parsing_settings["stubs_resolver_allow_py_files"] = stubs_resolver_allow_py_files
-    elif stubs_resolver_allow_py_files is not None:
-        raise ValueError(f"stubs_resolver_allow_py_files must be a boolean, but got {stubs_resolver_allow_py_files}.")
-    # omegaconf_absolute_to_relative_paths
-    if isinstance(omegaconf_absolute_to_relative_paths, bool):
-        parsing_settings["omegaconf_absolute_to_relative_paths"] = omegaconf_absolute_to_relative_paths
-    elif omegaconf_absolute_to_relative_paths is not None:
-        raise ValueError(
-            f"omegaconf_absolute_to_relative_paths must be a boolean, but got {omegaconf_absolute_to_relative_paths}."
-        )
-    # unset_sentinel
-    if isinstance(unset_sentinel, bool):
-        parsing_settings["unset_sentinel"] = Unset if unset_sentinel else None
-    elif unset_sentinel is not None:
-        raise ValueError(f"unset_sentinel must be a boolean, but got {unset_sentinel}.")
     # import paths
     if import_path_denylist is not None or import_path_allowlist is not None:
         set_import_path_verdicts(import_path_denylist, import_path_allowlist)

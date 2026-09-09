@@ -81,7 +81,7 @@ class ActionJsonSchema(Action):
         for num, val in enumerate(value):
             try:
                 val, fpath = parse_value_or_config(val, enable_path=self._sub_config)
-                path_meta = val.pop("__path__") if isinstance(val, dict) and "__path__" in val else None
+                path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 self._validator.validate(val)
                 if path_meta is not None:
                     val["__path__"] = path_meta

@@ -545,23 +545,23 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     def _load_env_vars(self, env: dict[str, str] | os._Environ, defaults: bool) -> Namespace:
         cfg = Namespace()
-        actions = filter_non_parsing_actions(self._actions)
-        for action in actions:
-            env_var = get_env_var(self, action)
-            if env_var in env and isinstance(action, ActionConfigFile):
+        # actions are applied in three rounds, since config files are the base on which the rest
+        # is applied, and subcommands must be parsed before the values of their inner parsers
+        given = [(a, get_env_var(self, a)) for a in filter_non_parsing_actions(self._actions)]
+        given = [(a, v) for a, v in given if v in env]
+        for action, env_var in given:
+            if isinstance(action, ActionConfigFile):
                 ActionConfigFile.apply_config(self, cfg, action.dest, env[env_var])
-        for action in actions:
-            env_var = get_env_var(self, action)
-            if env_var in env and isinstance(action, ActionSubCommands):
+        for action, env_var in given:
+            if isinstance(action, ActionSubCommands):
                 env_val = env[env_var]
                 if env_val in action.choices:
                     cfg[action.dest] = subcommand = self._check_value_key(action, env_val, action.dest, cfg)
                     pcfg = action._name_parser_map[env_val].parse_env(env=env, defaults=defaults, _skip_validation=True)
                     for k, v in vars(pcfg).items():
                         cfg[subcommand + "." + k] = v
-        for action in actions:
-            env_var = get_env_var(self, action)
-            if env_var in env and not isinstance(action, (ActionConfigFile, ActionSubCommands)):
+        for action, env_var in given:
+            if not isinstance(action, (ActionConfigFile, ActionSubCommands)):
                 env_val = env[env_var]
                 if isinstance(action, (argparse._StoreTrueAction, argparse._StoreFalseAction)):
                     env_val_lower = env_val.lower()

@@ -155,16 +155,11 @@ def _override_init_defaults_parent_classes(cls: type[T], defaults: dict) -> None
     original_sig = inspect.signature(cls.__init__)
     parameters = list(original_sig.parameters.values())
 
-    # Find and pop the **kwargs parameter, if it exists
+    # Add the new parameters, keeping the **kwargs parameter last if it exists
     kwargs_param = None
     if parameters and parameters[-1].kind == inspect.Parameter.VAR_KEYWORD:
         kwargs_param = parameters.pop()
-
-    # Add new parameters
-    for param in override_parent_params:
-        parameters.append(param)
-
-    # Add **kwargs back at the end
+    parameters.extend(override_parent_params)
     if kwargs_param:
         parameters.append(kwargs_param)
 
@@ -173,10 +168,7 @@ def _override_init_defaults_parent_classes(cls: type[T], defaults: dict) -> None
 
     @wraps(original_init)
     def wrapper(*args, **kwargs):
-        for name, default in parent_defaults.items():
-            if name not in kwargs:
-                kwargs[name] = default
-        return original_init(*args, **kwargs)
+        return original_init(*args, **{**parent_defaults, **kwargs})
 
     wrapper.__signature__ = original_sig.replace(parameters=parameters)  # type: ignore[attr-defined]
     cls.__init__ = wrapper  # type: ignore[method-assign]

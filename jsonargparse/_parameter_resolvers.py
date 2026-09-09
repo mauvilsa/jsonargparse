@@ -124,10 +124,6 @@ def is_lambda(value: Any) -> bool:
     return callable(value) and getattr(value, "__name__", "") == "<lambda>"
 
 
-def ast_str(node):
-    return getattr(ast, "unparse", ast.dump)(node)
-
-
 def ast_variable_load(name):
     return ast.Name(id=name, ctx=ast.Load())
 
@@ -174,17 +170,13 @@ def ast_is_call_with_value(node, value_dump) -> bool:
     return False
 
 
-ast_constant_attr = {ast.Constant: "value"}
-ast_constant_types = tuple(ast_constant_attr)
-
-
 def ast_is_constant(node):
-    return isinstance(node, ast_constant_types)
+    return isinstance(node, ast.Constant)
 
 
 def ast_get_constant_value(node):
     assert ast_is_constant(node)
-    return getattr(node, ast_constant_attr[node.__class__])
+    return node.value
 
 
 def ast_get_name_and_attrs(node) -> list[str]:
@@ -237,7 +229,7 @@ def ast_is_supported_super_call(node, self_name, log_debug) -> bool:
                 supported = True
                 break
     if not supported:
-        log_debug(f"unsupported super parameters: {ast_str(node)}")
+        log_debug(f"unsupported super parameters: {ast.unparse(node)}")
     return supported
 
 
@@ -695,7 +687,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
             exec(compile(ast_exec, filename="<ast>", mode="exec"), aliases, aliases)
         except Exception as ex:
             if self.logger:
-                self.logger.debug(f"Failed to get '{name}' from '{ast_str(source)}'", exc_info=ex)
+                self.logger.debug(f"Failed to get '{name}' from '{ast.unparse(source)}'", exc_info=ex)
         return aliases.get(name)
 
     def get_node_component(self, node, source) -> tuple[type, str | None] | None:
@@ -727,7 +719,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                 elif container is not None and hasattr(container, names[-1]):
                     function_or_class = getattr(container, names[-1])
         if not function_or_class:
-            self.log_debug(f"not supported: {ast_str(node)}")
+            self.log_debug(f"not supported: {ast.unparse(node)}")
             return None
         return function_or_class, method_or_property
 
@@ -739,7 +731,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
             kwarg = ast_get_call_kwarg_with_value(node, value)
             if kwarg:
                 if kwarg.arg:
-                    self.log_debug(f"kwargs attribute given as keyword parameter not supported: {ast_str(node)}")
+                    self.log_debug(f"kwargs attribute given as keyword parameter not supported: {ast.unparse(node)}")
                 else:
                     get_param_args = self.get_node_component(node, source)
                     if get_param_args:
@@ -777,7 +769,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                         default.clear()
                         break
                 if not default or len(node.args) - num_positionals > 0:
-                    self.log_debug(f"unsupported class instance default: {ast_str(default_node)}")
+                    self.log_debug(f"unsupported class instance default: {ast.unparse(default_node)}")
                 elif default:
                     if not default["init_args"]:
                         del default["init_args"]
@@ -810,7 +802,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                 default = ast_literals[default]()
             else:
                 default = UnknownDefault("ast-resolver")
-                self.log_debug(f"unsupported kwargs pop/get default: {ast_str(node)}")
+                self.log_debug(f"unsupported kwargs pop/get default: {ast.unparse(node)}")
         return ParamData(
             name=name,
             annotation=inspect._empty,
@@ -851,7 +843,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                 kwarg = ast_get_call_kwarg_with_value(node, kwargs_value)
                 params = []
                 if kwarg.arg:
-                    self.log_debug(f"kwargs given as keyword parameter not supported: {ast_str(node)}")
+                    self.log_debug(f"kwargs given as keyword parameter not supported: {ast.unparse(node)}")
                 elif self.parent and ast_is_super_call(node):
                     if ast_is_supported_super_call(node, self.self_name, self.log_debug):
                         params = get_mro_parameters(
@@ -875,7 +867,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                         self.add_node_origins(params, node)
                         params_list.append(params)
                 else:
-                    self.log_debug(f"unsupported type of assign: {ast_str(node)}")
+                    self.log_debug(f"unsupported type of assign: {ast.unparse(node)}")
 
         params = group_parameters(params_list)
         # a pop/get from kwargs means the parameter is accepted, even if the value is then given explicitly

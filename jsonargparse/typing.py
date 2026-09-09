@@ -635,24 +635,16 @@ def range_serializer(value):
     return f"range({value.start}, {value.stop}, {value.step})"
 
 
-re_range_stop = re.compile(r"^(-?\d+)$")
-re_range_start_stop = re.compile(r"^(-?\d+),(-?\d+)$")
-re_range_start_stop_step = re.compile(r"^(-?\d+),(-?\d+),(-?\d+)$")
+# one to three comma separated integers, i.e. stop, start+stop or start+stop+step
+re_range_args = re.compile(r"^(-?\d+)(?:,(-?\d+))?(?:,(-?\d+))?$")
 
 
 def range_deserializer(value):
     value = value.strip()
     if value.startswith("range(") and value.endswith(")"):
-        value = value[6:-1].replace(" ", "")
-        match = re_range_stop.match(value)
+        match = re_range_args.match(value[6:-1].replace(" ", ""))
         if match:
-            return range(int(match[1]))
-        match = re_range_start_stop.match(value)
-        if match:
-            return range(int(match[1]), int(match[2]))
-        match = re_range_start_stop_step.match(value)
-        if match:
-            return range(int(match[1]), int(match[2]), int(match[3]))
+            return range(*(int(g) for g in match.groups() if g is not None))
     raise ValueError("Expected 'range(<stop>)' or 'range(<start>, <stop>)' or 'range(<start>, <stop>, <step>)'")
 
 
