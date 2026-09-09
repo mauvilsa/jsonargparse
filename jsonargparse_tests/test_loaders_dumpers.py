@@ -96,6 +96,33 @@ def test_set_loader_parser_mode_subparsers(parser, subparser):
 
 
 @skip_if_no_pyyaml
+def test_dump_yaml_multiline_string(parser):
+    parser.add_argument("--text", type=str)
+    cfg = parser.parse_args(["--text=first line\nsecond line\n"])
+    dump = parser.dump(cfg)
+    assert dump == "text: |\n  first line\n  second line\n"
+    assert json_or_yaml_load(dump) == {"text": "first line\nsecond line\n"}
+
+
+@skip_if_no_pyyaml
+def test_dump_yaml_multiline_string_no_trailing_newline(parser):
+    parser.add_argument("--text", type=str)
+    cfg = parser.parse_args(["--text=first line\nsecond line"])
+    dump = parser.dump(cfg)
+    assert dump == "text: |-\n  first line\n  second line\n"
+    assert json_or_yaml_load(dump) == {"text": "first line\nsecond line"}
+
+
+@skip_if_no_pyyaml
+def test_dump_yaml_multiline_string_block_not_possible(parser):
+    parser.add_argument("--text", type=str)
+    cfg = parser.parse_args(["--text=trailing space \nsecond line\n"])
+    dump = parser.dump(cfg)
+    assert dump == 'text: "trailing space \\nsecond line\\n"\n'
+    assert json_or_yaml_load(dump) == {"text": "trailing space \nsecond line\n"}
+
+
+@skip_if_no_pyyaml
 def test_dump_header_yaml(parser):
     parser.add_argument("--int", type=int, default=1)
     parser.dump_header = ["line 1", "line 2"]

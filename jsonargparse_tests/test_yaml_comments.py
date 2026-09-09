@@ -56,6 +56,19 @@ def block(text: str, depth: int = 0) -> str:
     return indent(dedent(text), "  " * depth)
 
 
+def test_dump_comments_multiline_string(parser):
+    parser.add_argument("--text", type=str, help="Some text.")
+    dump = get_dump(parser, ["--text=first line\nsecond line\n"])
+    assert dump == block(
+        """
+        # Some text. (type: str, default: null)
+        text: |
+          first line
+          second line
+        """
+    )
+
+
 class Optimizer:
     def __init__(self, lr: float = 0.1):
         """Base optimizer.
