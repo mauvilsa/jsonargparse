@@ -1424,8 +1424,11 @@ From Python, a config object is serialized with the :meth:`dump
 <.ArgumentParser.dump>` and :meth:`save <.ArgumentParser.save>` methods. The
 supported formats are ``yaml``, ``toml``, ``json``/``json_indented``,
 ``json_compact`` and ``parser_mode``, the default, which uses the format of the
-parser. More formats are added with :func:`.set_dumper`, for example to dump
-with PyYAML's ``default_flow_style``:
+parser. The ``yaml`` format dumps with a subclass of `yaml.SafeDumper
+<https://pyyaml.org/wiki/PyYAMLDocumentation#dumper>`__ that writes multi-line
+strings as literal blocks, i.e. ``|``, instead of escaping the line breaks. More
+formats are added with :func:`.set_dumper`, for example to dump with PyYAML's
+``default_flow_style``:
 
 .. testcode::
 

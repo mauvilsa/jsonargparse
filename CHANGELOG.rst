@@ -53,6 +53,9 @@ Changed
   gives a more readable output. Use the new ``json_compact`` format for the
   previous single line output (`#970
   <https://github.com/mauvilsa/jsonargparse/pull/970>`__).
+- The ``yaml`` dump format now writes multi-line strings as literal blocks, i.e.
+  ``|``, instead of escaping the line breaks (`#972
+  <https://github.com/mauvilsa/jsonargparse/pull/972>`__).
 
 Removed
 ^^^^^^^

@@ -28,6 +28,7 @@ __all__ = [
 
 not_loaded = object()
 yaml_default_loader = None
+yaml_default_dumper = None
 
 
 def load_basic(value):
@@ -246,9 +247,30 @@ def replace_unset(data):
     return data
 
 
+def get_yaml_default_dumper():
+    global yaml_default_dumper
+    if yaml_default_dumper:
+        return yaml_default_dumper
+
+    yaml = import_pyyaml("get_yaml_default_dumper")
+
+    class DefaultDumper(yaml.SafeDumper):
+        pass
+
+    def represent_str(dumper, data):
+        # literal block style for multiline strings, unless not representable as such
+        style = "|" if "\n" in data else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+    DefaultDumper.add_representer(str, represent_str)
+
+    yaml_default_dumper = DefaultDumper
+    return yaml_default_dumper
+
+
 def yaml_dump(data):
     yaml = import_pyyaml("yaml_dump")
-    return yaml.safe_dump(data, **dump_yaml_kwargs)
+    return yaml.dump(data, Dumper=get_yaml_default_dumper(), **dump_yaml_kwargs)
 
 
 def yaml_comments_dump(data, parser):
