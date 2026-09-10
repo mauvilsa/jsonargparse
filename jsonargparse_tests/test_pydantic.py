@@ -23,6 +23,7 @@ from jsonargparse_tests.conftest import (
     capture_logs,
     get_parse_args_stdout,
     get_parser_help,
+    json_or_yaml_dump,
     json_or_yaml_load,
     skip_if_docstring_parser_unavailable,
 )
@@ -32,13 +33,12 @@ if pydantic_support:
 
 annotated = typing_extensions_import("Annotated")
 
-skip_if_pydantic_v1_on_v2 = pytest.mark.skipif(
-    pydantic_support and pydantic is getattr(__import__("pydantic"), "v1", None),
-    reason="Not supported for pydantic.v1",
-)
+pydantic_v1_on_v2 = bool(pydantic_support) and pydantic is getattr(__import__("pydantic"), "v1", None)
+
+skip_if_pydantic_v1_on_v2 = pytest.mark.skipif(pydantic_v1_on_v2, reason="Not supported for pydantic.v1")
 
 skip_if_pydantic_v1 = pytest.mark.skipif(
-    pydantic_support < 2 or pydantic is getattr(__import__("pydantic"), "v1", None),
+    pydantic_support < 2 or pydantic_v1_on_v2,
     reason="Not supported for pydantic v1",
 )
 
@@ -885,3 +885,162 @@ def test_pydantic_alias_conflicting_with_added_argument_skipped(parser, logger):
         cfg = parser.parse_args(["--m.el=3"])
     assert cfg.m.el == 3
     assert "Parsed command line arguments" in logs.getvalue()
+
+
+if pydantic_support:
+
+    class PydanticExtraAllow(pydantic.BaseModel, extra="allow"):  # type: ignore[call-arg]
+        p1: str
+        p2: int = 3
+
+    class PydanticExtraIgnore(pydantic.BaseModel, extra="ignore"):  # type: ignore[call-arg]
+        p1: str
+        p2: int = 3
+
+    class PydanticExtraForbid(pydantic.BaseModel, extra="forbid"):  # type: ignore[call-arg]
+        p1: str
+
+    class RequiresExtraAllow:
+        def __init__(self, model: PydanticExtraAllow):
+            self.model = model
+
+    class PydanticNestedExtraAllow(pydantic.BaseModel, extra="allow"):  # type: ignore[call-arg]
+        nested: PydanticModel = PydanticModel(p1="a")
+
+    class PydanticNestingExtraAllow(pydantic.BaseModel):
+        nested: PydanticExtraAllow = PydanticExtraAllow(p1="a")
+
+
+def test_pydantic_extra_allow_group_argument(parser):
+    parser.add_argument("--model", type=PydanticExtraAllow, default=PydanticExtraAllow(p1="a"))
+    cfg = parser.parse_object({"model": {"p1": "x", "p3": "y"}})
+    assert cfg.model == Namespace(p1="x", p2=3, p3="y")
+    init = parser.instantiate(cfg)
+    assert isinstance(init.model, PydanticExtraAllow)
+    assert init.model.p3 == "y"
+    assert json_or_yaml_load(parser.dump(cfg))["model"] == {"p1": "x", "p2": 3, "p3": "y"}
+
+
+def test_pydantic_extra_allow_add_class_arguments(parser, subtests):
+    parser.add_class_arguments(PydanticExtraAllow, "model")
+
+    with subtests.test("value with extras"):
+        cfg = parser.parse_args(['--model={"p1": "x", "p3": {"a": 1}}'])
+        assert cfg.model == Namespace(p1="x", p2=3, p3={"a": 1})
+        init = parser.instantiate(cfg)
+        assert init.model.p3 == {"a": 1}
+
+    with subtests.test("extras not added as options"):
+        with pytest.raises(ArgumentError, match="unrecognized arguments: --model.p3=y"):
+            parser.parse_args(["--model.p1=x", "--model.p3=y"])
+
+
+def test_pydantic_extra_allow_optional_model(parser):
+    parser.add_argument("--model", type=Optional[PydanticExtraAllow])
+    cfg = parser.parse_args(['--model={"p1": "x"}', "--model.p3=y"])
+    assert cfg.model == Namespace(p1="x", p2=3, p3="y")
+    init = parser.instantiate(cfg)
+    assert isinstance(init.model, PydanticExtraAllow)
+    assert init.model.p3 == "y"
+
+
+def test_pydantic_extra_allow_nested_in_class(parser):
+    parser.add_class_arguments(RequiresExtraAllow, "cls")
+    cfg = parser.parse_args(['--cls.model={"p1": "x", "p3": [1, 2]}'])
+    assert cfg.cls.model == Namespace(p1="x", p2=3, p3=[1, 2])
+    init = parser.instantiate(cfg)
+    assert init.cls.model.p3 == [1, 2]
+
+
+def test_pydantic_extra_allow_in_subclass_init_args(parser):
+    parser.add_argument("--cls", type=RequiresExtraAllow)
+    value = {"class_path": f"{__name__}.RequiresExtraAllow", "init_args": {"model": {"p1": "x", "p3": "y"}}}
+    cfg = parser.parse_args([f"--cls={json.dumps(value)}"])
+    assert cfg.cls.init_args.model == Namespace(p1="x", p2=3, p3="y")
+    init = parser.instantiate(cfg)
+    assert init.cls.model.p3 == "y"
+
+
+def test_pydantic_extra_ignore_group_argument(parser):
+    parser.add_argument("--model", type=PydanticExtraIgnore, default=PydanticExtraIgnore(p1="a"))
+    cfg = parser.parse_object({"model": {"p1": "x", "p3": "y"}})
+    assert cfg.model == Namespace(p1="x", p2=3, p3="y")
+    init = parser.instantiate(cfg)
+    assert isinstance(init.model, PydanticExtraIgnore)
+    assert not hasattr(init.model, "p3")
+    assert json_or_yaml_load(parser.dump(cfg))["model"] == {"p1": "x", "p2": 3, "p3": "y"}
+
+
+def test_pydantic_extra_not_accepted(subtests):
+    for model in [PydanticExtraForbid, PydanticModel]:
+        with subtests.test(model.__name__):
+            parser = ArgumentParser(exit_on_error=False)
+            parser.add_class_arguments(model, "model")
+            with pytest.raises(ArgumentError, match="Group 'model' does not accept option 'p3'"):
+                parser.parse_object({"model": {"p1": "x", "p3": "y"}})
+
+
+def test_pydantic_extra_allow_default_with_extras(subtests):
+    for name, model_type in [("group", PydanticExtraAllow), ("optional", Optional[PydanticExtraAllow])]:
+        with subtests.test(name):
+            parser = ArgumentParser(exit_on_error=False)
+            parser.add_argument("--model", type=model_type, default=PydanticExtraAllow(p1="a", p3="y"))
+            cfg = parser.parse_args([])
+            assert cfg.model.p3 == "y"
+            assert json_or_yaml_load(parser.dump(cfg))["model"]["p3"] == "y"
+            init = parser.instantiate(cfg)
+            assert init.model.p3 == "y"
+
+
+def test_pydantic_extra_allow_jsonschema(parser):
+    parser.add_argument("--model", type=PydanticExtraAllow)
+    parser.add_argument("--ignore", type=PydanticExtraIgnore)
+    parser.add_argument("--other", type=PydanticExtraForbid)
+    parser.add_argument("--optional", type=Optional[PydanticExtraAllow])
+    schema = json.loads(parser.get_completion_script("jsonschema"))
+    assert schema["properties"]["model"]["additionalProperties"] is True
+    assert schema["properties"]["ignore"]["additionalProperties"] is True
+    assert schema["properties"]["other"]["additionalProperties"] is False
+    assert schema["$defs"]["PydanticExtraAllow"]["additionalProperties"] is True
+    assert schema["additionalProperties"] is False
+
+
+def test_pydantic_extra_allow_only_direct_fields(parser, subtests):
+    parser.add_argument("--outer", type=PydanticNestedExtraAllow)
+    parser.add_argument("--inner", type=PydanticNestingExtraAllow)
+
+    with subtests.test("nested model not accepting extras"):
+        with pytest.raises(ArgumentError, match="Group 'outer' does not accept option 'nested.p3'"):
+            parser.parse_object({"outer": {"nested": {"p3": "y"}}})
+
+    with subtests.test("model accepting extras only nested"):
+        with pytest.raises(ArgumentError, match="Group 'inner' does not accept option 'p3'"):
+            parser.parse_object({"inner": {"p3": "y"}})
+        cfg = parser.parse_object({"inner": {"nested": {"p3": "y"}}})
+        assert cfg.inner.nested == Namespace(p1="a", p2=3, p3="y")
+
+    with subtests.test("nested model still parsed as a group"):
+        cfg = parser.parse_object({"outer": {"nested": {"p1": "x"}, "p3": {"a": 1}}})
+        assert cfg.outer == Namespace(nested=Namespace(p1="x", p2=3), p3={"a": 1})
+        init = parser.instantiate(cfg)
+        assert isinstance(init.outer.nested, PydanticModel)
+        assert init.outer.p3 == {"a": 1}
+
+
+def test_pydantic_extra_allow_config_file(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--model", type=PydanticExtraAllow)
+    pathlib.Path("config.yaml").write_text(json_or_yaml_dump({"model": {"p1": "x", "p3": "y"}}))
+    cfg = parser.parse_args(["--cfg=config.yaml"])
+    assert cfg.model == Namespace(p1="x", p2=3, p3="y")
+    assert parser.instantiate(cfg).model.p3 == "y"
+
+
+def test_pydantic_extra_allow_in_subcommand(parser, subparser):
+    subparser.add_argument("--model", type=PydanticExtraAllow)
+    parser.add_subcommands().add_subcommand("fit", subparser)
+    cfg = parser.parse_args(["fit", '--model={"p1": "x", "p3": "y"}'])
+    assert cfg.fit.model == Namespace(p1="x", p2=3, p3="y")
+    assert parser.instantiate(cfg).fit.model.p3 == "y"
+    with pytest.raises(ArgumentError, match="Subcommand 'fit' does not accept option 'p3'"):
+        parser.parse_object({"fit": {"p3": "y"}})

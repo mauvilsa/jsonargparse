@@ -18,7 +18,13 @@ from ._common import (
 )
 from ._instantiation import dynamic_class_instantiator
 from ._namespace import Namespace, get_value_and_parent
-from ._optionals import attrs_support, get_doc_short_description, is_attrs_class, is_pydantic_model
+from ._optionals import (
+    attrs_support,
+    get_doc_short_description,
+    get_pydantic_extra_fields,
+    is_attrs_class,
+    is_pydantic_model,
+)
 from ._parameter_resolvers import ParamData, get_parameter_origins, get_signature_parameters
 from ._required import set_required
 from ._typehints import (
@@ -132,17 +138,21 @@ class SignatureArguments(LoggerProperty):
             skip = skip or set()
             prefix = nested_key + "." if nested_key else ""
             defaults = default
+            extras: dict = {}
             if isinstance(default, _LazyInitBaseClass):
                 defaults = default.lazy_get_init_args().as_dict()
             elif is_convertible_to_dict(default.__class__):
                 defaults = convert_to_dict(default)
+                extras = get_pydantic_extra_fields(default)
                 args = {k[len(prefix) :] for k in added_args}
                 skip_not_added = [k for k in defaults if k not in args]
                 if skip_not_added:
-                    skip.update(skip_not_added)  # skip init=False
+                    skip.update(skip_not_added)  # skip init=False and pydantic extra fields
             if defaults:
                 defaults = {prefix + k: v for k, v in defaults.items() if k not in skip}  # type: ignore[union-attr]
                 self.set_defaults(**defaults)  # type: ignore[attr-defined]
+            if extras:
+                set_group_extra_defaults(self, nested_key, extras)
 
         return added_args
 
@@ -644,6 +654,13 @@ class SignatureArguments(LoggerProperty):
         return group
 
 
+def set_group_extra_defaults(parser, nested_key, extras: dict) -> None:
+    """Sets the defaults of pydantic extra fields in the config load action of a group."""
+    action = next((a for a in parser._actions if isinstance(a, _ActionConfigLoad) and a.dest == nested_key), None)
+    if action:
+        action.default = Namespace(**extras)
+
+
 def group_instantiate_class(group, cfg):
     try:
         value, parent, key = get_value_and_parent(cfg, group.dest)
@@ -677,7 +694,7 @@ def convert_to_dict(value) -> dict:
 
     value_type = type(value)
     init_args = {}
-    for name, attr in vars(value).items():
+    for name, attr in {**vars(value), **get_pydantic_extra_fields(value)}.items():
         attr_type = type(attr)
         if is_convertible_to_dict(attr_type):
             attr = convert_to_dict(attr)

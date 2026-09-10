@@ -19,7 +19,7 @@ from ._common import (
 )
 from ._jsonschema import ActionJsonSchema
 from ._namespace import Namespace
-from ._optionals import get_doc_short_description
+from ._optionals import get_doc_short_description, pydantic_model_accepts_extra
 from ._required import iter_required_keys, restore_suppressed_required
 from ._subcommands import ActionSubCommands
 from ._typehints import (
@@ -101,6 +101,11 @@ def new_object(description: Optional[str] = None, schema_key: bool = True) -> di
         schema["description"] = description
     schema["properties"] = {config_schema_key: dict(config_schema_key_schema)} if schema_key else {}
     return schema
+
+
+def accepts_extra_keys(parser_or_group) -> bool:
+    """Whether a parser or group corresponds to a pydantic model that accepts unknown keys."""
+    return pydantic_model_accepts_extra(getattr(parser_or_group, "group_class", None))
 
 
 def add_required(schema: dict, key: str) -> None:
@@ -294,7 +299,10 @@ class ParserJsonschema:
     def add_properties(self, parser, schema: dict) -> None:
         required_keys = set(iter_required_keys(parser))
         descriptions = {name: group.title for name, group in parser.groups.items() if group.title}
+        extras = {name for name, group in parser.groups.items() if accepts_extra_keys(group)}
         consts = get_dest_consts(parser)
+        if accepts_extra_keys(parser):
+            schema["additionalProperties"] = True
         for action in filter_non_parsing_actions(parser._actions):
             if isinstance(action, (ActionConfigFile, _ActionConfigLoad)):
                 continue
@@ -303,15 +311,20 @@ class ParserJsonschema:
                 continue
             required = action.dest in required_keys
             action_schema = self.action_schema(action, required, consts.get(action.dest))
-            self.set_dest(schema, action.dest, action_schema, required, descriptions)
+            self.set_dest(schema, action.dest, action_schema, required, descriptions, extras)
 
-    def set_dest(self, schema: dict, dest: str, dest_schema: dict, required: bool, descriptions: dict) -> None:
+    def set_dest(
+        self, schema: dict, dest: str, dest_schema: dict, required: bool, descriptions: dict, extras: set
+    ) -> None:
         keys = dest.split(".")
         node = schema
         for num, key in enumerate(keys[:-1]):
             properties = node.setdefault("properties", {})
+            nested_key = ".".join(keys[: num + 1])
             if properties.get(key, {}).get("type") != "object":
-                properties[key] = new_object(descriptions.get(".".join(keys[: num + 1])))
+                properties[key] = new_object(descriptions.get(nested_key))
+                if nested_key in extras:
+                    properties[key]["additionalProperties"] = True
             if required:
                 add_required(node, key)
             node = properties[key]

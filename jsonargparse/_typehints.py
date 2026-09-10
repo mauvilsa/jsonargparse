@@ -317,6 +317,8 @@ def cached_get_class_parser(*, val_class, sub_add_kwargs, skip_args, parent_pars
         parser.link_arguments(**link_kwargs)
 
     parser._inner_parser = True
+    # the parser as a whole corresponds to val_class, like a group does for a nested key
+    parser.group_class = val_class
 
     _cached_class_parsers[cache_key] = parser
     return parser

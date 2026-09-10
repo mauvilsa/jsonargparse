@@ -532,7 +532,9 @@ Types can be nested with any complexity. Notes about the support:
   and pydantic's ``BaseModel`` are supported, even when nested. By default they
   don't accept subclasses, see :ref:`subclasses-disabled` and
   :ref:`enable-disable-subclasses`. A dataclass that also inherits from a normal
-  class does accept subclasses by default.
+  class does accept subclasses by default. A pydantic model configured with
+  ``extra`` as ``"allow"`` or ``"ignore"`` accepts keys not in its signature,
+  which are forwarded to the model on instantiation.
 
 - User-defined ``Generic`` types are supported, see :ref:`generic-types`.
 

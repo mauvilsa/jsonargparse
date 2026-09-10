@@ -551,3 +551,26 @@ def get_pydantic_path_type(typehint) -> Union[str, None]:
             if metadata_class.__module__ == "pydantic.types" and metadata_class.__name__ == "PathType":
                 return metadata.path_type
     return None
+
+
+def pydantic_model_accepts_extra(class_type) -> bool:
+    """Whether class_type is a pydantic model with ``extra`` set to ``"allow"`` or ``"ignore"``."""
+    pydantic_model = is_pydantic_model(class_type)
+    if not pydantic_model:
+        return False
+    if pydantic_model > 1:
+        extra = class_type.model_config.get("extra")
+    else:  # v1 configs inherit extra=ignore, so only what the model defines counts
+        configs = class_type.__config__.__mro__[:-2]  # excludes pydantic's BaseConfig and object
+        extra = next((c.__dict__["extra"] for c in configs if "extra" in c.__dict__), None)
+    return getattr(extra, "value", extra) in {"allow", "ignore"}
+
+
+def get_pydantic_extra_fields(value) -> dict:
+    """Returns the extra fields kept by a model instance, which only happens for ``extra="allow"``."""
+    pydantic_model = is_pydantic_model(type(value))
+    if not pydantic_model or not pydantic_model_accepts_extra(type(value)):
+        return {}
+    if pydantic_model > 1:
+        return dict(value.__pydantic_extra__ or {})
+    return {k: v for k, v in vars(value).items() if k not in value.__fields__}

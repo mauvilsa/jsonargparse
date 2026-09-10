@@ -66,6 +66,8 @@ from ._optionals import (
     import_jsonnet,
     import_pyyaml,
     omegaconf_apply,
+    pydantic_model_accepts_extra,
+    pydantic_support,
     pyyaml_available,
 )
 from ._parameter_resolvers import UnknownDefault
@@ -1214,6 +1216,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                         if not (val == {} and ActionTypeHint.is_subclass_typehint(action)):
                             raise ex
                 else:
+                    if self._accepts_extra_key(key):
+                        continue
                     if isinstance(parent_action, ActionSubCommands) and "." in key:
                         subcommand, subkey = split_key_root(key)
                         ex = NSKeyError(f"Subcommand '{subcommand}' does not accept option '{subkey}'")
@@ -1304,6 +1308,22 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         with parser_context(parent_parser=self):
             return super().print_usage(*args, **kwargs)
 
+    def _accepts_extra_key(self, key: str) -> bool:
+        """Whether a key that has no action is accepted as an unknown key of a pydantic model."""
+        if not pydantic_support or find_action(self, key):
+            return False
+        if self._subcommands_action:
+            for name, subparser in self._subcommands_action._name_parser_map.items():
+                if key.startswith(name + "."):
+                    return subparser._accepts_extra_key(key[len(name) + 1 :])
+        groups = self.groups or {}
+        group_key = max((g for g in groups if key.startswith(g + ".")), key=len, default=None)
+        subkey = key if group_key is None else key[len(group_key) + 1 :]
+        if "." in subkey:
+            return False
+        container = self if group_key is None else groups[group_key]
+        return pydantic_model_accepts_extra(getattr(container, "group_class", None))
+
     def _apply_actions(
         self,
         cfg: Namespace | dict[str, Any],
@@ -1348,6 +1368,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
             if action is None or isinstance(action, ActionSubCommands):
                 value = cfg[key]
+                if action is None and self._accepts_extra_key(key):
+                    continue  # unknown key of a pydantic model, its value is given as is to the model
                 if isinstance(value, dict):
                     value = Namespace(value)
                 if isinstance(value, Namespace):

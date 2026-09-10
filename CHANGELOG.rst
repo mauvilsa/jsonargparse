@@ -15,6 +15,13 @@ paths are considered internals and can change in minor and patch releases.
 v5.0.0 (unreleased)
 -------------------
 
+Added
+^^^^^
+- Pydantic models configured with ``extra`` as ``"allow"`` or ``"ignore"`` now
+  accept keys that are not in their signature, which are forwarded to the model
+  on instantiation (`#732
+  <https://github.com/mauvilsa/jsonargparse/pull/732>`__).
+
 Changed
 ^^^^^^^
 - The print config argument now defaults to ``--print_<config_arg_name>``,
