@@ -56,6 +56,10 @@ Changed
 - The ``yaml`` dump format now writes multi-line strings as literal blocks, i.e.
   ``|``, instead of escaping the line breaks (`#972
   <https://github.com/mauvilsa/jsonargparse/pull/972>`__).
+- The ``toml`` extra now installs the maintained ``tomli-w`` for writing and
+  ``tomli`` for reading in python 3.10, instead of the unmaintained ``toml``
+  package. Dumped toml arrays are now multi-line (`#???
+  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
 
 Removed
 ^^^^^^^

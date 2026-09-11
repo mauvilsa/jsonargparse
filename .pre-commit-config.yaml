@@ -47,7 +47,6 @@ repos:
       [
         types-PyYAML,
         types-requests,
-        types-toml,
       ]
     verbose: true
 
