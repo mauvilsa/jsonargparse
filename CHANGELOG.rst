@@ -58,8 +58,8 @@ Changed
   <https://github.com/mauvilsa/jsonargparse/pull/972>`__).
 - The ``toml`` extra now installs the maintained ``tomli-w`` for writing and
   ``tomli`` for reading in python 3.10, instead of the unmaintained ``toml``
-  package. Dumped toml arrays are now multi-line (`#???
-  <https://github.com/mauvilsa/jsonargparse/pull/???>`__).
+  package. Dumped toml arrays are now multi-line (`#973
+  <https://github.com/mauvilsa/jsonargparse/pull/973>`__).
 
 Removed
 ^^^^^^^
