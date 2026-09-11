@@ -194,11 +194,14 @@ root = "-"
 
 [group]
 child1 = 1.2
-child2 = [ 3.0, 4.5,]
+child2 = [
+    3.0,
+    4.5,
+]
 """
 
 
-@pytest.mark.skipif(not toml_load_available, reason="tomllib or toml package is required")
+@pytest.mark.skipif(not toml_load_available, reason="tomllib or tomli package is required")
 def test_toml_parse_args_config(parser, tmp_cwd):
     parser.parser_mode = "toml"
     config_path = Path("config.toml")
@@ -212,7 +215,7 @@ def test_toml_parse_args_config(parser, tmp_cwd):
     assert cfg.group.as_dict() == {"child1": 1.2, "child2": [3.0, 4.5]}
 
 
-@pytest.mark.skipif(not toml_dump_available, reason="toml package is required")
+@pytest.mark.skipif(not toml_dump_available, reason="tomli-w package is required")
 def test_toml_print_config(parser):
     parser.parser_mode = "toml"
     parser.add_argument("--config", action="config")

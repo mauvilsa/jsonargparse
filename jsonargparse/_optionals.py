@@ -11,8 +11,8 @@ from importlib.util import find_spec
 from typing import Any, Union
 
 pyyaml_available = bool(find_spec("yaml"))
-toml_load_available = bool(find_spec("toml") or find_spec("tomllib"))
-toml_dump_available = bool(find_spec("toml"))
+toml_load_available = bool(find_spec("tomllib") or find_spec("tomli"))
+toml_dump_available = bool(find_spec("tomli_w"))
 typing_extensions_support = find_spec("typing_extensions") is not None
 typeshed_client_support = find_spec("typeshed_client") is not None
 jsonschema_support = find_spec("jsonschema") is not None
@@ -113,16 +113,16 @@ def import_toml_loads(importer):
 
         return tomllib.loads, tomllib.TOMLDecodeError
     else:
-        with missing_package_raise("toml", importer):
-            import toml
+        with missing_package_raise("tomli", importer):
+            import tomli
 
-        return toml.loads, toml.TomlDecodeError
+        return tomli.loads, tomli.TOMLDecodeError
 
 
 def import_toml_dumps(importer):
-    with missing_package_raise("toml", importer):
-        import toml
-    return toml.dumps
+    with missing_package_raise("tomli-w", importer):
+        import tomli_w
+    return tomli_w.dumps
 
 
 def import_jsonschema(importer):
