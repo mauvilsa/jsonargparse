@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import calendar
 import logging
 import os
+from functools import partialmethod
 from importlib import import_module
 from unittest.mock import patch
 
@@ -178,6 +180,25 @@ class ChildClassmethod(ParentClassmethod):
 def test_get_import_path_classpath_inheritance():
     assert get_import_path(ParentClassmethod.class_method) == "jsonargparse_tests.ParentClassmethod.class_method"
     assert get_import_path(ChildClassmethod.class_method) == f"{__name__}.ChildClassmethod.class_method"
+
+
+class WithPartialMethod:
+    def method(self, p1: int, p2: str = "x"):
+        pass  # pragma: no cover
+
+    partial_method = partialmethod(method, p2="y")
+    other_module_partial_method = partialmethod(calendar.Calendar.getfirstweekday)
+
+
+def test_get_import_path_partialmethod():
+    path = f"{__name__}.WithPartialMethod.partial_method"
+    assert get_import_path(WithPartialMethod.partial_method) == path
+    assert object_path_serializer(WithPartialMethod.partial_method) == path
+
+
+def test_get_import_path_partialmethod_not_found():
+    with pytest.raises(ValueError, match="Not possible to determine the import path"):
+        get_import_path(WithPartialMethod.other_module_partial_method)
 
 
 def unresolvable_import():

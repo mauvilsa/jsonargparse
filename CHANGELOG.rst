@@ -21,6 +21,9 @@ Added
   accept keys that are not in their signature, which are forwarded to the model
   on instantiation (`#732
   <https://github.com/mauvilsa/jsonargparse/pull/732>`__).
+- Support for methods and ``__init__`` defined with ``functools.partialmethod``,
+  both for adding their parameters and as import paths of callables (`#665
+  <https://github.com/mauvilsa/jsonargparse/pull/665>`__).
 
 Changed
 ^^^^^^^

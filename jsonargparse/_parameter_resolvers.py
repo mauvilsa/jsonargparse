@@ -1,5 +1,6 @@
 import ast
 import dataclasses
+import functools
 import inspect
 import logging
 import textwrap
@@ -8,7 +9,7 @@ from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
-from functools import partial
+from functools import partial, partialmethod
 from importlib import import_module
 from types import MethodType
 from typing import Any, Union
@@ -103,6 +104,10 @@ def is_method(attr) -> bool:
     return (inspect.isfunction(attr) or attr.__class__.__name__ == "cython_function_or_method") and not is_staticmethod(
         attr
     )
+
+
+def is_partial_method(attr) -> bool:
+    return isinstance(attr, partialmethod)
 
 
 def is_property(attr) -> bool:
@@ -449,6 +454,22 @@ def replace_args_and_kwargs(params: ParamList, args: ParamList, kwargs: ParamLis
     return params
 
 
+def apply_partial_method(params: ParamList, partial_method: partialmethod) -> ParamList:
+    """Applies to the parameters the arguments given in a partialmethod, as inspect.signature does."""
+    placeholder = getattr(functools, "Placeholder", object())  # python>=3.14
+    positionals = [p for p in params if p.kind in {kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD}]
+    given = {p.name for p, arg in zip(positionals, partial_method.args) if arg is not placeholder}
+    params = [p for p in params if p.name not in given]
+    to_keyword_only = False
+    for param in params:
+        if param.name in partial_method.keywords:
+            param.default = partial_method.keywords[param.name]
+            to_keyword_only = True
+        if to_keyword_only and param.kind == kinds.POSITIONAL_OR_KEYWORD:
+            param.kind = kinds.KEYWORD_ONLY
+    return params
+
+
 def group_parameters(params_list: list[ParamList]) -> ParamList:
     if len(params_list) == 1:
         for param in params_list[0]:
@@ -522,13 +543,13 @@ def get_mro_parameters(method_name, get_parameters_fn, logger):
         remainder = classes[num + 1 :] + [object]
         if method and not any(method is getattr(c, method_name, None) for c in remainder):
             current_mro.set((classes, num))
-            return get_parameters_fn(cls, method, logger=logger)
+            return get_parameters_fn(cls, method_name, logger=logger)
     return []
 
 
 def get_component_and_parent(
     function_or_class: Callable | type,
-    method_or_property: str | Callable | None = None,
+    method_or_property: str | None = None,
 ):
     if is_subclass(function_or_class, ClassFromFunctionBase) and method_or_property in {None, "__init__"}:
         function_or_class = function_or_class.wrapped_function  # type: ignore[union-attr]
@@ -539,8 +560,6 @@ def get_component_and_parent(
             method_or_property = None
     elif inspect.isclass(get_generic_origin(function_or_class)) and method_or_property is None:
         method_or_property = "__init__"
-    elif method_or_property and not isinstance(method_or_property, str):
-        method_or_property = method_or_property.__name__
     parent = component = None
     if method_or_property:
         try:
@@ -555,6 +574,8 @@ def get_component_and_parent(
             component = getattr(function_or_class, "__new__")
         elif is_method(attr):
             component = attr
+        elif is_partial_method(attr) and is_method(attr.func):
+            component = attr.func
         elif is_property(attr):
             component = attr.fget
         elif isinstance(attr, classmethod):
@@ -574,7 +595,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
     def __init__(
         self,
         function_or_class: Callable | type,
-        method_or_property: str | Callable | None = None,
+        method_or_property: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -1248,7 +1269,7 @@ def get_signature_parameters(
         # the generated __new__ of a named tuple doesn't keep the annotations as written, and a
         # subscripted generic one has no signature, so its parameters come from its fields
         return get_namedtuple_params(function_or_class, logger, component=function_or_class)
-    get_component_and_parent(function_or_class, method_or_property)  # verify input
+    component, parent, method_name = get_component_and_parent(function_or_class, method_or_property)
     params = None
     for get_parameters in [
         get_parameters_from_pydantic_or_attrs,
@@ -1269,4 +1290,9 @@ def get_signature_parameters(
             )
         if params is not None:
             break
-    return params or []
+    params = params or []
+    if parent:
+        attr = inspect.getattr_static(get_generic_origin(parent), method_name)
+        if is_partial_method(attr) and component is attr.func:
+            params = apply_partial_method(params, attr)
+    return params

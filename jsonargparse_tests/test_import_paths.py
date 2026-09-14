@@ -260,6 +260,18 @@ def test_denied_callable_bound_by_a_partial():
         import_object(f"{__name__}.system_partial")  # partial bound to os.system, defined in posix, nt on Windows
 
 
+def test_denied_callable_bound_by_a_partialmethod():
+    set_parsing_settings(import_path_denylist=[])
+    with pytest.raises(ImportDenied, match=f"'{os.system.__module__}'"):
+        import_object(f"{__name__}.WithSystemPartialMethod.system")  # partialmethod of os.system
+
+
+def test_partialmethod_allowed():
+    set_parsing_settings(import_path_denylist=[])
+    method = import_object(f"{__name__}.WithPartialMethod.partial_method")
+    assert method(WithPartialMethod()) == "given"
+
+
 def test_denied_callable_exposed_by_an_instance():
     set_parsing_settings(import_path_denylist=[])
     with pytest.raises(ImportDenied, match="'operator'"):
@@ -295,6 +307,17 @@ load_bytes = pickle.loads  # defined in _pickle, reachable here under a differen
 system_partial = functools.partial(os.system, "echo test")  # binds a denied callable, defined in posix
 
 attr_getter = operator.attrgetter("__globals__")  # instance of the denied operator.attrgetter
+
+
+class WithSystemPartialMethod:
+    system = functools.partialmethod(os.system, "echo test")  # binds a denied callable, defined in posix
+
+
+class WithPartialMethod:
+    def method(self, value: str):
+        return value
+
+    partial_method = functools.partialmethod(method, "given")
 
 
 def no_module_function():

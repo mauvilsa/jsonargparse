@@ -2255,8 +2255,9 @@ it. Modules commonly import others, e.g. ``import os``, so without this
 it prevents the object from being used, unlike the check on the given path,
 which prevents the import from happening at all. An object that has no defining
 path of its own is denied by the callable it reaches, i.e. the bound function
-for a ``functools.partial`` and the defining class for an instance, e.g.
-``builtins.help`` is an instance of the ``_sitebuiltins._Helper`` class.
+for a ``functools.partial`` or ``partialmethod`` and the defining class for an
+instance, e.g. ``builtins.help`` is an instance of the ``_sitebuiltins._Helper``
+class.
 
 Entries given are added to the ones denied by default, they don't replace them.
 For configs that are entirely untrusted, prefer denying everything and allowing

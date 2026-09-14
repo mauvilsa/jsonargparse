@@ -321,6 +321,18 @@ def test_add_class_with_required_parameters(parser):
     assert cfg.model == Namespace(m=0.1, n=3)
 
 
+class WithPartialInit(RequiredParams):
+    __init__ = functools.partialmethod(RequiredParams.__init__, 1, m=0.5)
+
+
+def test_add_class_partialmethod_init(parser):
+    parser.add_class_arguments(WithPartialInit, "a")
+    cfg = parser.parse_args([])
+    assert cfg.a == Namespace(m=0.5)
+    init = parser.instantiate(parser.parse_args(["--a.m=0.7"]))
+    assert (init.a.n, init.a.m) == (1, 0.7)
+
+
 def test_add_class_conditional_kwargs(parser):
     from jsonargparse_tests.test_parameter_resolvers import ClassG
 
@@ -478,6 +490,18 @@ def test_add_class_group_description_from_base(parser):
     help_str = get_parser_help(parser)
     assert "WithDocstringBase short description:" in help_str
     assert "b1 description" in help_str
+
+
+class WithPartialInitDocstring(WithDocstringBase):
+    __init__ = functools.partialmethod(WithDocstringBase.__init__, b1=2)
+
+
+@skip_if_docstring_parser_unavailable
+def test_add_class_group_description_partialmethod_init(parser):
+    parser.add_class_arguments(WithPartialInitDocstring, "w")
+    help_str = get_parser_help(parser)
+    assert "WithDocstringBase short description:" in help_str
+    assert "b1 description (type: int, default: 2)" in help_str
 
 
 def test_add_class_custom_instantiator(parser, clear_instantiators):
@@ -689,6 +713,21 @@ def test_add_method_normal_and_static(parser):
             assert f"{key.split('.')[1]} description" == find_action(parser, key).help
         for key in ["m.a3", "s.a1", "s.a2"]:
             assert f"{key.split('.')[1]} description" != find_action(parser, key).help
+
+
+class WithPartialMethod(WithMethods):
+    partial_method = functools.partialmethod(WithMethods.normal_method, a2=3.0)
+
+
+def test_add_method_partialmethod(parser):
+    added_args = parser.add_method_arguments(WithPartialMethod, "partial_method", "m")
+    assert added_args == ["m.a1", "m.a2", "m.a3"]
+    assert parser.get_defaults().m == Namespace(a1="1", a2=3.0, a3=False)
+    cfg = parser.parse_args(["--m.a1=x"])
+    assert "x" == WithPartialMethod().partial_method(**cfg.m)
+    if docstring_parser_support:
+        assert "normal_method short description" == parser.groups["m"].title
+        assert "a2 description" == find_action(parser, "m.a2").help
 
 
 class SubWithMethod(WithMethods):

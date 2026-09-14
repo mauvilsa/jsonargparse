@@ -221,8 +221,13 @@ def get_docstring_parse_options():
 
 
 def parse_docstring(component, params=False, logger=None):
+    from ._common import get_partial_method
+
     dp = import_docstring_parser("parse_docstring")
     options = get_docstring_parse_options()
+    partial_method = get_partial_method(component)
+    if partial_method:
+        component = partial_method.func  # documented by the function that it binds
     try:
         if params and options["attribute_docstrings"]:
             return dp.parse_from_object(component, style=options["style"])
@@ -276,7 +281,7 @@ def parse_docs(component, parent, logger):
 
 
 def get_doc_short_description(function_or_class, method_name=None, logger=None):
-    from ._common import get_generic_origin
+    from ._common import get_generic_origin, get_partial_method
 
     function_or_class = get_generic_origin(function_or_class)  # e.g. Strategy[int] documented by Strategy
     if docstring_parser_support:
@@ -287,7 +292,7 @@ def get_doc_short_description(function_or_class, method_name=None, logger=None):
                 if docstring and docstring.short_description:
                     return docstring.short_description
                 init = cls.__dict__.get("__init__")
-                if init is not None:
+                if init is not None and not get_partial_method(init):
                     # the class defines its own constructor, so base classes don't describe it
                     docstring = parse_docstring(init, params=False, logger=logger)
                     return docstring.short_description if docstring else None

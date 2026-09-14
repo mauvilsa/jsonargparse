@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
+from functools import partialmethod
 from pathlib import Path
 from textwrap import dedent
 from types import GenericAlias, MappingProxyType, ModuleType, UnionType
@@ -2854,6 +2855,26 @@ def test_callable_function_path(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--callable=calendar.not_exist"])
     ctx.match("Callable expects a function or a callable class")
+
+
+class WithPartialMethod:
+    def method(self, value: int = 1):
+        return value
+
+    partial_method = partialmethod(method, value=2)
+
+
+def test_callable_partialmethod_path(parser):
+    path = f"{__name__}.WithPartialMethod.partial_method"
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--callable", type=Callable, default=WithPartialMethod.partial_method)
+
+    out = get_parse_args_stdout(parser, ["--print_config"])
+    assert json_or_yaml_load(out) == {"callable": path}
+
+    cfg = parser.parse_args([f"--config={out}"])
+    assert cfg.callable(WithPartialMethod()) == 2
+    assert json_or_yaml_load(parser.dump(cfg)) == {"callable": path}
 
 
 def make_closure_callable():

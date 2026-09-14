@@ -22,6 +22,7 @@ from typing import (
 from ._common import (
     check_import_path,
     get_generic_origin,
+    get_partial_method,
     parser_capture,
     parser_context,
 )
@@ -248,6 +249,9 @@ def canonical_import_paths(obj) -> set:
     stack = [obj]
     while stack:
         current = stack.pop()
+        partial_method = get_partial_method(current)
+        if partial_method:
+            current = partial_method.func  # a method from a partialmethod is denied by the callable it binds
         canonical = canonical_import_path(current)
         if canonical:
             paths.add(canonical)
@@ -274,6 +278,16 @@ def register_unresolvable_import_paths(*modules: ModuleType):
                 and type(val) in {BuiltinFunctionType, FunctionType, Type, type}
             ):
                 unresolvable_import_paths[val] = f"{module.__name__}.{val.__name__}"
+
+
+def get_partial_method_path(partial_method: functools.partialmethod) -> str:
+    """Import path of a partialmethod, found in the classes of the module that defines the function it binds."""
+    module = import_module(partial_method.func.__module__)
+    for cls in [v for v in vars(module).values() if inspect.isclass(v)]:
+        name = next((k for k, v in vars(cls).items() if v is partial_method), None)
+        if name:
+            return f"{get_import_path(cls)}.{name}"
+    raise ValueError(f"Not possible to determine the import path for partialmethod {partial_method}.")
 
 
 def get_module_var_path(module_path: str, value: Any) -> str | None:
@@ -320,6 +334,9 @@ def get_import_path(value: Any) -> str | None:
     remembered = resolved_import_paths.get(value)
     if remembered:
         return remembered
+    partial_method = get_partial_method(value)
+    if partial_method:
+        return get_partial_method_path(partial_method)
     path = None
     value = get_generic_origin(value)
     if hasattr(value, "__self__") and inspect.isclass(value.__self__) and inspect.ismethod(value):
@@ -367,7 +384,7 @@ def object_path_serializer(value):
     try:
         path = get_import_path(value)
         reimported = import_object(path, check_path=False)
-        if value is not reimported:
+        if (get_partial_method(value) or value) is not (get_partial_method(reimported) or reimported):
             raise ValueError
         return path
     except Exception as ex:

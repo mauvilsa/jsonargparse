@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import calendar
 import inspect
+import sys
 import xml.dom
+from functools import partialmethod
 from random import shuffle
 from typing import Any, Callable, Dict, List, Optional, Protocol, Union
 from unittest.mock import patch
@@ -36,6 +38,8 @@ class ClassA:
             pma2: help for pma2
             kma1: help for kma1
         """
+
+    partial_method_a = partialmethod(method_a, pma1=1, pma2=0.5)
 
 
 class ClassB(ClassA):
@@ -95,6 +99,8 @@ class ClassD(Param, ClassA):
             kmd1: help for kmd1
         """
         return super().method_a(*args, **kws)  # pragma: no cover
+
+    partial_method_d = partialmethod(method_d, 3, kma1="y")
 
     @staticmethod
     def staticmethod_d(ksmd1: str = "z", **kw):
@@ -834,6 +840,64 @@ def test_get_params_classmethod_instantiate_from_cls():
     assert_params(get_params(ClassS2), ["ks1"])
     with source_unavailable():
         assert_params(get_params(ClassS1, "classmethod_s"), [])
+
+
+# partialmethod parameters tests
+
+
+def test_get_params_partialmethod_keywords():
+    params = get_params(ClassA, "partial_method_a")
+    assert_params(params, ["pma1", "pma2", "kma1"])
+    assert [p.default for p in params] == [1, 0.5, "x"]
+    signature = list(inspect.signature(ClassA.partial_method_a).parameters.values())[1:]
+    assert [(p.name, p.kind, p.default) for p in params] == [(p.name, p.kind, p.default) for p in signature]
+    with source_unavailable():
+        assert params == get_params(ClassA, "partial_method_a")
+
+
+def test_get_params_partialmethod_positional_and_forwarded_kwargs():
+    params = get_params(ClassD, "partial_method_d")
+    assert_params(params, ["kmd1", "pma1", "pma2", "kma1"])
+    assert params[-1].default == "y"
+    with source_unavailable():
+        assert_params(get_params(ClassD, "partial_method_d"), ["kmd1"])
+
+
+class ClassPartialInit(ClassB):
+    __init__ = partialmethod(ClassB.__init__, "p", kb1=5)
+
+
+def test_get_params_partialmethod_init():
+    params = get_params(ClassPartialInit)
+    assert_params(params, ["kb1", "kb2", "ka1"])
+    assert [p.default for p in params] == [5, "4", 1.2]
+    with source_unavailable():
+        assert_params(get_params(ClassPartialInit), ["kb1", "kb2", "ka1", "ka2"])
+
+
+class ClassPartialInitChild(ClassPartialInit):
+    def __init__(self, kpc1: int = 0, **kwargs):
+        """
+        Args:
+            kpc1: help for kpc1
+        """
+        super().__init__(**kwargs)  # pragma: no cover
+
+
+def test_get_params_partialmethod_init_from_super():
+    params = get_params(ClassPartialInitChild)
+    assert_params(params, ["kpc1", "kb1", "kb2", "ka1"])
+    assert [p.default for p in params] == [0, 5, "4", 1.2]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="functools.Placeholder introduced in python 3.14")
+def test_get_params_partialmethod_placeholder():
+    from functools import Placeholder
+
+    class ClassPlaceholder(ClassA):
+        placeholder_method = partialmethod(ClassA.method_a, Placeholder, 0.5)
+
+    assert_params(get_params(ClassPlaceholder, "placeholder_method"), ["pma1", "kma1"])
 
 
 # function method parameters tests

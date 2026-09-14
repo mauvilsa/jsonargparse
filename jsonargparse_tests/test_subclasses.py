@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from calendar import Calendar
 from copy import deepcopy
 from dataclasses import dataclass
-from functools import partial
+from functools import partial, partialmethod
 from gzip import GzipFile
 from pathlib import Path
 from typing import (
@@ -107,6 +107,19 @@ def test_subclass_defaults(parser):
     assert cfg.cls.init_args.param == "base_default"
     cfg = parser.parse_args(["--cls=SubClassDefault"])
     assert cfg.cls.init_args.param == "sub_default"
+
+
+class SubClassPartialInit(BaseClassDefault):
+    __init__ = partialmethod(BaseClassDefault.__init__, param="partial_default")
+
+
+def test_subclass_partialmethod_init(parser):
+    parser.add_argument("--cls", type=BaseClassDefault)
+    cfg = parser.parse_args(["--cls=SubClassPartialInit"])
+    assert cfg.cls.init_args.param == "partial_default"
+    init = parser.instantiate(cfg)
+    assert isinstance(init.cls, SubClassPartialInit)
+    assert init.cls.param == "partial_default"
 
 
 def test_subclass_init_args_in_subcommand(parser, subparser):

@@ -7,6 +7,7 @@ import os
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
+from functools import partialmethod
 from typing import (  # type: ignore[attr-defined]
     Generic,
     TypeVar,
@@ -579,6 +580,13 @@ def get_generic_origins(class_or_tuple):
     if isinstance(class_or_tuple, tuple):
         return tuple(get_generic_origin(cls) for cls in class_or_tuple)
     return get_generic_origin(class_or_tuple)
+
+
+def get_partial_method(value) -> partialmethod | None:
+    """The partialmethod given, or the one that created a method obtained from a class, e.g. ``Class.partial``."""
+    if inspect.isfunction(value):
+        value = getattr(value, "__partialmethod__", getattr(value, "_partialmethod", None))  # python<3.13
+    return value if isinstance(value, partialmethod) else None
 
 
 def get_unsubscripted_alias_origin(typehint):
