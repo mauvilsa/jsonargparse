@@ -81,7 +81,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
       - run: pip install --require-hashes -r .github/workflows/tox.lock
       - run: tox -e py-argparse
         env:
@@ -101,7 +100,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
       - run: pip install --require-hashes -r .github/workflows/tox.lock
       - run: tox -e py-all-extras
 
@@ -118,7 +116,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
       - run: pip install --require-hashes -r .github/workflows/tox.lock
       - run: tox -e py-all-extras
 
@@ -131,7 +128,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: "3.12"
-          cache: pip
       - run: pip install --require-hashes -r .github/workflows/tox.lock
       - run: tox -e omegaconf
 
@@ -255,7 +251,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: "3.12"
-          cache: pip
       - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           key: pre-commit-cache-${{ hashFiles('.pre-commit-config.yaml') }}
