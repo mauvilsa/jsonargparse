@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from enum import Enum
 from importlib.util import find_spec
 from os import PathLike
@@ -135,12 +135,12 @@ def test_bash_object(parser, subtests):
 def test_bash_union_literal_and_any(parser, any_type, subtests):
     typehint = Union[Literal["one", "two"], any_type]
     parser.add_argument("--union", type=typehint)
-    # the choices are not all that is accepted, so a prefix is required to complete them
+    # the choices are not all that is accepted, so they are only listed when there is no prefix
     assert_bash_typehint_completions(
         subtests,
         parser,
         [
-            ("union", typehint, "", [], None),
+            ("union", typehint, "", ["one", "two"], None),
             ("union", typehint, "t", ["two"], "1/2"),
         ],
     )
@@ -176,7 +176,8 @@ def test_bash_optional_int(parser, subtests):
         subtests,
         parser,
         [
-            ("num", Optional[int], "", [], "0/1"),
+            # an extra empty completion makes bash list a single choice instead of inserting it
+            ("num", Optional[int], "", ["null", ""], "1/1"),
             ("num", Optional[int], "n", ["null"], "1/1"),
         ],
     )
@@ -287,7 +288,7 @@ def test_bash_union_literal_and_int(parser, subtests):
         subtests,
         parser,
         [
-            ("union", typehint, "", [], "0/1"),
+            ("union", typehint, "", ["false", ""], "1/1"),
             ("union", typehint, "f", ["false"], "1/1"),
         ],
     )
@@ -300,7 +301,7 @@ def test_bash_union_float_and_enum(parser, subtests):
         subtests,
         parser,
         [
-            ("union", typehint, "", [], "0/3"),
+            ("union", typehint, "", ["ABC", "XY", "XZ"], "3/3"),
             ("union", typehint, "X", ["XY", "XZ"], "2/3"),
         ],
     )
@@ -345,13 +346,23 @@ def test_bash_script_binds_redraw_current_line(parser):
     assert "bind '\"\\e[0n\": redraw-current-line'" in shtab_script
 
 
-def run_bash_typehint_completion(shtab_script, tmp_path, dest, word="", prefix=""):
+def run_bash_typehint_completion(shtab_script, tmp_path, dest, word="", prefix="", comp_type=63):
     shtab_script_path = tmp_path / "comp.sh"
     shtab_script_path.write_text(shtab_script)
-    sh = f'{prefix}source {shtab_script_path}; COMP_TYPE=63 _jsonargparse_tool_{dest}_typehint "{word}"'
+    sh = f'{prefix}source {shtab_script_path}; COMP_TYPE={comp_type} _jsonargparse_tool_{dest}_typehint "{word}"'
     popen = subprocess.Popen(["bash", "-c", sh], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = popen.communicate()
     return out.decode(), err.decode()
+
+
+@pytest.mark.parametrize("word", ["", "n"])
+def test_bash_single_tab_requires_prefix_for_union_with_open_values(parser, tmp_path, word):
+    parser.add_argument("--num", type=Optional[int])
+    shtab_script = get_shtab_script(parser, "bash")
+    # COMP_TYPE=9 is a single TAB, which would insert a single choice
+    out, err = run_bash_typehint_completion(shtab_script, tmp_path, "num", word=word, comp_type=9)
+    assert out.splitlines() == ([] if word == "" else ["null"])
+    assert err == ""
 
 
 def get_bash_tput_color():
@@ -401,20 +412,18 @@ def read_from_pty_until(fd, pattern, timeout=10.0):
     return out
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="pty is not available on Windows")
-@pytest.mark.filterwarnings("ignore:.*multi-threaded, use of forkpty.*:DeprecationWarning")
-def test_bash_interactive_no_completions_redraws_prompt(parser, tmp_path):
+@contextmanager
+def interactive_bash(parser, tmp_path, rc_lines=()):
     if get_bash_major_version() < 4:
         pytest.skip("test requires bash>=4")  # pragma: no cover
     import fcntl
     import pty
     import termios
 
-    parser.add_argument("--num", type=int)
     shtab_script_path = tmp_path / "comp.sh"
     shtab_script_path.write_text(get_shtab_script(parser, "bash"))
     rcfile = tmp_path / "rcfile"
-    rcfile.write_text(f"PS1='PROMPT$ '\nsource {shtab_script_path}\n")
+    rcfile.write_text("\n".join(["PS1='PROMPT$ '", f"source {shtab_script_path}", *rc_lines, ""]))
 
     pid, fd = pty.fork()
     if pid == 0:  # pragma: no cover
@@ -426,13 +435,7 @@ def test_bash_interactive_no_completions_redraws_prompt(parser, tmp_path):
     try:
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 200, 0, 0))
         read_from_pty_until(fd, b"PROMPT$ ")
-        os.write(fd, b"tool --num \t\t")
-        out = read_from_pty_until(fd, b"\x1b[5n")
-        assert b"Expected type: int" in out
-        assert b"\x1b[5n" in out, "completion should request a device status report from the terminal"
-        os.write(fd, b"\x1b[0n")  # a real terminal replies this to the \x1b[5n device status report
-        out = read_from_pty_until(fd, b"PROMPT$ tool --num ")
-        assert b"PROMPT$ tool --num " in out, "prompt should be redrawn after the guidance message"
+        yield fd
     finally:
         with suppress(OSError):
             os.write(fd, b"\x03exit\n")
@@ -440,6 +443,36 @@ def test_bash_interactive_no_completions_redraws_prompt(parser, tmp_path):
             os.close(fd)
         with suppress(OSError):
             os.waitpid(pid, 0)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pty is not available on Windows")
+@pytest.mark.filterwarnings("ignore:.*multi-threaded, use of forkpty.*:DeprecationWarning")
+def test_bash_interactive_no_completions_redraws_prompt(parser, tmp_path):
+    parser.add_argument("--num", type=int)
+    with interactive_bash(parser, tmp_path) as fd:
+        os.write(fd, b"tool --num \t\t")
+        out = read_from_pty_until(fd, b"\x1b[5n")
+        assert b"Expected type: int" in out
+        assert b"\x1b[5n" in out, "completion should request a device status report from the terminal"
+        os.write(fd, b"\x1b[0n")  # a real terminal replies this to the \x1b[5n device status report
+        out = read_from_pty_until(fd, b"PROMPT$ tool --num ")
+        assert b"PROMPT$ tool --num " in out, "prompt should be redrawn after the guidance message"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pty is not available on Windows")
+@pytest.mark.filterwarnings("ignore:.*multi-threaded, use of forkpty.*:DeprecationWarning")
+def test_bash_interactive_lists_single_choice_without_inserting(parser, tmp_path):
+    parser.add_argument("--union", type=Union[Literal[False], int])
+    # Ctrl-T prints the current command line, to check what completion inserted
+    rc_lines = ['bind -x \'"\\C-t": printf "LINE=[%s]\\n" "$READLINE_LINE"\'']
+    with interactive_bash(parser, tmp_path, rc_lines) as fd:
+        os.write(fd, b"tool --union \t\t")
+        out = read_from_pty_until(fd, b"1/1 matched choices")
+        assert b"1/1 matched choices" in out, "the choice should be matched on <TAB><TAB>"
+        os.write(fd, b"\x14")
+        out += read_from_pty_until(fd, b"]\r\n")
+        assert b"false" in out, "the choice should be listed"
+        assert b"LINE=[tool --union ]" in out, "the choice should not be inserted"
 
 
 def test_bash_config(parser):

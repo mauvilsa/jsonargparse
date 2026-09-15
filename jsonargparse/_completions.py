@@ -270,7 +270,13 @@ bash_compgen_typehint = """
   local CHOICES="$1" WORD="$2" MESSAGE="$3" REQUIRE_PREFIX="$4" TOTAL="$5"
   local IFS=$'\\n'  # choices may contain spaces, so split matches on newline only
   local MATCH=()
+  # when the choices are not all that is accepted, without a prefix a single TAB (COMP_TYPE=9)
+  # must not insert a choice, but <TAB><TAB> (COMP_TYPE=63) should still list them
+  local LIST_ONLY=0
   if [ "$REQUIRE_PREFIX" = 1 ] && [ -z "$WORD" ]; then
+    LIST_ONLY=1
+  fi
+  if [ "$LIST_ONLY" = 1 ] && [ "$COMP_TYPE" != 63 ]; then
     MATCH=()
   else
     MATCH=( $(IFS=" " compgen -W "$CHOICES" "$WORD") )
@@ -288,6 +294,10 @@ bash_compgen_typehint = """
     for match in "${MATCH[@]}"; do
       echo "$match"
     done
+    # bash inserts a single completion even on <TAB><TAB>, an extra empty one makes it only list
+    if [ "$LIST_ONLY" = 1 ] && [ ${#MATCH[@]} = 1 ]; then
+      echo ""
+    fi
     if [ "$COMP_TYPE" = 63 ]; then
       printf "${%(b)s}\\n%%s%%s${%(n)s}" "$MESSAGE" "$MATCHED" >&2
     fi
