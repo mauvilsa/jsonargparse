@@ -3438,7 +3438,8 @@ user. Take for example the parser:
 
 The completion prints the type of the argument, how many options match, and then
 the matching choices. If only one option matches, the value is completed without
-printing guidance. For example:
+printing guidance, unless nothing has been typed and the type accepts values
+other than the choices. For example:
 
 .. code-block:: bash
 
@@ -3447,6 +3448,12 @@ printing guidance. For example:
     true  false  null
     $ example.py --bool f<TAB>
     $ example.py --bool false
+
+.. note::
+
+    The guidance requires bash 4 or newer. With older versions, e.g. bash 3.2 in
+    macOS, no guidance is printed, and the choices of types that accept other
+    values, like ``int | None``, are only completed after typing a prefix.
 
 For subclass types, the import paths of the known subclasses are completed, both
 for the option that selects the class and for the ``--*.help`` option. The

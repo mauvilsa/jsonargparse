@@ -33,6 +33,10 @@ Fixed
 ^^^^^
 - Parsing a list took time quadratic in its number of items (`#975
   <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
+- ``shtab`` bash completions not listing the choices on ``<TAB><TAB>`` when
+  nothing has been typed and the type accepts values other than the choices,
+  e.g. ``int | SomeEnum`` (`#976
+  <https://github.com/mauvilsa/jsonargparse/pull/976>`__).
 
 Changed
 ^^^^^^^
