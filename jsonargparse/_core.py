@@ -23,6 +23,7 @@ from ._actions import (
     previous_config,
 )
 from ._common import (
+    command_line_source,
     config_schema_key,
     debug_mode_active,
     get_optionals_as_positionals_actions,
@@ -37,7 +38,7 @@ from ._completions import get_argcomplete_namespace, handle_completions
 from ._completions import (
     get_completion_script as get_completion_script_internal,
 )
-from ._formatters import DefaultHelpFormatter, get_env_var
+from ._formatters import DefaultHelpFormatter, describe_source, get_env_var, get_source_snippet
 from ._instantiation import InstantiateMethod
 from ._jsonnet import ActionJsonnet
 from ._jsonschema import ActionJsonSchema
@@ -52,12 +53,17 @@ from ._loaders_dumpers import (
 from ._namespace import (
     Namespace,
     NSKeyError,
+    ValueSource,
+    copy_provenance,
     get_non_meta_sorted_keys,
+    get_provenance,
     is_meta_key,
     recreate_branches,
     remove_meta,
     split_key_leaf,
     split_key_root,
+    value_source,
+    value_source_context,
 )
 from ._optionals import (
     _get_config_read_mode,
@@ -111,6 +117,17 @@ __all__ = ["ArgumentParser"]
 
 
 _parse_known_has_intermixed = "intermixed" in inspect.signature(argparse.ArgumentParser._parse_known_args).parameters
+
+
+def _get_error_source(ex: BaseException | None) -> ValueSource | None:
+    """Returns where the value that caused an error came from, the innermost one when nested."""
+    source = None
+    while ex is not None:
+        if getattr(ex, "value_source_reported", False):  # already in the message of a nested error
+            return None
+        source = getattr(ex, "value_source", source)
+        ex = ex.__cause__ or ex.__context__
+    return source
 
 
 class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, argparse._ActionsContainer):
@@ -314,7 +331,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 kwargs = {}
                 if _parse_known_has_intermixed:
                     kwargs["intermixed"] = False
-                namespace, args = self._parse_known_args(args, namespace, **kwargs)
+                # not a value_source_context, since its errors would get the source of the previous argument
+                token = value_source.set(None)
+                try:
+                    namespace, args = self._parse_known_args(args, namespace, **kwargs)
+                finally:
+                    value_source.reset(token)
         except argparse.ArgumentError as ex:
             self.error(str(ex), ex)
 
@@ -333,7 +355,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
             value = unk.pop(0)
             try:
-                cfg[action.dest] = self._check_value_key(action, value, action.dest, cfg)
+                with value_source_context(command_line_source(action)):
+                    cfg[action.dest] = self._check_value_key(action, value, action.dest, cfg)
             except (TypeError, ValueError) as ex:
                 if isinstance(value, str) and value.startswith("--"):
                     raise argument_error(f"unrecognized arguments: {' '.join([value] + unk)}") from ex
@@ -351,6 +374,16 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         if arg_string == self._print_config:
             arg_string += "="
         return super()._parse_optional(arg_string)
+
+    def _get_values(self, action, arg_strings):
+        values = super()._get_values(action, arg_strings)
+        # the source of what the action sets right after this, none for a positional that was left out
+        value_source.set(command_line_source(action) if arg_strings or action.option_strings else None)
+        return values
+
+    def _get_value(self, action, arg_string):
+        value_source.set(None)  # also used by argparse after the arguments, to convert string defaults
+        return super()._get_value(action, arg_string)
 
     def _parse_common(
         self,
@@ -382,29 +415,30 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         if env is None and self._default_env:
             env = True
 
-        if not skip_subcommands:
-            handle_subcommands(self, cfg, env=env, defaults=defaults, fail_no_subcommand=fail_no_subcommand)
+        with value_source_context(None):
+            if not skip_subcommands:
+                handle_subcommands(self, cfg, env=env, defaults=defaults, fail_no_subcommand=fail_no_subcommand)
 
-        if defaults:
-            with parser_context(lenient_check=True):
-                ActionTypeHint.add_sub_defaults(self, cfg)
+            if defaults:
+                with parser_context(lenient_check=True):
+                    ActionTypeHint.add_sub_defaults(self, cfg)
 
-        with parser_context(parent_parser=self):
-            if not lenient_check.get() and self.parser_mode == "omegaconf+":
-                cfg = omegaconf_apply(self, cfg)
+            with parser_context(parent_parser=self):
+                if not lenient_check.get() and self.parser_mode == "omegaconf+":
+                    cfg = omegaconf_apply(self, cfg)
 
-            _ActionPrintConfig.print_config_if_requested(self, cfg)
+                _ActionPrintConfig.print_config_if_requested(self, cfg)
 
-            try:
-                ActionLink.apply_parsing_links(self, cfg)
-            except Exception as ex:
-                self.error(str(ex), ex)
+                try:
+                    ActionLink.apply_parsing_links(self, cfg)
+                except Exception as ex:
+                    self.error(str(ex), ex)
 
-            if not skip_validation:
-                self.validate(cfg, skip_required=skip_required)
+                if not skip_validation:
+                    self.validate(cfg, skip_required=skip_required)
 
-        if not lenient_check.get() and not nested_parse:
-            cfg = subclasses_disabled_remove_class_path(cfg)
+            if not lenient_check.get() and not nested_parse:
+                cfg = subclasses_disabled_remove_class_path(cfg)
 
         return cfg
 
@@ -558,10 +592,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             if isinstance(action, ActionSubCommands):
                 env_val = env[env_var]
                 if env_val in action.choices:
-                    cfg[action.dest] = subcommand = self._check_value_key(action, env_val, action.dest, cfg)
+                    with value_source_context(ValueSource("environment variable", env_var)):
+                        cfg[action.dest] = subcommand = self._check_value_key(action, env_val, action.dest, cfg)
                     pcfg = action._name_parser_map[env_val].parse_env(env=env, defaults=defaults, _skip_validation=True)
                     for k, v in vars(pcfg).items():
                         cfg[subcommand + "." + k] = v
+                    copy_provenance(pcfg, cfg[subcommand])
         for action, env_var in given:
             if not isinstance(action, (ActionConfigFile, ActionSubCommands)):
                 env_val = env[env_var]
@@ -581,7 +617,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                         env_val = list_env_val if isinstance(list_env_val, list) else [env_val]
                     except get_loader_exceptions():
                         env_val = [env_val]
-                cfg[action.dest] = self._check_value_key(action, env_val, action.dest, cfg)
+                with value_source_context(ValueSource("environment variable", env_var)):
+                    cfg[action.dest] = self._check_value_key(action, env_val, action.dest, cfg)
         self._apply_actions(cfg)
         return cfg
 
@@ -659,6 +696,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 ext_vars=ext_vars,
                 env=env,
                 defaults=defaults,
+                _source=ValueSource("config file", fpath, self.parser_mode),
                 **kwargs,
             )
 
@@ -689,12 +727,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Raises:
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
         """
-        skip_validation, fail_no_subcommand = get_private_kwargs(
-            kwargs, _skip_validation=False, _fail_no_subcommand=True
+        skip_validation, fail_no_subcommand, source = get_private_kwargs(
+            kwargs, _skip_validation=False, _fail_no_subcommand=True, _source=ValueSource("config string")
         )
 
         try:
-            with parser_context(load_value_mode=self.parser_mode):
+            with parser_context(load_value_mode=self.parser_mode), value_source_context(source):
                 cfg = self._load_config_parser_mode(content, path, ext_vars, previous_config.get())
 
             if defaults or env:
@@ -789,6 +827,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         skip_validation: bool = False,
         with_comments: bool = False,
         skip_link_targets: bool = True,
+        **kwargs,
     ) -> str:
         """Generates a serialized string for the given configuration object.
 
@@ -808,7 +847,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Raises:
             TypeError: If any of the values of namespace is invalid according to the parser.
         """
+        with_provenance = get_private_kwargs(kwargs, _with_provenance=False)
         check_valid_dump_format(format)
+
+        provenance = None
+        if with_provenance:
+            provenance = get_provenance(subclasses_disabled_remove_class_path(namespace.clone()))
 
         cfg = namespace.clone(with_meta=False)
 
@@ -832,7 +876,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 self._dump_delete_default_entries(cfg_dict, defaults.as_dict())
 
         with parser_context(parent_parser=self):
-            return dump_using_format(self, cfg_dict, dump_format=format, with_comments=with_comments)
+            return dump_using_format(
+                self, cfg_dict, dump_format=format, with_comments=with_comments, provenance=provenance
+            )
 
     def _dump_cleanup_actions(self, cfg, actions, dump_kwargs, prefix=""):
         skip_unset = dump_kwargs["skip_unset"]
@@ -1050,14 +1096,15 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             An object with all default values as attributes.
         """
         cfg = Namespace()
-        for action in filter_non_parsing_actions(self._actions):
-            if (
-                action.default != argparse.SUPPRESS
-                and action.dest != argparse.SUPPRESS
-                and not isinstance(action.default, UnknownDefault)
-            ):
-                default = recreate_branches(action.default)
-                cfg[action.dest] = default
+        with value_source_context(ValueSource("default")):
+            for action in filter_non_parsing_actions(self._actions):
+                if (
+                    action.default != argparse.SUPPRESS
+                    and action.dest != argparse.SUPPRESS
+                    and not isinstance(action.default, UnknownDefault)
+                ):
+                    default = recreate_branches(action.default)
+                    cfg[action.dest] = default
 
         self._logger.debug("Loaded parser defaults: %s", cfg)
 
@@ -1071,7 +1118,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 default_config_file_content = default_config_file.read_text()
                 if not default_config_file_content.strip():
                     continue
-                cfg_file = self._load_config_parser_mode(default_config_file_content, prev_cfg=cfg)
+                source = ValueSource("default config file", default_config_file, self.parser_mode)
+                with value_source_context(source):
+                    cfg_file = self._load_config_parser_mode(default_config_file_content, prev_cfg=cfg)
                 cfg = merge_config(self, cfg_file, cfg)
                 try:
                     with _ActionPrintConfig.skip_print_config():
@@ -1130,12 +1179,22 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     def error(self, message: str, ex: Exception | None = None) -> NoReturn:
         """Logs error message if a logger is set and exits or raises an :class:`ArgumentError`."""
+        source = _get_error_source(ex)
+        if source is not None:
+            cache: dict = {}
+            message += f"\n  Source: {describe_source(source, cache)}"
+            snippet = get_source_snippet(source, cache)
+            if snippet is not None:
+                message += f"\n    {snippet}"
+        error = argument_error(message)
+        if source is not None:
+            error.value_source_reported = True  # type: ignore[attr-defined]  # so that it is not added again
         self._logger.error(message)
         if not self.exit_on_error:
-            raise argument_error(message) from ex
+            raise error from ex
         elif debug_mode_active():
             self._logger.debug("Debug enabled, thus raising exception instead of exit.")
-            raise argument_error(message) from ex
+            raise error from ex
 
         parser = getattr(ex, "subcommand_parser", None) or self
         if getattr(ex, "default_config_file", None):
@@ -1196,44 +1255,52 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         def check_values(cfg):
             sorted_keys = {k: find_action(self, k) for k in get_non_meta_sorted_keys(cfg)}
             for key, action in sorted_keys.items():
-                parent_action = None
-                if action is None:
-                    if is_branch_key(self, key):
-                        continue
-                    parent_action, subcommand = find_parent_action_and_subcommand(self, key, exclude=_ActionConfigLoad)
-                    if parent_action:
-                        parent_key = subcommand + "." + parent_action.dest if subcommand else parent_action.dest
-                        if key.startswith(parent_key + ".") and sorted_keys.get(parent_key) is parent_action:
-                            # only check action once with entire value
+                try:
+                    parent_action = None
+                    if action is None:
+                        if is_branch_key(self, key):
                             continue
-                val = cfg[key]
-                if action is not None:
-                    if (val is get_parsing_setting("unset_sentinel") and skip_unset) or lenient_check.get():
-                        continue
-                    try:
-                        self._check_value_key(action, val, key, ccfg)
-                    except TypeError as ex:
-                        if not (val == {} and ActionTypeHint.is_subclass_typehint(action)):
+                        parent_action, subcommand = find_parent_action_and_subcommand(
+                            self, key, exclude=_ActionConfigLoad
+                        )
+                        if parent_action:
+                            parent_key = subcommand + "." + parent_action.dest if subcommand else parent_action.dest
+                            if key.startswith(parent_key + ".") and sorted_keys.get(parent_key) is parent_action:
+                                # only check action once with entire value
+                                continue
+                    val = cfg[key]
+                    if action is not None:
+                        if (val is get_parsing_setting("unset_sentinel") and skip_unset) or lenient_check.get():
+                            continue
+                        try:
+                            self._check_value_key(action, val, key, ccfg)
+                        except TypeError as ex:
+                            if not (val == {} and ActionTypeHint.is_subclass_typehint(action)):
+                                raise ex
+                    else:
+                        if self._accepts_extra_key(key):
+                            continue
+                        if isinstance(parent_action, ActionSubCommands) and "." in key:
+                            subcommand, subkey = split_key_root(key)
+                            ex = NSKeyError(f"Subcommand '{subcommand}' does not accept option '{subkey}'")
+                            ex.subcommand_parser = parent_action._name_parser_map[subcommand]
                             raise ex
-                else:
-                    if self._accepts_extra_key(key):
-                        continue
-                    if isinstance(parent_action, ActionSubCommands) and "." in key:
-                        subcommand, subkey = split_key_root(key)
-                        ex = NSKeyError(f"Subcommand '{subcommand}' does not accept option '{subkey}'")
-                        ex.subcommand_parser = parent_action._name_parser_map[subcommand]
-                        raise ex
-                    group_key = next((g for g in self.groups if key.startswith(g + ".")), None)
-                    if group_key:
-                        subkey = key[len(group_key) + 1 :]
-                        raise NSKeyError(f"Group '{group_key}' does not accept option '{subkey}'")
-                    if self._subcommands_action:
-                        if cfg.get(self._subcommands_action.dest):
-                            subcommand = f"'{cfg[self._subcommands_action.dest]}'"
-                        else:
-                            subcommand = f"{{{list(self._subcommands_action.choices)[0]},...}}"
-                        raise NSKeyError(f"Option '{key}' is not accepted before subcommand {subcommand}")
-                    raise NSKeyError(f"Option '{key}' is not accepted")
+                        group_key = next((g for g in self.groups if key.startswith(g + ".")), None)
+                        if group_key:
+                            subkey = key[len(group_key) + 1 :]
+                            raise NSKeyError(f"Group '{group_key}' does not accept option '{subkey}'")
+                        if self._subcommands_action:
+                            if cfg.get(self._subcommands_action.dest):
+                                subcommand = f"'{cfg[self._subcommands_action.dest]}'"
+                            else:
+                                subcommand = f"{{{list(self._subcommands_action.choices)[0]},...}}"
+                            raise NSKeyError(f"Option '{key}' is not accepted before subcommand {subcommand}")
+                        raise NSKeyError(f"Option '{key}' is not accepted")
+                except (TypeError, KeyError) as ex:
+                    source = get_provenance(cfg).get(key)
+                    if source is not None and not hasattr(ex, "value_source"):
+                        ex.value_source = source
+                    raise
 
         with parser_context(load_value_mode=self.parser_mode):
             check_values(cfg)
@@ -1332,6 +1399,10 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         skip_fn: Callable[[Any], bool] | None = None,
     ) -> Namespace:
         """Runs _check_value_key on actions present in config."""
+        # A source being applied is only set to raw values, i.e. the ones given in dicts. Values
+        # already in namespaces were parsed before, so processing them keeps their sources.
+        source = value_source.get()
+        is_raw = source is not None and isinstance(cfg, dict)
         if isinstance(cfg, dict):
             cfg = Namespace(cfg)
         if parent_key:
@@ -1341,6 +1412,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             keys = [parent_key + "." + k for k in cfg_branch.keys(branches=True, nested=False)]
         else:
             keys = list(cfg.keys(branches=True, nested=False))
+        raw_keys = set(keys) if is_raw else set()
 
         if prev_cfg:
             prev_cfg = prev_cfg.clone()
@@ -1349,62 +1421,69 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         config_keys: set[str] = set()
         num = 0
-        while num < len(keys):
-            key = keys[num]
-            exclude = _ActionConfigLoad if key in config_keys else None
-            action, subcommand = find_action_and_subcommand(self, key, exclude=exclude)
+        with value_source_context(source):
+            while num < len(keys):
+                key = keys[num]
+                exclude = _ActionConfigLoad if key in config_keys else None
+                action, subcommand = find_action_and_subcommand(self, key, exclude=exclude)
 
-            if isinstance(action, ActionJsonnet):
-                ext_vars_key = action._ext_vars
-                if ext_vars_key and ext_vars_key not in keys[:num]:
-                    keys = keys[:num] + [ext_vars_key] + [k for k in keys[num:] if k != ext_vars_key]
+                if isinstance(action, ActionJsonnet):
+                    ext_vars_key = action._ext_vars
+                    if ext_vars_key and ext_vars_key not in keys[:num]:
+                        keys = keys[:num] + [ext_vars_key] + [k for k in keys[num:] if k != ext_vars_key]
+                        continue
+
+                num += 1
+                if source is not None:
+                    config_key = key[len(parent_key) + 1 :] if parent_key else key
+                    raw_source = source if source.mode is None else source._replace(key=config_key)
+                    value_source.set(raw_source if key in raw_keys else None)
+
+                if action is None and key.rsplit(".", 1)[-1] == config_schema_key:
+                    cfg.pop(key)  # only meant for editors, see completion type jsonschema
                     continue
 
-            num += 1
-
-            if action is None and key.rsplit(".", 1)[-1] == config_schema_key:
-                cfg.pop(key)  # only meant for editors, see completion type jsonschema
-                continue
-
-            if action is None or isinstance(action, ActionSubCommands):
-                value = cfg[key]
-                if action is None and self._accepts_extra_key(key):
-                    continue  # unknown key of a pydantic model, its value is given as is to the model
-                if isinstance(value, dict):
-                    value = Namespace(value)
-                if isinstance(value, Namespace):
-                    new_keys = value.keys(branches=True, nested=False)
-                    keys += [key + "." + k for k in new_keys if key + "." + k not in keys]
-                cfg[key] = value
-                continue
-
-            action_dest = action.dest if subcommand is None else subcommand + "." + action.dest
-            append = False
-            if action_dest not in cfg and key.endswith("+"):
-                append = True
-                cfg[action_dest] = cfg.pop(key)
-            elif action_dest != key and key in cfg:
-                # the key is an alias of the action's dest, i.e. another accepted name for it
-                cfg[action_dest] = cfg.pop(key)
-            value = cfg[action_dest]
-            if skip_fn and skip_fn(value):
-                continue
-            with parser_context(parent_parser=self, lenient_check=True):
-                value = self._check_value_key(action, value, action_dest, prev_cfg, append=append)
-            if isinstance(action, _ActionConfigLoad):
-                value = action.resolve_subclass_spec(value)
-                config_keys.add(action_dest)
-                keys.append(action_dest)
-            elif isinstance(action, ActionConfigFile):
-                if isinstance(value, str):
-                    cfg.pop(action_dest)
-                    preserve = Namespace({k: cfg[k] for k in keys[num:]})
-                    ActionConfigFile.apply_config(self, cfg, action_dest, value)
-                    cfg.update(preserve)
+                if action is None or isinstance(action, ActionSubCommands):
+                    value = cfg[key]
+                    if action is None and self._accepts_extra_key(key):
+                        continue  # unknown key of a pydantic model, its value is given as is to the model
+                    if isinstance(value, dict):
+                        value = Namespace(value)
+                        if key in raw_keys:
+                            raw_keys.update(f"{key}.{k}" for k in value.keys(branches=True, nested=False))
+                    if isinstance(value, Namespace):
+                        new_keys = value.keys(branches=True, nested=False)
+                        keys += [key + "." + k for k in new_keys if key + "." + k not in keys]
+                    cfg[key] = value
                     continue
-            elif getattr(action, "jsonnet_ext_vars", False):
-                prev_cfg[action_dest] = value
-            cfg[action_dest] = value
+
+                action_dest = action.dest if subcommand is None else subcommand + "." + action.dest
+                append = False
+                if action_dest not in cfg and key.endswith("+"):
+                    append = True
+                    cfg[action_dest] = cfg.pop(key)
+                elif action_dest != key and key in cfg:
+                    # the key is an alias of the action's dest, i.e. another accepted name for it
+                    cfg[action_dest] = cfg.pop(key)
+                value = cfg[action_dest]
+                if skip_fn and skip_fn(value):
+                    continue
+                with parser_context(parent_parser=self, lenient_check=True):
+                    value = self._check_value_key(action, value, action_dest, prev_cfg, append=append)
+                if isinstance(action, _ActionConfigLoad):
+                    value = action.resolve_subclass_spec(value)
+                    config_keys.add(action_dest)
+                    keys.append(action_dest)
+                elif isinstance(action, ActionConfigFile):
+                    if isinstance(value, str):
+                        cfg.pop(action_dest)
+                        preserve = Namespace({k: cfg[k] for k in keys[num:]})
+                        ActionConfigFile.apply_config(self, cfg, action_dest, value)
+                        cfg.update(preserve)
+                        continue
+                elif getattr(action, "jsonnet_ext_vars", False):
+                    prev_cfg[action_dest] = value
+                cfg[action_dest] = value
         return cfg[parent_key] if parent_key else cfg
 
     def _check_value_key(

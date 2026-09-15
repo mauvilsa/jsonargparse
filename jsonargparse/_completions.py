@@ -80,7 +80,7 @@ def patch_argcomplete_support():
 
 
 def get_argcomplete_namespace(parser, namespace):
-    namespace.__class__ = __import__("jsonargparse").Namespace
+    namespace = __import__("jsonargparse").Namespace(namespace)
     return merge_config(parser, parser.get_defaults(skip_validation=True), namespace).as_flat()
 
 

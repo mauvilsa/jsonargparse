@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -161,12 +162,12 @@ def test_ruamel_support_false():
     ctx.match("test_ruamel_support_false")
 
 
-@pytest.mark.skipif(ruamel_support, reason="ruamel.yaml package should not be installed")
-def test_print_config_comments_unavailable(print_parser):
-    help_str = get_parser_help(print_parser)
-    assert "comments," not in help_str
-    with pytest.raises(ArgumentError, match='Invalid option "comments"'):
-        get_parse_args_stdout(print_parser, ["--print_config=comments"])
+@pytest.mark.parametrize("flag", ["comments", "provenance"])
+def test_print_config_flag_requires_ruamel(print_parser, flag):
+    with patch("jsonargparse._actions.ruamel_support", False):
+        assert f"{flag}," in get_parser_help(print_parser)
+        with pytest.raises(ArgumentError, match=f'"{flag}" requires the ruamel.yaml package'):
+            get_parse_args_stdout(print_parser, [f"--print_config={flag}"])
 
 
 # config read mode tests

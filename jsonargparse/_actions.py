@@ -19,7 +19,7 @@ from ._common import (
     parser_context,
 )
 from ._loaders_dumpers import get_loader_exceptions, load_value
-from ._namespace import Namespace
+from ._namespace import Namespace, ValueSource, copy_provenance, value_source_context
 from ._optionals import _get_config_read_mode, ruamel_support
 from ._paths import change_to_path_dir
 from ._type_checking import ArgumentParser
@@ -140,6 +140,7 @@ class ActionConfigFile(Action):
                 cfg_file = parser.parse_path(value, **kwargs)
             cfg_merged = merge_config(parser, cfg_file, cfg)
             cfg.__dict__.update(cfg_merged.__dict__)
+            copy_provenance(cfg_merged, cfg)
             if cfg.get(dest) is get_parsing_setting("unset_sentinel"):
                 cfg[dest] = []
             cfg[dest].append(cfg_path)
@@ -182,20 +183,26 @@ class _ActionPrintConfig(NonParsingAction):
             help=(
                 "Print the configuration after applying all other arguments and exit. The optional "
                 "flags customizes the output and are one or more keywords separated by comma. The "
-                "supported flags are:%s skip_default, skip_unset."
-            )
-            % (" comments," if ruamel_support else ""),
+                "supported flags are: comments, provenance, skip_default, skip_unset."
+            ),
         )
 
     def __call__(self, parser, namespace, value, option_string=None):
         kwargs = {"subparser": parser, "key": None, "skip_unset": False, "skip_validation": False}
-        valid_flags = {"": None, "skip_default": "skip_default", "skip_unset": "skip_unset"}
-        if ruamel_support:
-            valid_flags["comments"] = "with_comments"
+        valid_flags = {
+            "": None,
+            "comments": "with_comments",
+            "provenance": "_with_provenance",
+            "skip_default": "skip_default",
+            "skip_unset": "skip_unset",
+        }
         flags = value[0].split(",")
         invalid_flags = [f for f in flags if f not in valid_flags]
         if len(invalid_flags) > 0:
             raise argument_error(f'Invalid option "{invalid_flags[0]}" for {option_string}')
+        ruamel_flags = [f for f in flags if f in {"comments", "provenance"}]
+        if ruamel_flags and not ruamel_support:
+            raise argument_error(f'{option_string} flag "{ruamel_flags[0]}" requires the ruamel.yaml package')
         for flag in [f for f in flags if f != ""]:
             kwargs[valid_flags[flag]] = True
         while hasattr(parser, "parent_parser"):
@@ -308,7 +315,8 @@ class _ActionConfigLoad(Action):
                 cfg = self.resolve_subclass_spec(cfg)
             if not isinstance(cfg, (dict, Namespace)):
                 raise TypeError(f'Parser key "{self.dest}": Unable to load config "{value}"')
-            with load_config_path_context(cfg_path), change_to_path_dir(cfg_path):
+            source = None if cfg_path is None else ValueSource("config file", cfg_path, parser.parser_mode)
+            with load_config_path_context(cfg_path), change_to_path_dir(cfg_path), value_source_context(source):
                 cfg = parser._apply_actions(cfg, parent_key=self.dest)
             return cfg
         except (SubclassesDisabledError, ImportDenied) as ex:

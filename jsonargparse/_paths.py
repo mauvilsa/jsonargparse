@@ -18,6 +18,7 @@ from ._optionals import (
 )
 
 _current_path_dir: ContextVar[str | None] = ContextVar("_current_path_dir", default=None)
+_initial_cwd: ContextVar[str | None] = ContextVar("_initial_cwd", default=None)
 
 
 class _CachedStdin(StringIO):
@@ -365,8 +366,10 @@ def change_to_path_dir(path: Path | str | None) -> Iterator[str | None]:
         path_dir = scheme + path_dir
 
     token = _current_path_dir.set(path_dir)
+    initial_cwd_token = None
     if chdir and path_dir:
         chdir = os.getcwd()
+        initial_cwd_token = _initial_cwd.set(_initial_cwd.get() or chdir)
         path_dir = os.path.abspath(path_dir)
         os.chdir(path_dir)
 
@@ -376,3 +379,10 @@ def change_to_path_dir(path: Path | str | None) -> Iterator[str | None]:
         _current_path_dir.reset(token)
         if chdir:
             os.chdir(chdir)
+        if initial_cwd_token is not None:
+            _initial_cwd.reset(initial_cwd_token)
+
+
+def get_initial_working_directory() -> str:
+    """Returns the working directory from before changing to the directories of config files."""
+    return _initial_cwd.get() or os.getcwd()

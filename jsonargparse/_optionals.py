@@ -347,12 +347,15 @@ def omegaconf_apply(parser, cfg):
         from omegaconf import OmegaConf
 
     from ._common import parser_context
+    from ._namespace import copy_provenance
 
     with parser_context(path_dump_preserve_relative=True):
         cfg_dict = parser.dump(cfg, skip_validation=True, skip_unset=False, skip_link_targets=False)
     cfg_omegaconf = OmegaConf.create(cfg_dict)
     cfg_dict = OmegaConf.to_container(cfg_omegaconf, resolve=True)
-    return parser._apply_actions(cfg_dict)
+    cfg_resolved = parser._apply_actions(cfg_dict)
+    copy_provenance(cfg, cfg_resolved)  # an interpolated value comes from where the interpolation is
+    return cfg_resolved
 
 
 def omegaconf_tokenize(path: str) -> list[str]:

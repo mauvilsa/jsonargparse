@@ -59,6 +59,7 @@ from ._actions import (
 from ._common import (
     ImportDenied,
     check_import_path,
+    command_line_source,
     config_schema_key,
     get_generic_origin,
     get_parsing_setting,
@@ -77,11 +78,19 @@ from ._common import (
 from ._instantiation import dynamic_class_instantiator
 from ._loaders_dumpers import (
     basic_json_or_yaml_load,
+    get_load_value_mode,
     get_loader_exceptions,
     json_or_yaml_loader_exceptions,
     load_value,
 )
-from ._namespace import Namespace, subclasses_disabled_meta_key
+from ._namespace import (
+    Namespace,
+    ValueSource,
+    copy_provenance,
+    fill_provenance,
+    subclasses_disabled_meta_key,
+    value_source_context,
+)
 from ._optionals import (
     capture_typing_extension_shadows,
     get_alias_target,
@@ -692,26 +701,29 @@ class ActionTypeHint(Action):
                 raise ValueError("ActionTypeHint does not allow nargs=0.")
             return ActionTypeHint(**kwargs)
         parser, cfg, val, opt_str = args
-        if not (self.nargs == "?" and val is None):
-            # the option string can be an alias of the dest, i.e. another accepted name for it
-            option = self.get_option_string_base(opt_str)
-            if option:
-                if opt_str.startswith(f"{option}.init_args."):
-                    sub_opt = opt_str[len(f"{option}.init_args.") :]
-                else:
-                    sub_opt = opt_str[len(f"{option}.") :]
-                val = NestedArg(key=sub_opt, val=val)
-            append = isinstance(opt_str, str) and opt_str.endswith("+") and opt_str[:-1] in self.option_strings
-            val = self._check_type_(val, append=append, cfg=cfg, mode=parser.parser_mode)
-            if is_subclass_spec(val):
-                prev_val = cfg.get(self.dest)
-                if is_subclass_spec(prev_val) and "init_args" in prev_val:
-                    ActionTypeHint.discard_init_args_on_class_path_change(
-                        self,
-                        prev_val.init_args,
-                        val.get("init_args"),
-                    )
-        cfg.update(val, self.dest)
+        source = command_line_source(self, opt_str)
+        # a nested parse of the value, e.g. of an init arg of a subclass, refers to the same option
+        with parser_context(command_line_option=source.origin), value_source_context(source):
+            if not (self.nargs == "?" and val is None):
+                # the option string can be an alias of the dest, i.e. another accepted name for it
+                option = self.get_option_string_base(opt_str)
+                if option:
+                    if opt_str.startswith(f"{option}.init_args."):
+                        sub_opt = opt_str[len(f"{option}.init_args.") :]
+                    else:
+                        sub_opt = opt_str[len(f"{option}.") :]
+                    val = NestedArg(key=sub_opt, val=val)
+                append = isinstance(opt_str, str) and opt_str.endswith("+") and opt_str[:-1] in self.option_strings
+                val = self._check_type_(val, append=append, cfg=cfg, mode=parser.parser_mode)
+                if is_subclass_spec(val):
+                    prev_val = cfg.get(self.dest)
+                    if is_subclass_spec(prev_val) and "init_args" in prev_val:
+                        ActionTypeHint.discard_init_args_on_class_path_change(
+                            self,
+                            prev_val.init_args,
+                            val.get("init_args"),
+                        )
+            cfg.update(val, self.dest)
         return None
 
     def get_option_string_base(self, opt_str) -> str | None:
@@ -774,6 +786,8 @@ class ActionTypeHint(Action):
                     if ex:
                         raise ex
 
+                if config_path is not None:
+                    fill_provenance(val, ValueSource("config file", config_path, mode))
                 if isinstance(val, (Namespace, dict)):
                     if path_meta is not None:
                         val["__path__"] = path_meta
@@ -919,6 +933,7 @@ def adapt_subconfig_path(val, typehint, adapt_kwargs):
         raise_unexpected_value(f"Invalid content in sub-config file {val}: {ex}", exception=ex)
     with load_config_path_context(path), change_to_path_dir(path):
         val = adapt_typehints(subconfig, typehint, **adapt_kwargs)
+    fill_provenance(val, ValueSource("config file", path, get_load_value_mode()))
     if isinstance(val, (Namespace, dict)):
         val["__path__"] = path
     return val
@@ -1575,11 +1590,14 @@ def adapt_typehints(
         elif not isinstance(val, list):
             raise_unexpected_value(f"Expected a {typehint_origin}", val)
         if subtypehints is not None:
+            # orig_val is only read and prev_val is replaced, so they are not copied, which per item is quadratic
+            shared = {k: adapt_kwargs[k] for k in ("orig_val", "prev_val") if k in adapt_kwargs}
+            copied = deepcopy({k: v for k, v in adapt_kwargs.items() if k not in shared})
             for n, v in enumerate(val):
                 if isinstance(prev_val, list) and len(prev_val) == len(val):
-                    adapt_kwargs_n = {**deepcopy(adapt_kwargs), "prev_val": prev_val[n]}
+                    adapt_kwargs_n = {**deepcopy(copied), **shared, "prev_val": prev_val[n]}
                 else:
-                    adapt_kwargs_n = deepcopy(adapt_kwargs)
+                    adapt_kwargs_n = {**deepcopy(copied), **shared}
                 with change_to_path_dir(list_path):
                     val[n] = adapt_typehints(v, subtypehints[0], **adapt_kwargs_n)
         if typehint_origin is deque:
@@ -2197,6 +2215,8 @@ def subclass_spec_as_namespace(val, prev_val=None):
             val["class_path"] = prev_val["class_path"]
         else:
             val = Namespace(class_path=prev_val["class_path"], init_args=val)
+        if isinstance(prev_val, Namespace):
+            copy_provenance(prev_val, val, key="class_path")
     return val
 
 
@@ -2602,6 +2622,8 @@ def subclasses_disabled_remove_class_path(value):
 
     if value.pop(subclasses_disabled_meta_key, False):
         init_args = Namespace({**value.get("init_args", {}), **value.get("dict_kwargs", {})})
+        if isinstance(value.get("init_args"), Namespace):
+            copy_provenance(value["init_args"], init_args)
         if "__path__" in value:  # the value came from a sub-config file
             init_args["__path__"] = value["__path__"]
         return init_args

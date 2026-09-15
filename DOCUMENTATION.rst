@@ -222,7 +222,9 @@ arguments is given to it, instead of taking them from the command line:
     (2.3, <class 'float'>)
 
 If parsing fails, by default the usage is printed and the program exits. With
-``exit_on_error=False`` an :class:`.ArgumentError` is raised instead.
+``exit_on_error=False`` an :class:`.ArgumentError` is raised instead. When the
+failure is due to a given value, the error message says where it came from, e.g.
+``Source: config file config.yaml:3`` followed by that line of the file.
 
 
 Override order
@@ -1409,13 +1411,18 @@ Serialization
 Parsers that have an ``action="config"`` argument also get a ``--print_config``
 option. It is useful for tools with many options, to create an initial config
 file with all default values. The option accepts one or more flags separated by
-comma, e.g. ``--print_config=comments,skip_default``:
+comma, e.g. ``--print_config=comments,skip_default``. The ``comments`` and
+``provenance`` flags require the `ruamel.yaml
+<https://pypi.org/project/ruamel.yaml>`__ package:
 
-- ``comments``: add the help descriptions as YAML comments. Requires the
-  `ruamel.yaml <https://pypi.org/project/ruamel.yaml>`__ package. The comments
-  are the descriptions of the groups and arguments of the parser and, for values
-  that correspond to a class, e.g. the ``init_args`` of a subclass or the fields
-  of a dataclass, the descriptions from that class.
+- ``comments``: add the help descriptions as YAML comments. The comments are the
+  descriptions of the groups and arguments of the parser and, for values that
+  correspond to a class, e.g. the ``init_args`` of a subclass or the fields of a
+  dataclass, the descriptions from that class.
+- ``provenance``: add to each value a YAML comment saying where it came from,
+  i.e. a default, a default config file, a config file, a config string, an
+  environment variable or a command line argument. For config files parsed as
+  YAML, the comment includes the line number, e.g. ``# config file config.yaml:3``.
 - ``skip_default``: skip entries whose value is the same as the default.
 - ``skip_unset``: skip entries that were not given a value, see
   :ref:`unset-values`.
