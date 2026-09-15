@@ -31,7 +31,7 @@ from ._common import (
 )
 from ._link_arguments import ActionLink
 from ._namespace import Namespace
-from ._optionals import import_ruamel
+from ._optionals import import_pyyaml, import_ruamel
 from ._subcommands import ActionSubCommands, find_action
 from ._type_checking import ArgumentParser, ruamelCommentedMap
 from ._typehints import (
@@ -134,8 +134,8 @@ class YAMLCommentFormatter:
     def __init__(self, help_formatter: HelpFormatter):
         self.help_formatter = help_formatter
 
-    def add_yaml_comments(self, cfg: str) -> str:
-        """Adds help text as yaml comments."""
+    def add_yaml_comments(self, cfg: str, with_help: bool = True, provenance: dict | None = None) -> str:
+        """Adds help text and/or provenance as yaml comments."""
         from ._core import ArgumentParser
 
         ruyaml = import_ruamel("add_yaml_comments")
@@ -145,9 +145,12 @@ class YAMLCommentFormatter:
         parser = parent_parser.get()
         assert isinstance(parser, ArgumentParser)
         if isinstance(cfg, dict):
-            if parser.description is not None:
-                self.set_yaml_start_comment(parser.description, cfg)
-            self.set_comments(cfg, parser, get_group_titles(parser))
+            if with_help:
+                if parser.description is not None:
+                    self.set_yaml_start_comment(parser.description, cfg)
+                self.set_comments(cfg, parser, get_group_titles(parser))
+            if provenance:
+                _set_provenance_comments(cfg, provenance, key_lines={})
         out = StringIO()
         yaml.dump(cfg, out)
         return out.getvalue()
@@ -309,6 +312,104 @@ class YAMLCommentFormatter:
             depth: The nested level of the argument.
         """
         cfg.yaml_set_comment_before_after_key(key, before="\n" + text, indent=2 * depth)
+
+
+def _set_provenance_comments(cfg, provenance: dict, key_lines: dict, prefix: str = "", depth: int = 0) -> None:
+    """Adds to each value of a ruamel.yaml object a comment saying where it came from."""
+    for key, value in cfg.items():
+        full_key = prefix + key
+        source = provenance.get(full_key)
+        if source is not None:
+            text = describe_source(source, key_lines)
+            if isinstance(value, str) and "\n" in value:
+                # an end of line comment would be placed after the lines of the string
+                cfg.yaml_set_comment_before_after_key(key, before=text, indent=2 * depth)
+            else:
+                cfg.yaml_add_eol_comment(text, key, column=0)
+        if isinstance(value, dict):
+            _set_provenance_comments(value, provenance, key_lines, full_key + ".", depth + 1)
+        elif isinstance(value, list):
+            for num, item in enumerate(value):
+                if isinstance(item, dict):
+                    _set_provenance_comments(item, provenance, key_lines, f"{full_key}[{num}].", depth + 1)
+
+
+line_number_modes = {"yaml", "omegaconf", "omegaconf+"}
+snippet_width = 80
+
+
+def describe_source(source, cache: dict | None = None) -> str:
+    """Returns a description of where a value came from, including the line number for config files."""
+    text = source.description if source.origin is None else f"{source.description} {_describe_origin(source.origin)}"
+    position = _find_position(source, {} if cache is None else cache)
+    return text if position is None else f"{text}:{position[0]}"
+
+
+def get_source_snippet(source, cache: dict) -> str | None:
+    """Returns the line of a config file where a value came from, shortened around the key if long."""
+    position = _find_position(source, cache)
+    if position is None:
+        return None
+    line, column, text = position
+    if len(text) > snippet_width:  # e.g. a compact single line json
+        start = max(0, column - 10)
+        end = start + snippet_width
+        text = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
+    return f"{line} | {text}"
+
+
+def _describe_origin(origin) -> str:
+    """For config files, the path relative to the working directory if inside it, so that it can be opened."""
+    import pathlib
+
+    from ._paths import Path, get_initial_working_directory
+
+    if not isinstance(origin, Path) or origin.is_url or origin.is_fsspec:
+        return str(origin)
+    absolute = pathlib.Path(origin.absolute)
+    cwd = pathlib.Path(get_initial_working_directory())
+    return str(absolute.relative_to(cwd) if absolute.is_relative_to(cwd) else absolute)
+
+
+def _find_position(source, cache: dict) -> tuple[int, int, str] | None:
+    """Returns the line number, column and line of the config file where a value came from, if known."""
+    if source.mode not in line_number_modes or source.key is None:
+        return None
+    if id(source.origin) not in cache:  # each config file is read only once
+        content = source.origin.read_text()
+        cache[id(source.origin)] = (_get_config_key_positions(content), content.splitlines())
+    positions, lines = cache[id(source.origin)]
+    key = source.key
+    while key:
+        for candidate in [key, ("." + key).replace(".init_args.", ".")[1:]]:  # init_args can be implicit
+            if candidate in positions:
+                line, column = positions[candidate]
+                return line, column, lines[line - 1].rstrip()
+        cut = max(key.rfind("."), key.rfind("["))  # the parent, e.g. "a" for "a.b" or "a[0]"
+        key = key[:cut] if cut > 0 else ""
+    return None
+
+
+def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
+    """Returns the line number and column of each key in a yaml config, composed with the loader used for parsing."""
+    from ._loaders_dumpers import get_yaml_default_loader
+
+    yaml = import_pyyaml("_get_config_key_positions")
+    positions: dict[str, tuple[int, int]] = {}
+
+    def collect(node, key):
+        if isinstance(node, yaml.MappingNode):
+            children = [(f"{key}.{k.value}" if key else k.value, k, v) for k, v in node.value]
+        elif isinstance(node, yaml.SequenceNode):
+            children = [(f"{key}[{num}]", item, item) for num, item in enumerate(node.value)]
+        else:
+            return
+        for child_key, position_node, value_node in children:  # for duplicate keys the last is kept, as when loading
+            positions[child_key] = (position_node.start_mark.line + 1, position_node.start_mark.column)
+            collect(value_node, child_key)
+
+    collect(yaml.compose(content, Loader=get_yaml_default_loader()), "")
+    return positions
 
 
 class DefaultHelpFormatter(HelpFormatter):

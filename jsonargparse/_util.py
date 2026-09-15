@@ -27,7 +27,7 @@ from ._common import (
     parser_context,
 )
 from ._loaders_dumpers import json_compact_dump, load_value
-from ._namespace import Namespace
+from ._namespace import Namespace, value_source_context
 from ._optionals import _get_config_read_mode
 from ._paths import Path
 from ._type_checking import ArgumentParser
@@ -65,11 +65,12 @@ def merge_config(parser, source: Namespace, target: Namespace) -> Namespace:
     """
     from ._typehints import ActionTypeHint
 
-    source = source.clone()
-    target = target.clone()
-    with parser_context(parent_parser=parser):
-        ActionTypeHint.discard_init_args_on_class_path_change(parser, target, source)
-    target.update(source)
+    with value_source_context(None):  # merging does not change where the values came from
+        source = source.clone()
+        target = target.clone()
+        with parser_context(parent_parser=parser):
+            ActionTypeHint.discard_init_args_on_class_path_change(parser, target, source)
+        target.update(source)
     return target
 
 

@@ -24,6 +24,15 @@ Added
 - Support for methods and ``__init__`` defined with ``functools.partialmethod``,
   both for adding their parameters and as import paths of callables (`#665
   <https://github.com/mauvilsa/jsonargparse/pull/665>`__).
+- Parsing now keeps track of where each value came from. Errors due to a given
+  value say so, e.g. ``Source: config file config.yaml:3`` followed by that line
+  of the file, and the new ``provenance`` flag of the print config argument adds
+  it as comments (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
+
+Fixed
+^^^^^
+- Parsing a list took time quadratic in its number of items (`#975
+  <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
 
 Changed
 ^^^^^^^
@@ -63,6 +72,9 @@ Changed
   ``tomli`` for reading in python 3.10, instead of the unmaintained ``toml``
   package. Dumped toml arrays are now multi-line (`#973
   <https://github.com/mauvilsa/jsonargparse/pull/973>`__).
+- The ``comments`` flag of the print config argument is now always accepted and
+  listed in the help, and fails with an informative error when ``ruamel.yaml``
+  is not installed (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
 
 Removed
 ^^^^^^^

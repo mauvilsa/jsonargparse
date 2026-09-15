@@ -14,7 +14,7 @@ from typing import (  # type: ignore[attr-defined]
     _GenericAlias,
 )
 
-from ._namespace import Namespace
+from ._namespace import Namespace, ValueSource, value_source
 from ._optionals import (
     _set_config_read_mode,
     _set_docstring_parse_options,
@@ -79,6 +79,7 @@ load_value_mode: ContextVar[str | None] = ContextVar("load_value_mode", default=
 nested_links: ContextVar[list[dict]] = ContextVar("nested_links", default=[])
 applied_instantiation_links: ContextVar[set | None] = ContextVar("applied_instantiation_links", default=None)
 path_dump_preserve_relative: ContextVar[bool] = ContextVar("path_dump_preserve_relative", default=False)
+command_line_option: ContextVar[str | None] = ContextVar("command_line_option", default=None)
 
 
 parser_context_vars = {
@@ -93,6 +94,7 @@ parser_context_vars = {
     "nested_links": nested_links,
     "applied_instantiation_links": applied_instantiation_links,
     "path_dump_preserve_relative": path_dump_preserve_relative,
+    "command_line_option": command_line_option,
 }
 
 
@@ -108,6 +110,14 @@ def parser_context(**kwargs):
     finally:
         for context_var, token in context_var_tokens:
             context_var.reset(token)
+
+
+def command_line_source(action: argparse.Action, option_string: str | None = None) -> ValueSource:
+    """Returns the source of a value given as a command line argument, named as the option that was used."""
+    option = command_line_option.get() or option_string  # a nested parse refers to the option being parsed
+    if option is None:
+        option = max(action.option_strings, key=len) if action.option_strings else action.dest
+    return ValueSource("command line argument", option)
 
 
 class ImportDenied(ImportError, ValueError):
@@ -763,7 +773,11 @@ class Action(LoggerProperty, argparse.Action):
         if not hasattr(self, "_check_type_kwargs"):
             self._check_type_kwargs = set(inspect.signature(self._check_type).parameters)
         kwargs = {k: v for k, v in kwargs.items() if k in self._check_type_kwargs}
-        return self._check_type(value, **kwargs)
+        token = value_source.set(None)  # adapting a value does not change where it came from
+        try:
+            return self._check_type(value, **kwargs)
+        finally:
+            value_source.reset(token)
 
 
 class NonParsingAction(Action):

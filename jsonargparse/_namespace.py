@@ -3,13 +3,47 @@
 import argparse
 from collections import OrderedDict
 from collections.abc import Iterator
-from typing import Any
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, NamedTuple
 
 __all__ = ["Namespace"]
 
 
 subclasses_disabled_meta_key = "__subclasses_disabled__"
-meta_keys = {"__default_config__", "__path__", "__orig__", subclasses_disabled_meta_key}
+provenance_key = "__provenance__"
+meta_keys = {"__default_config__", "__path__", "__orig__", subclasses_disabled_meta_key, provenance_key}
+
+
+class ValueSource(NamedTuple):
+    """Where a parsed value came from."""
+
+    description: str
+    origin: Any = None  # the path of a config file or the name of an environment variable
+    mode: str | None = None  # the parser mode of a config file, required to find line numbers
+    key: str | None = None  # the key in a config file that the value corresponds to
+
+    def __deepcopy__(self, memo):
+        return self  # immutable, so copies of namespaces can share it, which is much faster, e.g. for list items
+
+
+# The source of the values being parsed, which is set to the values written to namespaces. Code that
+# processes values that were already parsed must run with None, so that they keep their sources.
+value_source: ContextVar[ValueSource | None] = ContextVar("value_source", default=None)
+
+
+@contextmanager
+def value_source_context(source: ValueSource | None) -> Iterator[None]:
+    token = value_source.set(source)
+    try:
+        yield
+    except Exception as ex:
+        current = value_source.get()
+        if current is not None and not hasattr(ex, "value_source"):
+            ex.value_source = current  # type: ignore[attr-defined]  # for error messages to say where a value came from
+        raise
+    finally:
+        value_source.reset(token)
 
 
 class NSKeyError(KeyError):
@@ -35,19 +69,32 @@ def is_meta_key(key: str) -> bool:
 
 
 def recreate_branches(data, skip_keys=None):
+    token = value_source.set(None)  # copying does not change where the values came from
+    try:
+        return _recreate_branches(data, skip_keys)
+    finally:
+        value_source.reset(token)
+
+
+def _recreate_branches(data, skip_keys):
     new_data = data
     if isinstance(data, (Namespace, dict)) and not isinstance(data, OrderedDict):
         new_data = type(data)()
         for key, val in getattr(data, "__dict__", data).items():
             if skip_keys is None or key not in skip_keys:
-                new_data[key] = recreate_branches(val, skip_keys)
+                new_data[key] = _recreate_branches(val, skip_keys)
+        provenance = getattr(data, provenance_key, None)
+        if provenance and skip_keys is None:
+            object.__setattr__(new_data, provenance_key, dict(provenance))
     elif isinstance(data, list):
-        new_data = [recreate_branches(v, skip_keys) for v in data]
+        new_data = [_recreate_branches(v, skip_keys) for v in data]
     return new_data
 
 
 class Namespace(argparse.Namespace):
     """Extension of argparse's Namespace to support nesting and subscript access."""
+
+    __slots__ = (provenance_key,)  # stored outside __dict__, so that it is not seen as a value
 
     def __init__(self, *args, **kwargs):
         """Initializer for Namespace instance.
@@ -131,7 +178,13 @@ class Namespace(argparse.Namespace):
         if "." in name:
             self.__setitem__(name, value)
         else:
-            super().__setattr__(add_clash_mark(name), value)
+            name = add_clash_mark(name)
+            super().__setattr__(name, value)
+            source = value_source.get()
+            if source is not None and name not in meta_keys:
+                if not isinstance(value, Namespace):
+                    _get_provenance_dict(self)[name] = source
+                fill_provenance(value, source)
 
     def __setitem__(self, key: str, item: Any) -> None:
         """Sets an item to a possibly nested namespace."""
@@ -227,9 +280,11 @@ class Namespace(argparse.Namespace):
             if key and not isinstance(self.get(key), Namespace):
                 self[key] = Namespace()
             prefix = key + "." if key else ""
+            provenance = get_provenance(value, items=False)  # items in lists keep their own sources
             for subkey, subval in value.items():
                 if not only_unset or prefix + subkey not in self:
                     self[prefix + subkey] = subval
+                    _set_source(self, prefix + subkey, provenance.get(subkey, value_source.get()))
         return self
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -247,7 +302,7 @@ class Namespace(argparse.Namespace):
         return parent_ns.__dict__.pop(leaf_key, default)
 
 
-clash_names: set[str] = set(dir(Namespace))
+clash_names: set[str] = set(dir(Namespace)) - {provenance_key}
 clash_mark = "\u200b"
 
 
@@ -301,3 +356,90 @@ def get_non_meta_sorted_keys(namespace: Namespace) -> list[str]:
 def get_value_and_parent(namespace: Namespace, key: str) -> tuple[Any, Namespace, str]:
     leaf_key, parent_ns, _ = namespace._parse_required_key(key)
     return parent_ns[leaf_key], parent_ns, leaf_key
+
+
+def _get_provenance_dict(namespace: Namespace) -> dict[str, ValueSource]:
+    provenance = getattr(namespace, provenance_key, None)
+    if provenance is None:
+        provenance = {}
+        object.__setattr__(namespace, provenance_key, provenance)
+    return provenance
+
+
+def _set_source(namespace: Namespace, key: str, source: ValueSource | None) -> None:
+    leaf_key, parent_ns, _ = namespace._parse_key(key)
+    if source is None:
+        (getattr(parent_ns, provenance_key, None) or {}).pop(leaf_key, None)
+    elif isinstance(parent_ns, Namespace):
+        _get_provenance_dict(parent_ns)[leaf_key] = source
+
+
+def get_provenance(namespace: Namespace, items: bool = True) -> dict[str, ValueSource]:
+    """Returns the sources of the leaf values of a namespace, as a flat dict.
+
+    Args:
+        namespace: The namespace from which to get the sources.
+        items: Whether to include the namespaces in lists and dicts, e.g. ``opts[0].class_path``, instead of the
+            source of the list or dict as a whole.
+    """
+    provenance: dict[str, ValueSource] = {}
+    _collect_provenance(namespace, "", provenance, items)
+    return provenance
+
+
+def _collect_provenance(value: Any, key: str, provenance: dict[str, ValueSource], items: bool) -> None:
+    if isinstance(value, Namespace):
+        own = getattr(value, provenance_key, None) or {}
+        for name, item in vars(value).items():
+            if name in meta_keys:
+                continue
+            item_key = f"{key}.{del_clash_mark(name)}" if key else del_clash_mark(name)
+            count = len(provenance)
+            _collect_provenance(item, item_key, provenance, items)
+            if name in own and not isinstance(item, Namespace) and len(provenance) == count:
+                provenance[item_key] = own[name]
+    elif items and isinstance(value, list):
+        for num, item in enumerate(value):
+            _collect_provenance(item, f"{key}[{num}]", provenance, items)
+    elif items and isinstance(value, dict):
+        for name, item in value.items():
+            _collect_provenance(item, f"{key}.{name}", provenance, items)
+
+
+def fill_provenance(value: Any, source: ValueSource) -> None:
+    """Sets a source to the leaf values that don't have one yet, of a namespace or of namespaces in lists and dicts."""
+    if isinstance(value, Namespace):
+        provenance = _get_provenance_dict(value)
+        for name, item in vars(value).items():
+            if name in meta_keys:
+                continue
+            item_source = _child_source(source, "." + del_clash_mark(name))
+            if not isinstance(item, Namespace) and name not in provenance:
+                provenance[name] = item_source
+            fill_provenance(item, item_source)
+    elif isinstance(value, (list, dict)):
+        for name, item in enumerate(value) if isinstance(value, list) else value.items():
+            if isinstance(item, (Namespace, list, dict)):
+                fill_provenance(item, _child_source(source, f"[{name}]" if isinstance(value, list) else f".{name}"))
+
+
+def copy_provenance(source: Namespace, target: Namespace, key: str | None = None) -> None:
+    """Copies the sources of the leaf values of a namespace to the same leaves of another one."""
+    source_provenance = getattr(source, provenance_key, None) or {}
+    target_provenance = _get_provenance_dict(target)
+    for name, value in vars(source).items():
+        if key is not None and name != key:
+            continue
+        target_value = target.__dict__.get(name)
+        if isinstance(value, Namespace):
+            if isinstance(target_value, Namespace) and target_value is not value:
+                copy_provenance(value, target_value)
+        elif name in source_provenance and name in target.__dict__:
+            target_provenance[name] = source_provenance[name]
+
+
+def _child_source(source: ValueSource, suffix: str) -> ValueSource:
+    """The source narrowed to a child key, e.g. suffix ".name" or "[0]", only needed for config file line numbers."""
+    if source.mode is None:
+        return source
+    return source._replace(key=((source.key or "") + suffix).lstrip("."))

@@ -273,11 +273,11 @@ def yaml_dump(data):
     return yaml.dump(data, Dumper=get_yaml_default_dumper(), **dump_yaml_kwargs)
 
 
-def yaml_comments_dump(data, parser):
+def yaml_comments_dump(data, parser, with_help=True, provenance=None):
     dump = dumpers["yaml"](data)
     formatter_class = create_help_formatter_with_comments(parser.formatter_class)
     formatter = formatter_class(parser.prog)
-    return formatter.add_yaml_comments(dump)
+    return formatter.add_yaml_comments(dump, with_help, provenance)
 
 
 def json_compact_dump(data):
@@ -321,19 +321,28 @@ def check_valid_dump_format(dump_format: str):
         raise ValueError(f'Unknown output format "{dump_format}".')
 
 
-def dump_using_format(parser: ArgumentParser, data: dict, dump_format: str, with_comments: bool = False) -> str:
+def dump_using_format(
+    parser: ArgumentParser,
+    data: dict,
+    dump_format: str,
+    with_comments: bool = False,
+    provenance: dict | None = None,
+) -> str:
     if dump_format == "parser_mode":
         default_format = "yaml" if pyyaml_available else "json"
         dump_format = parser.parser_mode if parser.parser_mode in dumpers else default_format
-    if with_comments:
+    if with_comments or provenance is not None:
         if f"{dump_format}_comments" not in dumpers:
             if dump_format == "yaml":
                 raise ValueError("ruamel.yaml is required for dumping YAML with comments.")
             raise ValueError(f"Dumping with comments is not supported for format '{dump_format}'.")
         dump_format = f"{dump_format}_comments"
     data = replace_unset(data)
-    args = (data, parser) if dump_format.endswith("_comments") else (data,)
-    dump = dumpers[dump_format](*args)
+    if dump_format.endswith("_comments"):
+        # help comments are also added when a comments format is given directly
+        dump = dumpers[dump_format](data, parser, with_comments or provenance is None, provenance)
+    else:
+        dump = dumpers[dump_format](data)
     if parser.dump_header and comment_prefix.get(dump_format):
         prefix = comment_prefix[dump_format]
         header = "\n".join(prefix + line for line in parser.dump_header)
@@ -412,8 +421,8 @@ def create_help_formatter_with_comments(formatter_class: type[HelpFormatter]) ->
             super().__init__(*args, **kwargs)
             self._yaml_formatter = YAMLCommentFormatter(self)
 
-        def add_yaml_comments(self, cfg: str) -> str:
-            """Adds help text as yaml comments."""
-            return self._yaml_formatter.add_yaml_comments(cfg)
+        def add_yaml_comments(self, cfg: str, with_help: bool = True, provenance: dict | None = None) -> str:
+            """Adds help text and/or provenance as yaml comments."""
+            return self._yaml_formatter.add_yaml_comments(cfg, with_help, provenance)
 
     return DynamicHelpFormatter
