@@ -41,6 +41,11 @@ Fixed
   from the remote, leaking the secret. Types that include ``SecretStr`` in a
   union now only resolve relative paths locally (`#977
   <https://github.com/mauvilsa/jsonargparse/pull/977>`__).
+- Subcommand aliases, given in command line or config, were set in the namespace
+  instead of the subcommand name, and were accepted by the ``jsonschema``
+  completion. A config that has settings for both a subcommand name and one of
+  its aliases now fails, instead of one of them being silently discarded (`#978
+  <https://github.com/mauvilsa/jsonargparse/pull/978>`__).
 
 Changed
 ^^^^^^^

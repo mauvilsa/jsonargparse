@@ -336,10 +336,11 @@ class ParserJsonschema:
     def add_subcommands(self, action, schema: dict) -> None:
         # the subcommand key is never required: it is implied when the config has a single subcommand
         # block, and when there are several the chosen one can be given as a command line argument
-        names = list(action._name_parser_map.keys())
+        # aliases are left out, only the subcommand names are canonical
+        subparsers = {n: p for n, p in action._name_parser_map.items() if n == p.subcommand}
         properties = schema.setdefault("properties", {})
-        properties[action.dest] = {"enum": names, "description": subcommand_description}
-        for name, subparser in action._name_parser_map.items():
+        properties[action.dest] = {"enum": list(subparsers), "description": subcommand_description}
+        for name, subparser in subparsers.items():
             subcommand_schema = new_object(subparser.description)
             self.add_properties(subparser, subcommand_schema)
             properties[name] = subcommand_schema
