@@ -103,7 +103,7 @@ from ._optionals import (
     typing_extensions_import,
     validate_annotated,
 )
-from ._paths import Path, PathError, change_to_path_dir
+from ._paths import Path, PathError, change_to_path_dir, disable_remote_relative_paths
 from ._required import clear_required
 from ._subcommands import find_action, find_parent_action, parse_kwargs
 from ._type_checking import ArgumentParser
@@ -120,7 +120,7 @@ from ._util import (
     parse_value_or_config,
     warning,
 )
-from .typing import _LazyInitBaseClass, get_registered_type, is_pydantic_type
+from .typing import _LazyInitBaseClass, get_registered_type, is_pydantic_type, is_secret_type
 
 NotRequired = typing_extensions_import("NotRequired")
 ReadOnly = typing_extensions_import("ReadOnly")
@@ -1522,19 +1522,22 @@ def adapt_typehints(
     elif typehint_origin == Union:
         vals = []
         sorted_subtypes = sort_subtypes_for_union(subtypehints, val, prev_val, append)
-        for subtype in sorted_subtypes:
-            try:
-                # a pristine value, since adapting can modify it in place
-                subtype_val = adapt_typehints(pristine_value(val), subtype, **adapt_kwargs)
-            except Exception as ex:
-                if subtype is str and not isinstance(val, str) and isinstance(orig_val, str):
-                    vals.append(orig_val)
+        # a secret must not be sent to a remote filesystem or server just to check whether it is a path
+        has_secret = any(is_secret_type(s) for s in sorted_subtypes)
+        with disable_remote_relative_paths(has_secret):
+            for subtype in sorted_subtypes:
+                try:
+                    # a pristine value, since adapting can modify it in place
+                    subtype_val = adapt_typehints(pristine_value(val), subtype, **adapt_kwargs)
+                except Exception as ex:
+                    if subtype is str and not isinstance(val, str) and isinstance(orig_val, str):
+                        vals.append(orig_val)
+                        continue
+                    vals.append(ex)
                     continue
-                vals.append(ex)
-                continue
-            vals.append(subtype_val)
-            if not sub_defaults_invalidate_value(subtype_val, subtype, sorted_subtypes, adapt_kwargs):
-                break
+                vals.append(subtype_val)
+                if not sub_defaults_invalidate_value(subtype_val, subtype, sorted_subtypes, adapt_kwargs):
+                    break
         if all(isinstance(v, Exception) for v in vals):
             raise_union_unexpected_value(sorted_subtypes, val, vals)
         val = next((v for v in reversed(vals) if not isinstance(v, Exception)))

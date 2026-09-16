@@ -12,11 +12,12 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import ArgumentError, Namespace, set_parsing_settings
+from jsonargparse import ArgumentError, ArgumentParser, Namespace, set_parsing_settings
 from jsonargparse._optionals import fsspec_support, url_support
 from jsonargparse._paths import _current_path_dir, _parse_url
-from jsonargparse.typing import Path, Path_drw, Path_fc, Path_fr, path_type
+from jsonargparse.typing import Path, Path_drw, Path_fc, Path_fr, SecretStr, path_type
 from jsonargparse_tests.conftest import (
+    capture_logs,
     get_parser_help,
     is_posix,
     json_or_yaml_dump,
@@ -457,6 +458,129 @@ def test_relative_path_context_fsspec(tmp_cwd, subtests):
 
     with subtests.test("current path dir unset"):
         assert _current_path_dir.get() is None
+
+
+# secret types in union tests
+
+
+Path_fsr = path_type("fsr")
+
+
+def secrets_config_parser(password_type):
+    parser = ArgumentParser(exit_on_error=False)
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--password", type=password_type)
+    return parser
+
+
+@pytest.fixture
+def fsspec_secrets_config():
+    """A remote config whose password value collides with the name of a sibling remote file."""
+    set_parsing_settings(config_read_mode_fsspec_enabled=True)
+    with fsspec.open("memory://secrets/item/PASSWORD", "w") as f:
+        f.write("sibling file content")
+    config_path = "memory://secrets/item/config.yaml"
+    with fsspec.open(config_path, "w") as f:
+        f.write(json_or_yaml_dump({"password": "PASSWORD"}))
+    return config_path
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_secret_in_union_relative_path_not_resolved_as_remote(fsspec_secrets_config):
+    parser = secrets_config_parser(Union[Path_fsr, SecretStr])
+    cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+    assert isinstance(cfg.password, SecretStr)
+    assert "PASSWORD" == cfg.password.get_secret_value()
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_secret_in_union_relative_path_skip_logged(fsspec_secrets_config, logger):
+    with fsspec.open(fsspec_secrets_config, "w") as f:
+        f.write(json_or_yaml_dump({"password": "SECRET_VALUE"}))
+
+    parser = secrets_config_parser(Union[Path_fsr, SecretStr])
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+
+    assert isinstance(cfg.password, SecretStr)
+    skip_logs = [x for x in logs.getvalue().split("\n") if "not resolved against remote parent" in x]
+    assert 1 == len(skip_logs)
+    assert "Relative path not resolved against remote parent 'memory://secrets/item'" in skip_logs[0]
+    assert "SECRET_VALUE" not in skip_logs[0]
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_no_secret_in_union_relative_path_skip_not_logged(fsspec_secrets_config, logger):
+    parser = secrets_config_parser(Union[Path_fsr, str])
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+    assert "not resolved against remote parent" not in logs.getvalue()
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_secret_in_union_absolute_remote_path_resolved(fsspec_secrets_config):
+    with fsspec.open(fsspec_secrets_config, "w") as f:
+        f.write(json_or_yaml_dump({"password": "memory://secrets/item/PASSWORD"}))
+
+    parser = secrets_config_parser(Union[Path_fsr, SecretStr])
+    cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+    assert isinstance(cfg.password, Path_fsr)
+    assert "sibling file content" == cfg.password.read_text()
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_secret_in_union_local_relative_path_unaffected(fsspec_secrets_config, tmp_cwd):
+    (tmp_cwd / "PASSWORD").write_text("local file content")
+
+    parser = secrets_config_parser(Union[Path_fsr, SecretStr])
+    cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+    assert isinstance(cfg.password, Path_fsr)
+    assert "local file content" == cfg.password.read_text()
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_no_secret_in_union_relative_path_resolved_as_remote(fsspec_secrets_config):
+    parser = secrets_config_parser(Union[Path_fsr, str])
+    cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+    assert isinstance(cfg.password, Path_fsr)
+    assert "memory://secrets/item/PASSWORD" == cfg.password.absolute
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_secret_in_nested_union_relative_path_not_resolved_as_remote(fsspec_secrets_config):
+    with fsspec.open(fsspec_secrets_config, "w") as f:
+        f.write(json_or_yaml_dump({"password": ["PASSWORD"]}))
+
+    parser = secrets_config_parser(List[Union[Path_fsr, SecretStr]])
+    cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
+    assert isinstance(cfg.password[0], SecretStr)
+    assert "PASSWORD" == cfg.password[0].get_secret_value()
+
+
+@skip_if_responses_unavailable
+@responses_activate
+@patch_parsing_settings
+def test_secret_in_union_relative_url_not_resolved_as_remote():
+    set_parsing_settings(config_read_mode_urls_enabled=True)
+    config_url = "http://example.com/item/config.yaml"
+    body = json_or_yaml_dump({"password": "PASSWORD"})
+    responses.add(responses.GET, config_url, status=200, body=body)
+    responses.add(responses.HEAD, config_url, status=200)
+    responses.add(responses.HEAD, "http://example.com/item/PASSWORD", status=200)
+
+    parser = secrets_config_parser(Union[path_type("fur"), SecretStr])
+    cfg = parser.parse_args([f"--cfg={config_url}"])
+    assert isinstance(cfg.password, SecretStr)
+    assert "PASSWORD" == cfg.password.get_secret_value()
 
 
 # path types tests
