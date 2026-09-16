@@ -188,8 +188,14 @@ def get_subcommands(
 
     # Replace alias settings keys with subcommand names
     for key, subparser in action._name_parser_map.items():
-        if key != subparser.subcommand and isinstance(cfg.get(prefix + key), Namespace):
-            cfg[prefix + subparser.subcommand] = cfg.pop(prefix + key)
+        name = subparser.subcommand
+        if key != name and isinstance(cfg.get(prefix + key), Namespace):
+            if isinstance(cfg.get(prefix + name), Namespace):
+                raise ValueError(
+                    f"Subcommand '{name}' settings given more than once, as '{prefix + name}' and "
+                    f"alias '{prefix + key}'. Only one of the subcommand name or its aliases is accepted."
+                )
+            cfg[prefix + name] = cfg.pop(prefix + key)
 
     # Get subcommand settings keys
     subcommand_keys = [k for k in action.choices if isinstance(cfg.get(prefix + k), Namespace)]

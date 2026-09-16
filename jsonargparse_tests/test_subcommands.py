@@ -130,6 +130,15 @@ def test_subcommands_parse_config_alias(subcommands_parser, config):
     assert "B" not in cfg
 
 
+@pytest.mark.parametrize("config", [{}, {"subcommand": "b"}, {"subcommand": "B"}])
+def test_subcommands_parse_config_alias_collision(subcommands_parser, config):
+    subcommands_parser.add_argument("--cfg", action="config")
+    config = {**config, "b": {"nums": {"val1": 2}}, "B": {"nums": {"val1": 3}}}
+    with pytest.raises(ArgumentError) as ctx:
+        subcommands_parser.parse_args([f"--cfg={json.dumps(config)}"])
+    ctx.match("Subcommand 'b' settings given more than once, as 'b' and alias 'B'")
+
+
 def test_subcommands_parse_args_config(subcommands_parser):
     subcommands_parser.add_argument("--cfg", action="config")
     cfg = subcommands_parser.parse_args(['--cfg={"o1": "o1_arg"}', "a", "ap1_arg"]).as_dict()
