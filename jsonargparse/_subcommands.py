@@ -153,13 +153,15 @@ class ActionSubCommands(_SubParsersAction):
         """Adds subcommand dest and parses subcommand arguments."""
         subcommand = values[0]
         arg_strings = values[1:]
+        subparser = self._name_parser_map.get(subcommand)
+        if subparser is not None:
+            subcommand = subparser.subcommand  # replace alias with name
 
         # set the parser name
         namespace[self.dest] = subcommand
 
         # parse arguments
-        if subcommand in self._name_parser_map:
-            subparser = self._name_parser_map[subcommand]
+        if subparser is not None:
             subnamespace = namespace.get(subcommand).clone() if subcommand in namespace else None
             kwargs = dict(_skip_validation=True, _namespace_as_config=True, **parse_kwargs.get())
             namespace[subcommand] = subparser.parse_args(arg_strings, namespace=subnamespace, **kwargs)
@@ -184,6 +186,11 @@ def get_subcommands(
 
     require_single = single_subcommand.get() and not parsing_defaults.get()
 
+    # Replace alias settings keys with subcommand names
+    for key, subparser in action._name_parser_map.items():
+        if key != subparser.subcommand and isinstance(cfg.get(prefix + key), Namespace):
+            cfg[prefix + subparser.subcommand] = cfg.pop(prefix + key)
+
     # Get subcommand settings keys
     subcommand_keys = [k for k in action.choices if isinstance(cfg.get(prefix + k), Namespace)]
 
@@ -194,6 +201,8 @@ def get_subcommands(
         subcommand = cfg[dest]
         if parsing_defaults.get():
             raise NSKeyError(f"A specific subcommand can't be provided in defaults, got '{subcommand}'")
+        if subcommand in action._name_parser_map:
+            cfg[dest] = subcommand = action._name_parser_map[subcommand].subcommand
     elif len(subcommand_keys) > 0 and (fail_no_subcommand or require_single):
         cfg[dest] = subcommand = subcommand_keys[0]
         if len(subcommand_keys) > 1:

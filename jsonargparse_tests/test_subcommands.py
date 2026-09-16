@@ -113,9 +113,21 @@ def test_main_subcommands_help(subcommands_parser):
 
 
 def test_subcommands_parse_args_alias(subcommands_parser):
-    cfg = subcommands_parser.parse_args(["B"])
-    assert cfg["subcommand"] == "B"
+    cfg = subcommands_parser.parse_args(["B", "--nums.val1=3"])
+    assert cfg["subcommand"] == "b"
+    assert cfg["b.nums.val1"] == 3
+    assert "B" not in cfg
     pytest.raises(ArgumentError, lambda: subcommands_parser.parse_args(["A"]))
+
+
+@pytest.mark.parametrize("config", [{"subcommand": "B"}, {"B": {}}, {"subcommand": "B", "B": {}}])
+def test_subcommands_parse_config_alias(subcommands_parser, config):
+    subcommands_parser.add_argument("--cfg", action="config")
+    config = {k: {"nums": {"val1": 3}} if k == "B" else v for k, v in config.items()}
+    cfg = subcommands_parser.parse_args([f"--cfg={json.dumps(config)}"])
+    assert cfg["subcommand"] == "b"
+    assert cfg["b.nums.val1"] == (3 if "B" in config else 1)
+    assert "B" not in cfg
 
 
 def test_subcommands_parse_args_config(subcommands_parser):

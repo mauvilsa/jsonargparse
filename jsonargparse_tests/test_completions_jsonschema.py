@@ -689,9 +689,11 @@ def test_subcommands(parser, subparser, subsubparser):
     subsubparser.add_argument("--opt", type=int, default=1)
     subcommands = parser.add_subcommands()
     subcommands.add_subcommand("cmd1", subparser)
-    subcommands.add_subcommand("cmd2", subsubparser)
+    subcommands.add_subcommand("cmd2", subsubparser, aliases=["c2"])
     schema = get_schema(parser)
+    # aliases are not canonical, so only the subcommand names are in the schema
     assert schema["properties"]["subcommand"]["enum"] == ["cmd1", "cmd2"]
+    assert "c2" not in schema["properties"]
     assert "can be omitted" in schema["properties"]["subcommand"]["description"]
     assert schema["properties"]["cmd1"]["description"] == "The first command."
     assert schema["properties"]["cmd1"]["properties"]["num"] == {"type": "integer"}
@@ -713,7 +715,7 @@ def test_subcommands_validation(parser, subparser, subsubparser):
     subsubparser.add_argument("--opt", type=int, default=1)
     subcommands = parser.add_subcommands()
     subcommands.add_subcommand("cmd1", subparser)
-    subcommands.add_subcommand("cmd2", subsubparser)
+    subcommands.add_subcommand("cmd2", subsubparser, aliases=["c2"])
     schema = get_schema(parser)
     validate(schema, {"subcommand": "cmd1", "cmd1": {"num": 1}})
     validate(schema, {"subcommand": "cmd2"})
@@ -723,6 +725,8 @@ def test_subcommands_validation(parser, subparser, subsubparser):
     validate(schema, {})
     assert iter_errors(schema, {"subcommand": "cmd1"})
     assert iter_errors(schema, {"subcommand": "cmd3"})
+    assert iter_errors(schema, {"subcommand": "c2"})
+    assert iter_errors(schema, {"c2": {"opt": 2}})
     assert iter_errors(schema, {"subcommand": "cmd1", "cmd1": {}})
     assert iter_errors(schema, {"cmd1": {"bogus": 1}})
 
