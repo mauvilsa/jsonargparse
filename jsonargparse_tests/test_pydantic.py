@@ -19,13 +19,16 @@ from jsonargparse._optionals import (
     typing_extensions_import,
 )
 from jsonargparse._signatures import convert_to_dict
+from jsonargparse.typing import path_type
 from jsonargparse_tests.conftest import (
     capture_logs,
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_dump,
     json_or_yaml_load,
+    patch_parsing_settings,
     skip_if_docstring_parser_unavailable,
+    skip_if_fsspec_unavailable,
 )
 
 if pydantic_support:
@@ -70,6 +73,28 @@ def test_pydantic_secret_str_mask_not_parsed(parser):
     dumped = parser.dump(parser.parse_args(["--password=secret"]))
     with pytest.raises(ArgumentError, match="Refusing to parse the mask"):
         parser.parse_string(dumped)
+
+
+@skip_if_fsspec_unavailable
+@skip_if_pydantic_v1_on_v2
+@patch_parsing_settings
+def test_pydantic_secret_str_in_union_relative_path_not_resolved_as_remote():
+    import fsspec
+
+    set_parsing_settings(config_read_mode_fsspec_enabled=True)
+    with fsspec.open("memory://pydantic_secrets/item/PASSWORD", "w") as f:
+        f.write("sibling file content")
+    config_path = "memory://pydantic_secrets/item/config.yaml"
+    with fsspec.open(config_path, "w") as f:
+        f.write(json_or_yaml_dump({"password": "PASSWORD"}))
+
+    parser = ArgumentParser(exit_on_error=False)
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--password", type=Union[path_type("fsr"), pydantic.SecretStr])
+
+    cfg = parser.parse_args([f"--cfg={config_path}"])
+    assert isinstance(cfg.password, pydantic.SecretStr)
+    assert "PASSWORD" == cfg.password.get_secret_value()
 
 
 if annotated and pydantic_support > 1:

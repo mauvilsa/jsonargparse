@@ -704,6 +704,15 @@ register_type(SecretStr, deserializer=secret_str_deserializer)
 register_type_on_first_use("pydantic.SecretStr", deserializer=pydantic_secret_str_deserializer)
 
 
+def is_secret_type(typehint) -> bool:
+    """Whether the type holds a secret, i.e. jsonargparse's or pydantic's ``SecretStr``."""
+    if typehint is SecretStr:
+        return True
+    return (
+        getattr(typehint, "__module__", "").startswith("pydantic") and getattr(typehint, "__name__", "") == "SecretStr"
+    )
+
+
 def pydantic_deserializer(class_type):
     from pydantic import create_model  # pylint: disable=no-name-in-module
 

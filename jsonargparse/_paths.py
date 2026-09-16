@@ -19,6 +19,7 @@ from ._optionals import (
 
 _current_path_dir: ContextVar[str | None] = ContextVar("_current_path_dir", default=None)
 _initial_cwd: ContextVar[str | None] = ContextVar("_initial_cwd", default=None)
+_remote_relative_disabled: ContextVar[bool] = ContextVar("_remote_relative_disabled", default=False)
 
 
 class _CachedStdin(StringIO):
@@ -69,6 +70,22 @@ def _resolve_relative_path(path: str) -> str:
         elif part != ".":
             resolved.append(part)
     return "/".join(resolved)
+
+
+def _log_remote_relative_skip(cwd_url_data: _UrlData) -> None:
+    """Debug logs that a relative path was kept local because the type includes a secret.
+
+    The path is not included in the message, since it could be the secret itself.
+    """
+    from ._common import parent_parser
+
+    parser = parent_parser.get()
+    if parser:
+        parent = cwd_url_data.scheme + cwd_url_data.url_path
+        parser.logger.debug(
+            f"Relative path not resolved against remote parent {parent!r} because the type includes a secret, "
+            "give an absolute path to fetch it"
+        )
 
 
 def _known_to_fsspec(path: str) -> bool:
@@ -152,8 +169,11 @@ class Path:
             is_absolute = _is_absolute_path(abs_path)
             url_data = _parse_url(abs_path)
             cwd_url_data = _parse_url(cwd or _current_path_dir.get() or os.getcwd())
-            if ("u" in mode or "s" in mode) and (url_data or (cwd_url_data and not is_absolute)):
-                if cwd_url_data and not is_absolute:
+            remote_relative = not is_absolute and not _remote_relative_disabled.get()
+            if ("u" in mode or "s" in mode) and cwd_url_data and not is_absolute and not remote_relative:
+                _log_remote_relative_skip(cwd_url_data)
+            if ("u" in mode or "s" in mode) and (url_data or (cwd_url_data and remote_relative)):
+                if cwd_url_data and remote_relative:
                     abs_path = _resolve_relative_path(cwd_url_data.url_path + "/" + path)
                     abs_path = cwd_url_data.scheme + abs_path
                     url_data = _parse_url(abs_path)
@@ -344,6 +364,23 @@ class Path:
             raise ValueError('Both modes "d" and "u" not possible.')
         if "s" in mode and "d" in mode:
             raise ValueError('Both modes "d" and "s" not possible.')
+
+
+@contextmanager
+def disable_remote_relative_paths(disable: bool = True) -> Iterator[None]:
+    """A context manager that keeps relative paths from being resolved against a remote parent.
+
+    Used when a value could be a secret, so that it is never sent to a remote
+    filesystem or server just to check whether it is an existing path.
+    """
+    if not disable:
+        yield
+        return
+    token = _remote_relative_disabled.set(True)
+    try:
+        yield
+    finally:
+        _remote_relative_disabled.reset(token)
 
 
 @contextmanager

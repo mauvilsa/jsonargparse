@@ -547,7 +547,9 @@ Types can be nested with any complexity. Notes about the support:
   serialized. ``jsonargparse.typing.SecretStr`` gives the same behavior without
   the pydantic dependency. Dumps only have the mask ``**********``, and parsing
   this mask as a secret fails, so that a config bootstrapped with
-  ``--print_config`` is not used with the mask as the secret.
+  ``--print_config`` is not used with the mask as the secret. In a union these
+  types also keep the secret from being fetched as a path, see
+  :ref:`parsing-urls`.
 
 - ``pydantic.FilePath`` and ``pydantic.DirectoryPath`` run the corresponding
   pydantic validation when parsing. Arguments with these types also get file and
@@ -912,6 +914,14 @@ So a tool that takes a config file can also get it from a URL:
     relative path ``model/state_dict.pt`` found inside
     ``s3://bucket/config.yaml``, its parsed absolute path becomes
     ``s3://bucket/model/state_dict.pt``.
+
+.. warning::
+
+    Checking a path means accessing it, so any value in a remote config that a
+    type accepts as a path is requested from the remote, a secret given inline
+    included. To prevent this, add ``SecretStr`` to the type, e.g.
+    ``path_type('fsr') | SecretStr``. Relative paths are then only resolved
+    locally, so just values with an explicit scheme are fetched.
 
 
 .. _boolean-arguments:

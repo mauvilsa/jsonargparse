@@ -37,6 +37,10 @@ Fixed
   nothing has been typed and the type accepts values other than the choices,
   e.g. ``int | SomeEnum`` (`#976
   <https://github.com/mauvilsa/jsonargparse/pull/976>`__).
+- Secrets in a config read from a URL or fsspec being requested as relative path
+  from the remote, leaking the secret. Types that include ``SecretStr`` in a
+  union now only resolve relative paths locally (`#977
+  <https://github.com/mauvilsa/jsonargparse/pull/977>`__).
 
 Changed
 ^^^^^^^
