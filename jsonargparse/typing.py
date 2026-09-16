@@ -9,7 +9,14 @@ import sys
 from collections.abc import Callable
 from typing import Any, TypeAlias, get_type_hints
 
-from ._common import ClassType, get_settings_logger, is_final_class, is_subclass, path_dump_preserve_relative
+from ._common import (
+    ClassType,
+    get_settings_logger,
+    get_unaliased_type,
+    is_final_class,
+    is_subclass,
+    path_dump_preserve_relative,
+)
 from ._namespace import Namespace
 from ._optionals import final, is_alias_type, pydantic_support
 from ._paths import Path, change_to_path_dir
@@ -705,11 +712,12 @@ register_type_on_first_use("pydantic.SecretStr", deserializer=pydantic_secret_st
 
 
 def is_secret_type(typehint) -> bool:
-    """Whether the type holds a secret, i.e. jsonargparse's or pydantic's ``SecretStr``."""
-    if typehint is SecretStr:
+    """Whether the type holds a secret, i.e. a subclass of jsonargparse's or pydantic's ``SecretStr``."""
+    typehint = get_unaliased_type(typehint)
+    if is_subclass(typehint, SecretStr):
         return True
-    return (
-        getattr(typehint, "__module__", "").startswith("pydantic") and getattr(typehint, "__name__", "") == "SecretStr"
+    return inspect.isclass(typehint) and any(
+        t.__module__.startswith("pydantic") and t.__name__ == "SecretStr" for t in inspect.getmro(typehint)
     )
 
 
