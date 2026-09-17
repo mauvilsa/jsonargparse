@@ -245,8 +245,8 @@ def extend_base_type(
     Raises:
         ValueError: If the type has already been registered with a different name.
     """
-    if register_key in registered_types:
-        registered_type = registered_types[register_key]
+    registered_type = None if register_key is None else registered_types.get(register_key)
+    if registered_type is not None:
         if registered_type.__name__ != name:
             raise ValueError(f"Same type already registered with a different name: {registered_type.__name__}.")
         return registered_type
@@ -411,8 +411,9 @@ def path_type(mode: str, docstring: str | None = None) -> TypeAlias:
     key_name = "path " + "".join(sorted(mode))
 
     register_key = (key_name, str)
-    if register_key in registered_types:
-        return registered_types[register_key]
+    registered_type = registered_types.get(register_key)
+    if registered_type is not None:
+        return registered_type
 
     class PathType(Path):
         _expression = name
