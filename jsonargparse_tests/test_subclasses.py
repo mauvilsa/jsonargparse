@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import textwrap
 import warnings
 from abc import ABC, abstractmethod
@@ -2585,6 +2586,35 @@ def test_subclass_multifile_save(parser, tmp_cwd):
     assert {"obj": "obj.yaml"} == json_or_yaml_load(out_main_cfg.read_text())
     obj = json_or_yaml_load(Path("out", "obj.yaml").read_text())
     assert obj == {"class_path": f"{__name__}.BaseC", "init_args": {"p": 0}}
+
+
+def test_subclass_class_path_module_next_to_config(parser, tmp_cwd):
+    parser.add_subclass_arguments(Calendar, "cal")
+
+    subdir = Path("sub")
+    subdir.mkdir()
+    (subdir / "sidecar_calendar.py").write_text(
+        textwrap.dedent(
+            """
+            from calendar import Calendar
+
+            class SidecarCalendar(Calendar):
+                def __init__(self, firstweekday: int = 3):
+                    super().__init__(firstweekday)
+            """
+        )
+    )
+    config_path = subdir / "config.yaml"
+    config_path.write_text(json_or_yaml_dump({"class_path": "sidecar_calendar.SidecarCalendar"}))
+
+    try:
+        cfg = parser.parse_args([f"--cal={config_path}"])
+        assert cfg.cal.class_path == "sidecar_calendar.SidecarCalendar"
+        assert cfg.cal.init_args == Namespace(firstweekday=3)
+        init = parser.instantiate(cfg)
+        assert init.cal.firstweekday == 3
+    finally:
+        sys.modules.pop("sidecar_calendar", None)
 
 
 # failure cases tests

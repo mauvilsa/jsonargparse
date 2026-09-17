@@ -17,8 +17,8 @@ from ._optionals import (
     url_support,
 )
 
+current_local_dir: ContextVar[str | None] = ContextVar("current_local_dir", default=None)
 _current_path_dir: ContextVar[str | None] = ContextVar("_current_path_dir", default=None)
-_initial_cwd: ContextVar[str | None] = ContextVar("_initial_cwd", default=None)
 _remote_relative_disabled: ContextVar[bool] = ContextVar("_remote_relative_disabled", default=False)
 
 
@@ -185,7 +185,7 @@ class Path:
                     is_fsspec = True
             else:
                 if cwd is None:
-                    cwd = os.getcwd()
+                    cwd = current_local_dir.get() or os.getcwd()
                 abs_path = abs_path if is_absolute else os.path.join(cwd, abs_path)
                 url_data = None
         else:
@@ -345,7 +345,7 @@ class Path:
     @contextmanager
     def relative_path_context(self) -> Iterator[str]:
         """Context manager to use this path's parent (directory or URL) for relative paths defined within."""
-        with change_to_path_dir(self) as path_dir:
+        with path_dir_context(self) as path_dir:
             assert isinstance(path_dir, str)
             yield path_dir
 
@@ -384,42 +384,42 @@ def disable_remote_relative_paths(disable: bool = True) -> Iterator[None]:
 
 
 @contextmanager
-def change_to_path_dir(path: Path | str | None) -> Iterator[str | None]:
-    """A context manager for running code in the directory of a path."""
+def path_dir_context(path: Path | None) -> Iterator[str | None]:
+    """A context manager to resolve relative paths with respect to the directory of a path.
+
+    The process working directory is not modified, so that concurrent parsing and
+    removal of the original directory are not a problem. For local directories,
+    the directory is prepended to ``sys.path``, such that modules next to a config
+    file can be imported, e.g. to resolve a ``class_path``.
+    """
+    local_dir = current_local_dir.get()
     path_dir = _current_path_dir.get()
-    chdir: bool | str = False
+    is_local = False
     if path is not None:
-        if isinstance(path, str):
-            path = Path(path, mode="d")
         if path._url_data and (path.is_url or path.is_fsspec):
             scheme = path._url_data.scheme
             path_dir = path._url_data.url_path
         else:
             scheme = ""
             path_dir = path.absolute
-            chdir = True
+            is_local = True
         if "d" not in path.mode:
             path_dir = os.path.dirname(path_dir)
         path_dir = scheme + path_dir
 
-    token = _current_path_dir.set(path_dir)
-    initial_cwd_token = None
-    if chdir and path_dir:
-        chdir = os.getcwd()
-        initial_cwd_token = _initial_cwd.set(_initial_cwd.get() or chdir)
-        path_dir = os.path.abspath(path_dir)
-        os.chdir(path_dir)
+    sys_path_dir = None
+    if is_local and path_dir:
+        path_dir = local_dir = os.path.abspath(path_dir)
+        if path_dir not in sys.path:
+            sys.path.insert(0, path_dir)
+            sys_path_dir = path_dir
 
+    token = _current_path_dir.set(path_dir)
+    local_token = current_local_dir.set(local_dir)
     try:
         yield path_dir
     finally:
+        current_local_dir.reset(local_token)
         _current_path_dir.reset(token)
-        if chdir:
-            os.chdir(chdir)
-        if initial_cwd_token is not None:
-            _initial_cwd.reset(initial_cwd_token)
-
-
-def get_initial_working_directory() -> str:
-    """Returns the working directory from before changing to the directories of config files."""
-    return _initial_cwd.get() or os.getcwd()
+        if sys_path_dir:
+            sys.path.remove(sys_path_dir)

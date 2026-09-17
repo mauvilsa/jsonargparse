@@ -19,7 +19,7 @@ from ._common import (
 )
 from ._namespace import Namespace
 from ._optionals import final, is_alias_type, pydantic_support
-from ._paths import Path, change_to_path_dir
+from ._paths import Path
 from ._util import ClassFromFunctionBase, get_import_path, import_object
 
 __all__ = [
@@ -421,8 +421,7 @@ def path_type(mode: str, docstring: str | None = None) -> TypeAlias:
 
         def __init__(self, v, **k):
             if isinstance(v, dict) and set(v) == {"cwd", "relative"}:
-                with change_to_path_dir(v["cwd"]):
-                    super().__init__(v["relative"], mode=self._mode, **k)
+                super().__init__(v["relative"], mode=self._mode, cwd=v["cwd"], **k)
             else:
                 super().__init__(v, mode=self._mode, **k)
 
