@@ -103,7 +103,7 @@ from ._optionals import (
     typing_extensions_import,
     validate_annotated,
 )
-from ._paths import Path, PathError, change_to_path_dir, disable_remote_relative_paths
+from ._paths import Path, PathError, disable_remote_relative_paths, path_dir_context
 from ._required import clear_required
 from ._subcommands import find_action, find_parent_action, parse_kwargs
 from ._type_checking import ArgumentParser
@@ -762,14 +762,14 @@ class ActionTypeHint(Action):
                     "logger": self.logger,
                 }
                 try:
-                    with load_config_path_context(config_path), change_to_path_dir(config_path):
+                    with load_config_path_context(config_path), path_dir_context(config_path):
                         val = adapt_typehints(val, self._typehint, **kwargs)
                 except ValueError as ex:
                     if orig_val == "-" and isinstance(getattr(ex, "parent", None), PathError):
                         raise ex
                     try:
                         if isinstance(orig_val, str):
-                            with load_config_path_context(config_path), change_to_path_dir(config_path):
+                            with load_config_path_context(config_path), path_dir_context(config_path):
                                 val = adapt_typehints(orig_val, self._typehint, default=self.default, **kwargs)
                             ex = None
                     except ValueError:
@@ -931,7 +931,7 @@ def adapt_subconfig_path(val, typehint, adapt_kwargs):
             subconfig = load_value(path.read_text())
     except get_loader_exceptions() as ex:
         raise_unexpected_value(f"Invalid content in sub-config file {val}: {ex}", exception=ex)
-    with load_config_path_context(path), change_to_path_dir(path):
+    with load_config_path_context(path), path_dir_context(path):
         val = adapt_typehints(subconfig, typehint, **adapt_kwargs)
     fill_provenance(val, ValueSource("config file", path, get_load_value_mode()))
     if isinstance(val, (Namespace, dict)):
@@ -1601,7 +1601,7 @@ def adapt_typehints(
                     adapt_kwargs_n = {**deepcopy(copied), **shared, "prev_val": prev_val[n]}
                 else:
                     adapt_kwargs_n = {**deepcopy(copied), **shared}
-                with change_to_path_dir(list_path):
+                with path_dir_context(list_path):
                     val[n] = adapt_typehints(v, subtypehints[0], **adapt_kwargs_n)
         if typehint_origin is deque:
             val = list(val) if serialize else deque(val)

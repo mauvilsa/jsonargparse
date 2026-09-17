@@ -46,6 +46,19 @@ Fixed
   completion. A config that has settings for both a subcommand name and one of
   its aliases now fails, instead of one of them being silently discarded (`#978
   <https://github.com/mauvilsa/jsonargparse/pull/978>`__).
+- Loading a config file failed if its directory was removed while loading, and
+  loading config files concurrently in threads resolved relative paths against
+  the wrong directory (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
+- Relative paths in a config file reached through a symlinked directory got the
+  symlink resolved (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
+- A parse error was masked by a ``FileNotFoundError`` when the working directory
+  had been removed while parsing (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
+- ``from_config`` failed to resolve ``import`` statements in a jsonnet config
+  given as a relative path with a directory, e.g. ``sub/config.jsonnet`` (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
 
 Changed
 ^^^^^^^
@@ -88,6 +101,9 @@ Changed
 - The ``comments`` flag of the print config argument is now always accepted and
   listed in the help, and fails with an informative error when ``ruamel.yaml``
   is not installed (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
+- Relative paths in config files are now resolved without changing the process
+  working directory (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
 
 Removed
 ^^^^^^^

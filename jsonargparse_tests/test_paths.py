@@ -4,7 +4,9 @@ import dataclasses
 import json
 import os
 import pathlib
+import shutil
 import stat
+import threading
 import zipfile
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -13,6 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from jsonargparse import ArgumentError, ArgumentParser, Namespace, set_parsing_settings
+from jsonargparse._common import parser_context
 from jsonargparse._optionals import fsspec_support, url_support
 from jsonargparse._paths import _current_path_dir, _parse_url
 from jsonargparse.typing import Path, Path_drw, Path_fc, Path_fr, SecretStr, path_type
@@ -583,6 +586,88 @@ def test_secret_in_union_relative_url_not_resolved_as_remote():
     assert "PASSWORD" == cfg.password.get_secret_value()
 
 
+# relative path context and working directory tests
+
+
+@pytest.mark.skipif(not is_posix, reason="symlinks not supported")
+def test_relative_path_context_keeps_symlinked_dir(tmp_cwd):
+    real_dir = tmp_cwd / "real"
+    real_dir.mkdir()
+    (real_dir / "file.txt").touch()
+    link_dir = tmp_cwd / "link"
+    link_dir.symlink_to(real_dir)
+
+    with Path_drw(link_dir).relative_path_context():
+        path = Path_fr("file.txt")
+
+    assert path.cwd == str(link_dir)
+    assert path.absolute == str(link_dir / "file.txt")
+
+
+@pytest.mark.skipif(not is_posix, reason="the working directory can't be removed in windows")
+def test_relative_path_context_cwd_removed(tmp_cwd):
+    removed_dir = tmp_cwd / "removed"
+    removed_dir.mkdir()
+    other_dir = tmp_cwd / "other"
+    other_dir.mkdir()
+    (other_dir / "file.txt").touch()
+    other_path = Path_drw(other_dir)
+
+    os.chdir(removed_dir)
+    try:
+        with other_path.relative_path_context():
+            shutil.rmtree(removed_dir)
+            path = Path_fr("file.txt")
+    finally:
+        os.chdir(tmp_cwd)
+
+    assert path.absolute == str(other_dir / "file.txt")
+
+
+def test_relative_path_context_threads(tmp_cwd):
+    subdirs = []
+    for name in ["one", "two"]:
+        subdir = tmp_cwd / name
+        subdir.mkdir()
+        (subdir / "file.txt").touch()
+        subdirs.append(subdir)
+
+    barrier = threading.Barrier(len(subdirs))
+    resolved = {}
+
+    def resolve(subdir):
+        with Path_drw(subdir).relative_path_context():
+            barrier.wait(timeout=10)
+            resolved[subdir.name] = Path_fr("file.txt").absolute
+
+    threads = [threading.Thread(target=resolve, args=(s,)) for s in subdirs]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert resolved == {s.name: str(s / "file.txt") for s in subdirs}
+
+
+@skip_if_fsspec_unavailable
+@patch_parsing_settings
+def test_relative_path_context_local_dir_kept_inside_remote(tmp_cwd):
+    """A path not resolved against the remote parent uses the closest local directory."""
+    set_parsing_settings(config_read_mode_fsspec_enabled=True)
+    subdir = tmp_cwd / "sub"
+    subdir.mkdir()
+    (subdir / "file.txt").touch()
+    with fsspec.open("memory://outer/inner/config.yaml", "w") as f:
+        f.write("data")
+
+    with Path_drw(subdir).relative_path_context():
+        with Path("memory://outer/inner/config.yaml", mode="fsr").relative_path_context():
+            path = Path_fr("file.txt")
+
+    assert path.cwd == str(subdir)
+    assert path.absolute == str(subdir / "file.txt")
+
+
 # path types tests
 
 
@@ -664,6 +749,45 @@ def test_path_dump(parser, tmp_cwd):
     parser.add_argument("--path", type=Path_fc)
     cfg = parser.parse_string(json_or_yaml_dump({"path": "path"}))
     assert json_or_yaml_load(parser.dump(cfg)) == {"path": "path"}
+
+
+def test_path_dump_preserve_relative_round_trip(parser, tmp_cwd):
+    subdir = tmp_cwd / "sub"
+    subdir.mkdir()
+    (subdir / "file.txt").touch()
+    (subdir / "config.yaml").write_text(json_or_yaml_dump({"path": "file.txt"}))
+
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--path", type=Path_fr)
+    cfg = parser.parse_args([f"--cfg={subdir / 'config.yaml'}"])
+    assert cfg.path.relative == "file.txt"
+
+    with parser_context(path_dump_preserve_relative=True):
+        dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump["path"] == {"relative": "file.txt", "cwd": str(subdir)}
+
+    assert parser.parse_object(dump).path.absolute == str(subdir / "file.txt")
+
+
+def test_path_dump_preserve_relative_load_cwd_removed(tmp_cwd):
+    removed_dir = tmp_cwd / "removed"
+    serialized = {"relative": "out.txt", "cwd": str(removed_dir)}
+
+    path = path_type("fcc")(serialized)
+    assert path.relative == "out.txt"
+    assert path.cwd == str(removed_dir)
+    assert path.absolute == str(removed_dir / "out.txt")
+
+
+@skip_if_fsspec_unavailable
+def test_path_dump_preserve_relative_load_fsspec_cwd():
+    with fsspec.open("memory://preserve/relative/file.txt", "w") as f:
+        f.write("content")
+
+    path = path_type("fsr")({"relative": "file.txt", "cwd": "memory://preserve/relative"})
+    assert path.relative == "file.txt"
+    assert path.absolute == "memory://preserve/relative/file.txt"
+    assert path.read_text() == "content"
 
 
 def test_paths_dump(parser, tmp_cwd):

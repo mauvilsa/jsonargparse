@@ -1,6 +1,7 @@
 """Code related to loading and dumping."""
 
 import inspect
+import os
 import re
 from argparse import HelpFormatter
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from ._optionals import (
     pyyaml_available,
     ruamel_support,
 )
+from ._paths import current_local_dir
 from ._type_checking import ArgumentParser
 
 __all__ = [
@@ -122,6 +124,10 @@ def jsonnet_load(stream, path="", ext_vars=None):
 
     ext_vars, ext_codes = ActionJsonnet.split_ext_vars(ext_vars)
     _jsonnet = import_jsonnet("jsonnet_load")
+    path_dir = current_local_dir.get()
+    if path_dir and not os.path.isabs(path):
+        # jsonnet resolves imports relative to the given file name, which path_dir already accounts for
+        path = os.path.join(path_dir, os.path.basename(path) or "snippet")
     try:
         val = _jsonnet.evaluate_snippet(path, stream, ext_vars=ext_vars, ext_codes=ext_codes)
     except RuntimeError:

@@ -21,7 +21,7 @@ from ._common import (
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._namespace import Namespace, ValueSource, copy_provenance, value_source_context
 from ._optionals import _get_config_read_mode, ruamel_support
-from ._paths import change_to_path_dir
+from ._paths import path_dir_context
 from ._type_checking import ArgumentParser
 from ._util import (
     Path,
@@ -316,7 +316,7 @@ class _ActionConfigLoad(Action):
             if not isinstance(cfg, (dict, Namespace)):
                 raise TypeError(f'Parser key "{self.dest}": Unable to load config "{value}"')
             source = None if cfg_path is None else ValueSource("config file", cfg_path, parser.parser_mode)
-            with load_config_path_context(cfg_path), change_to_path_dir(cfg_path), value_source_context(source):
+            with load_config_path_context(cfg_path), path_dir_context(cfg_path), value_source_context(source):
                 cfg = parser._apply_actions(cfg, parent_key=self.dest)
             return cfg
         except (SubclassesDisabledError, ImportDenied) as ex:

@@ -57,6 +57,12 @@ changes:
   ``None``; they remain required. Give such parameters an explicit default if
   optional is intended. Warns only with
   ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
+- **The working directory is no longer changed while loading configs.** Gives no
+  deprecation warning. Relative paths in a config file are still resolved with
+  respect to its directory, but without calling ``os.chdir``. Code that relied
+  on the working directory, e.g. a custom type that opens a relative path, must
+  instead use a path type such as :class:`.Path_fr`, which gives the resolved
+  absolute path.
 - **Configs can no longer import and instantiate anything.** See `Subclass specs
   and import paths`_ below.
 

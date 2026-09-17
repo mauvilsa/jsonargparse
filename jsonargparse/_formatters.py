@@ -362,12 +362,15 @@ def _describe_origin(origin) -> str:
     """For config files, the path relative to the working directory if inside it, so that it can be opened."""
     import pathlib
 
-    from ._paths import Path, get_initial_working_directory
+    from ._paths import Path
 
     if not isinstance(origin, Path) or origin.is_url or origin.is_fsspec:
         return str(origin)
     absolute = pathlib.Path(origin.absolute)
-    cwd = pathlib.Path(get_initial_working_directory())
+    try:
+        cwd = pathlib.Path.cwd()
+    except OSError:  # the working directory was removed, so the error must not be masked
+        return str(absolute)
     return str(absolute.relative_to(cwd) if absolute.is_relative_to(cwd) else absolute)
 
 

@@ -11,6 +11,7 @@ from jsonargparse import (
     ActionJsonSchema,
     ArgumentError,
     ArgumentParser,
+    FromConfigMixin,
 )
 from jsonargparse._optionals import jsonnet_support
 from jsonargparse_tests.conftest import (
@@ -128,6 +129,23 @@ def test_parser_mode_jsonnet_subconfigs(parser, tmp_cwd):
     cfg = parser.parse_args([f"--group={config_path}"])
     assert cfg.group.name == "Mike"
     assert cfg.group.prize == 80
+
+
+def test_parser_mode_jsonnet_from_config_relative_path(tmp_cwd):
+    class App(FromConfigMixin):
+        __from_config_parser_kwargs__ = {"parser_mode": "jsonnet"}
+
+        def __init__(self, name: str = "Lucky", prize: int = 100):
+            self.name = name
+            self.prize = prize
+
+    Path("conf").mkdir()
+    Path("conf", "name.libsonnet").write_text('"Mike"')
+    Path("conf", "test.jsonnet").write_text('local name = import "name.libsonnet"; {"name": name, "prize": 80}')
+
+    app = App.from_config(Path("conf", "test.jsonnet"))
+    assert app.name == "Mike"
+    assert app.prize == 80
 
 
 # test action jsonnet

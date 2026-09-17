@@ -77,7 +77,7 @@ from ._optionals import (
     pyyaml_available,
 )
 from ._parameter_resolvers import UnknownDefault
-from ._paths import change_to_path_dir
+from ._paths import path_dir_context
 from ._required import (
     iter_required_keys,
     restore_suppressed_required,
@@ -688,7 +688,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
         """
         fpath = Path(path, mode=_get_config_read_mode())
-        with load_config_path_context(fpath), change_to_path_dir(fpath):
+        with load_config_path_context(fpath), path_dir_context(fpath):
             content = fpath.read_text()
             parsed_cfg = self.parse_string(
                 content=content,
@@ -1038,7 +1038,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                             f.write(val.read_text())
                         cfg[key] = type(val)(str(val_path))
 
-            with change_to_path_dir(path_fc), parser_context(parent_parser=self):
+            with path_dir_context(path_fc), parser_context(parent_parser=self):
                 save_paths(cfg)
             dump_kwargs["skip_validation"] = True
             with open(path_fc.absolute, "w") as f:
@@ -1112,7 +1112,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         for default_config_file in default_config_files:
             with (
                 load_config_path_context(default_config_file),
-                change_to_path_dir(default_config_file),
+                path_dir_context(default_config_file),
                 parser_context(parent_parser=self, parsing_defaults=True),
             ):
                 default_config_file_content = default_config_file.read_text()
