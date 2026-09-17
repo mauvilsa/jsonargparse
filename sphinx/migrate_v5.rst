@@ -62,8 +62,7 @@ changes:
   respect to its directory, but without calling ``os.chdir``. Code that relied
   on the working directory, e.g. a custom type that opens a relative path, must
   instead use a path type such as :class:`.Path_fr`, which gives the resolved
-  absolute path. A ``class_path`` naming a module next to the config file keeps
-  working, since that directory is added to ``sys.path``.
+  absolute path.
 - **Configs can no longer import and instantiate anything.** See `Subclass specs
   and import paths`_ below.
 

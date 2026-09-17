@@ -53,6 +53,12 @@ Fixed
 - Relative paths in a config file reached through a symlinked directory got the
   symlink resolved (`#979
   <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
+- A parse error was masked by a ``FileNotFoundError`` when the working directory
+  had been removed while parsing (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
+- ``from_config`` failed to resolve ``import`` statements in a jsonnet config
+  given as a relative path with a directory, e.g. ``sub/config.jsonnet`` (`#979
+  <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
 
 Changed
 ^^^^^^^
@@ -96,9 +102,7 @@ Changed
   listed in the help, and fails with an informative error when ``ruamel.yaml``
   is not installed (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
 - Relative paths in config files are now resolved without changing the process
-  working directory. The directory of a config file being loaded is added to
-  ``sys.path``, so that modules next to it can be imported, e.g. to resolve a
-  ``class_path`` (`#979
+  working directory (`#979
   <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
 
 Removed

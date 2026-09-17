@@ -388,9 +388,7 @@ def path_dir_context(path: Path | None) -> Iterator[str | None]:
     """A context manager to resolve relative paths with respect to the directory of a path.
 
     The process working directory is not modified, so that concurrent parsing and
-    removal of the original directory are not a problem. For local directories,
-    the directory is prepended to ``sys.path``, such that modules next to a config
-    file can be imported, e.g. to resolve a ``class_path``.
+    removal of the original directory are not a problem.
     """
     local_dir = current_local_dir.get()
     path_dir = _current_path_dir.get()
@@ -407,12 +405,8 @@ def path_dir_context(path: Path | None) -> Iterator[str | None]:
             path_dir = os.path.dirname(path_dir)
         path_dir = scheme + path_dir
 
-    sys_path_dir = None
     if is_local and path_dir:
         path_dir = local_dir = os.path.abspath(path_dir)
-        if path_dir not in sys.path:
-            sys.path.insert(0, path_dir)
-            sys_path_dir = path_dir
 
     token = _current_path_dir.set(path_dir)
     local_token = current_local_dir.set(local_dir)
@@ -421,5 +415,3 @@ def path_dir_context(path: Path | None) -> Iterator[str | None]:
     finally:
         current_local_dir.reset(local_token)
         _current_path_dir.reset(token)
-        if sys_path_dir:
-            sys.path.remove(sys_path_dir)

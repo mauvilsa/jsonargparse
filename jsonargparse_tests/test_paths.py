@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
-import importlib
 import json
 import os
 import pathlib
 import shutil
 import stat
-import sys
 import threading
 import zipfile
 from io import StringIO
@@ -606,6 +604,7 @@ def test_relative_path_context_keeps_symlinked_dir(tmp_cwd):
     assert path.absolute == str(link_dir / "file.txt")
 
 
+@pytest.mark.skipif(not is_posix, reason="the working directory can't be removed in windows")
 def test_relative_path_context_cwd_removed(tmp_cwd):
     removed_dir = tmp_cwd / "removed"
     removed_dir.mkdir()
@@ -650,34 +649,6 @@ def test_relative_path_context_threads(tmp_cwd):
     assert resolved == {s.name: str(s / "file.txt") for s in subdirs}
 
 
-def test_relative_path_context_sys_path(tmp_cwd):
-    subdir = tmp_cwd / "sub"
-    subdir.mkdir()
-    (subdir / "sidecar_module.py").write_text("value = 3\n")
-
-    assert str(subdir) not in sys.path
-    try:
-        with Path_drw(subdir).relative_path_context():
-            assert sys.path[0] == str(subdir)
-            assert importlib.import_module("sidecar_module").value == 3
-    finally:
-        sys.modules.pop("sidecar_module", None)
-    assert str(subdir) not in sys.path
-
-
-def test_relative_path_context_sys_path_already_present(tmp_cwd):
-    subdir = tmp_cwd / "sub"
-    subdir.mkdir()
-
-    sys.path.insert(0, str(subdir))
-    try:
-        with Path_drw(subdir).relative_path_context():
-            assert sys.path.count(str(subdir)) == 1
-        assert sys.path.count(str(subdir)) == 1
-    finally:
-        sys.path.remove(str(subdir))
-
-
 @skip_if_fsspec_unavailable
 @patch_parsing_settings
 def test_relative_path_context_local_dir_kept_inside_remote(tmp_cwd):
@@ -695,13 +666,6 @@ def test_relative_path_context_local_dir_kept_inside_remote(tmp_cwd):
 
     assert path.cwd == str(subdir)
     assert path.absolute == str(subdir / "file.txt")
-
-
-@skip_if_requests_unavailable
-def test_relative_path_context_url_not_in_sys_path():
-    num_sys_path = len(sys.path)
-    with Path("http://example.com/nested/path/file.txt", mode="u").relative_path_context():
-        assert len(sys.path) == num_sys_path
 
 
 # path types tests

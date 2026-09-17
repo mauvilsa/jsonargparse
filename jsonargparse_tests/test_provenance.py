@@ -5,6 +5,7 @@ import dataclasses
 import json
 import os
 import pickle
+import shutil
 from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
@@ -19,6 +20,7 @@ from jsonargparse_tests.conftest import (
     get_parse_args_stderr,
     get_parse_args_stdout,
     get_parser_help,
+    is_posix,
     skip_if_no_pyyaml,
 )
 
@@ -558,6 +560,27 @@ def test_error_config_file_path_relative_to_working_directory(parser, tmp_cwd):
     Path("cfgs", "cfg.json").write_text('{"val": "abc"}')
     error = get_error(parser, ["--config=" + str(Path("cfgs", "cfg.json"))])
     assert error.endswith(f"\n  Source: config file {Path('cfgs', 'cfg.json')}")
+
+
+@pytest.mark.skipif(not is_posix, reason="the working directory can't be removed in windows")
+def test_error_config_file_path_working_directory_removed(parser, tmp_cwd):
+    """The parsing error must not be masked by the working directory having been removed."""
+    removed_dir = tmp_cwd / "removed"
+    removed_dir.mkdir()
+    Path("cfgs").mkdir()
+    Path("cfgs", "cfg.json").write_text('{"val": "abc"}')
+
+    def scratch_int(value):
+        shutil.rmtree(removed_dir)
+        return int(value)
+
+    parser.add_argument("--val", type=scratch_int, default=0)
+    os.chdir(removed_dir)
+    try:
+        error = get_error(parser, ["--config=" + str(tmp_cwd / "cfgs" / "cfg.json")])
+    finally:
+        os.chdir(tmp_cwd)
+    assert error.endswith(f"\n  Source: config file {tmp_cwd / 'cfgs' / 'cfg.json'}")
 
 
 def test_error_subconfig_file_path_relative_to_working_directory(parser, tmp_cwd):
