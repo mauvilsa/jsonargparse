@@ -105,8 +105,8 @@ Changed
   working directory (`#979
   <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
 - ``dict_kwargs`` in a subclass spec is now restricted to classes that have a
-  ``**kwargs`` the parameter resolvers are unable to resolve, which the help of
-  the class notes. For other classes, a ``dict_kwargs`` key that is not a
+  ``**kwargs`` the parameter resolvers are unable to resolve, which is noted in
+  the class help. For other classes, a ``dict_kwargs`` key that is not a
   parameter of the class fails, instead of being silently ignored or only
   noticed as a ``TypeError`` when the class is instantiated. Resolved parameters
   are meant to be given in ``init_args``, and the ``jsonschema`` completion type

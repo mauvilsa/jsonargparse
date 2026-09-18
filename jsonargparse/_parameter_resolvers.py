@@ -267,7 +267,7 @@ def remove_given_parameters(node, params, removed_params: set | None = None):
     given_args = set(ast_get_call_positional_indexes(node))
     given_kwargs = set(ast_get_call_keyword_names(node))
     input_params = params
-    params = [p for n, p in enumerate(params) if n not in given_args or p.kind is kinds.VAR_KEYWORD]
+    params = [p for n, p in enumerate(params) if n not in given_args or p.kind == kinds.VAR_KEYWORD]
     params = [p for p in params if p.name not in given_kwargs]
     if removed_params is not None and len(params) < len(input_params):
         removed_params.update(p.name for p in input_params if p.name in given_kwargs)
@@ -289,11 +289,11 @@ def get_unresolved_kwargs_param(component, parent) -> ParamData:
 
 def accepts_unresolved_kwargs(params: ParamList) -> bool:
     """Whether the parameters include an unresolved ``**kwargs``."""
-    return any(p.kind is kinds.VAR_KEYWORD for p in params)
+    return any(p.kind == kinds.VAR_KEYWORD for p in params)
 
 
 def remove_unresolved_kwargs(params: ParamList) -> ParamList:
-    return [p for p in params if p.kind is not kinds.VAR_KEYWORD]
+    return [p for p in params if p.kind != kinds.VAR_KEYWORD]
 
 
 def get_accepted_kwargs(params: ParamList) -> set[str] | Literal[True]:
