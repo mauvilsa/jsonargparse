@@ -68,6 +68,28 @@ def test_on_parse_subcommand_failing_compute_fn(parser, subparser, subtests):
         assert json_or_yaml_load(out) == {"a": 0}
 
 
+def test_on_parse_compute_fn_invalid_return_type(parser):
+    parser.add_argument("--a", type=int, default=0)
+    parser.add_argument("--b", type=str)
+    parser.link_arguments("a", "b", compute_fn=lambda v: v + 1)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([])
+    ctx.match(r"Invalid value for link '<lambda>\(a\) --> b'")
+    assert "Expected a <class 'str'>. Got value: 1" in str(ctx.value)
+
+
+def test_on_parse_compute_fn_invalid_subclass(parser):
+    parser.add_argument("--a", type=int, default=0)
+    parser.add_argument("--b", type=Model)
+    parser.link_arguments("a", "b", compute_fn=lambda v: v + 1)
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([])
+    ctx.match(r"Invalid value for link '<lambda>\(a\) --> b'")
+    assert "Not a valid subclass of Model. Got value: 1" in str(ctx.value)
+
+
 def test_on_parse_compute_fn_single_arguments(parser, subtests):
     def a_prod(a):
         return a["v1"] * a["v2"]
@@ -323,6 +345,32 @@ def test_on_parse_subclass_target_in_optional_list(parser):
     cfg = parser.parse_args(["--trainer.save_dir=logs", '--trainer.logger=["Logger", "Logger"]'])
     assert len(cfg.trainer.logger) == 2
     assert all(x.init_args == Namespace(save_dir="logs") for x in cfg.trainer.logger)
+
+
+class LinkedDefaultTarget:
+    def __init__(self, p1: int = 0, p2: str = "-"):
+        self.p1 = p1
+        self.p2 = p2
+
+
+def get_linked_default_parser(**init_args):
+    parser = ArgumentParser(exit_on_error=False)
+    parser.add_argument("--a", type=int, default=1)
+    parser.add_argument("--b", type=LinkedDefaultTarget, default=lazy_instance(LinkedDefaultTarget, **init_args))
+    parser.link_arguments("a", "b.init_args.p1")
+    return parser
+
+
+def test_on_parse_linked_init_arg_removed_from_default(subtests):
+    with subtests.test("other init args kept"):
+        parser = get_linked_default_parser(p1=2, p2="x")
+        expected = {"class_path": f"{__name__}.LinkedDefaultTarget", "init_args": {"p2": "x"}}
+        assert parser.get_default("b") == expected
+        assert parser.parse_args([]).b.init_args == Namespace(p1=1, p2="x")
+
+    with subtests.test("init args removed"):
+        parser = get_linked_default_parser(p1=2)
+        assert parser.get_default("b") == {"class_path": f"{__name__}.LinkedDefaultTarget"}
 
 
 class ClassF:
@@ -643,6 +691,86 @@ def test_on_instantiate_failing_compute_fn(parser):
     ctx.match("Call to compute_fn of link '_to_str_empty_error.*failed: value is empty")
 
 
+class IntSource:
+    def __init__(self, a: int = 0):
+        self.a = a
+
+
+class StrTarget:
+    def __init__(self, b: str = "-"):
+        self.b = b
+
+
+def test_on_instantiate_compute_fn_invalid_return_type(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_class_arguments(StrTarget, "c2")
+    parser.link_arguments("c1.a", "c2.b", compute_fn=lambda v: v + 1, apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    with pytest.raises(ValueError) as ctx:
+        parser.instantiate(cfg)
+    ctx.match(r"Invalid value for link '<lambda>\(c1.a\) --> c2.b': Expected a <class 'str'>")
+
+
+class StrAttributeSource:
+    def __init__(self, a: int = 0):
+        self.a = f"a={a}"
+
+
+def test_on_instantiate_link_invalid_source_attribute_type(parser):
+    parser.add_class_arguments(StrAttributeSource, "c1")
+    parser.add_class_arguments(IntSource, "c2")
+    parser.link_arguments("c1.a", "c2.a", apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    with pytest.raises(ValueError) as ctx:
+        parser.instantiate(cfg)
+    ctx.match(r"Invalid value for link 'c1.a --> c2.a': Expected a <class 'int'>")
+
+
+def test_on_instantiate_link_invalid_subclass(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_argument("--c2", type=StrTarget)
+    parser.link_arguments("c1.a", "c2", compute_fn=lambda v: v + 1, apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    with pytest.raises(ValueError) as ctx:
+        parser.instantiate(cfg)
+    ctx.match(r"Invalid value for link '<lambda>\(c1.a\) --> c2': Not a valid subclass of StrTarget. Got value: 1")
+
+
+def test_on_instantiate_link_entire_group(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_class_arguments(StrTarget, "c2")
+    parser.link_arguments("c1.a", "c2", compute_fn=lambda v: StrTarget(b=str(v)), apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.c2, StrTarget)
+    assert init.c2.b == "0"
+
+
+def test_on_instantiate_link_entire_group_invalid_type(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_class_arguments(StrTarget, "c2")
+    parser.link_arguments("c1.a", "c2", compute_fn=lambda v: v + 1, apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    with pytest.raises(ValueError) as ctx:
+        parser.instantiate(cfg)
+    ctx.match(r"Invalid value for link '<lambda>\(c1.a\) --> c2': Not a valid subclass of StrTarget")
+
+
+def test_on_instantiate_link_entire_group_not_instantiated(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_class_arguments(StrTarget, "c2", instantiate=False)
+    parser.link_arguments("c1.a", "c2", compute_fn=lambda v: Namespace(b=str(v)), apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    init = parser.instantiate(cfg)
+    assert init.c2 == Namespace(b="0")
+
+
 def test_on_instantiate_link_from_subclass_with_compute_fn():
     parser = get_parser_subclasses_link_on_instantiate()
     cfg = parser.parse_args(
@@ -651,6 +779,7 @@ def test_on_instantiate_link_from_subclass_with_compute_fn():
             f"--y={__name__}.ClassY",
         ]
     )
+    assert cfg.x.init_args == Namespace(x2=2.3)  # x1 not included since it is a link target
     init = parser.instantiate(cfg)
     assert init.x.x1 == 6
 

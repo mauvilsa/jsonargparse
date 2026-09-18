@@ -59,6 +59,18 @@ Fixed
 - ``from_config`` failed to resolve ``import`` statements in a jsonnet config
   given as a relative path with a directory, e.g. ``sub/config.jsonnet`` (`#979
   <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
+- Links applied on instantiate not validating the type of the value set on the
+  target (`#982 <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
+- Type errors for values set by links not identifying the link (`#982
+  <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
+- ``link_arguments`` raising ``AttributeError`` when the target is a class group
+  added with ``instantiate=False`` (`#982
+  <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
+- Required ``init_args`` parameters that are the target of a link included in
+  the parsed namespace with a ``None`` value (`#982
+  <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
+- Value of a link target not removed from a given default (`#982
+  <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
 
 Changed
 ^^^^^^^

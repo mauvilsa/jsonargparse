@@ -2825,6 +2825,10 @@ There are two types of links, ``apply_on='parse'`` and
 ``apply_on='instantiate'``. As the names say, the first are applied by the parse
 methods and the second by :meth:`instantiate <.ArgumentParser.instantiate>`.
 
+Since the value of a target comes from its link, a required ``init_args``
+parameter that is a target is not included in the parsed namespace, and a value
+given for a target in a default is removed.
+
 Applied on parse
 ----------------
 
@@ -2885,7 +2889,9 @@ For instantiate links, the sources can be class groups (added with
 :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>`) or subclass
 arguments (see :ref:`sub-classes`). The source key is the instantiated object
 itself or one of its attributes. The target key must be a single argument, and
-can be inside the ``init_args`` of a subclass. :meth:`instantiate
+can be inside the ``init_args`` of a subclass. The value set on the target is
+validated against its type, except for targets inside ``init_args``, which are
+validated when the subclass is instantiated. :meth:`instantiate
 <.ArgumentParser.instantiate>` determines the instantiation order from the
 links, so all instantiate links together must form a directed acyclic graph. For
 example:
