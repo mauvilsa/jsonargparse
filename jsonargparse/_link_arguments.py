@@ -22,6 +22,7 @@ from ._parameter_resolvers import get_signature_parameters
 from ._required import clear_required
 from ._subcommands import (
     ActionSubCommands,
+    find_action,
     find_parent_action,
     find_parent_action_and_subcommand,
     get_subcommand,
@@ -95,6 +96,44 @@ class DirectedGraph:
         except CycleError as ex:
             cycle = " --> ".join(str(node) for node in reversed(ex.args[1]))
             raise ValueError(f"Graph has cycles, found while checking {cycle}") from ex
+
+
+def get_target_subclass_spec(action: "ActionLink", cfg: Namespace) -> Namespace | None:
+    """Returns the subclass spec that holds the target init arg of a link.
+
+    None is returned when the subclass currently in the config does not have the target
+    parameter. Required init args that are targets of links are not in the parsed
+    namespace, so a missing target key does not mean that the subclass lacks it.
+    """
+    from ._typehints import ActionTypeHint, is_subclass_spec
+
+    target_key, target_action = action.target
+    assert target_action
+    parent_key, param = target_key.rsplit(".init_args.", 1)
+    spec: Any = cfg
+    for subkey in split_key(parent_key):  # not cfg[parent_key], since the spec can be inside a mapping
+        if not isinstance(spec, (Namespace, dict)):
+            return None
+        spec = spec.get(subkey)
+    if not is_subclass_spec(spec):
+        return None
+    sub_add_kwargs = getattr(target_action, "sub_add_kwargs", {}) if parent_key == target_action.dest else {}
+    with parser_context(parent_parser=action.parser, nested_links=[]):
+        parser = ActionTypeHint.get_class_parser(spec["class_path"], sub_add_kwargs)
+    return spec if find_action(parser, param) else None
+
+
+def discard_default_init_arg(action: ArgparseAction, init_arg: str) -> None:
+    """Removes from the default of a subclass action an init arg that a link sets."""
+    from ._typehints import is_subclass_spec
+
+    default = action.default
+    if not is_subclass_spec(default) or "init_args" not in default:
+        return
+    init_args = default["init_args"]
+    init_args.pop(init_arg, None)
+    if not init_args:
+        del default["init_args"]
 
 
 class ActionLink(Action):
@@ -184,6 +223,7 @@ class ActionLink(Action):
                 sub_add_kwargs["linked_targets"] = set()
             subtarget = target.split(".init_args.", 1)[1]
             sub_add_kwargs["linked_targets"].add(subtarget)
+            discard_default_init_arg(self.target[1], subtarget)  # type: ignore[arg-type]
 
         # Add link action to group to show in help
         parser._links_group._group_actions.append(self)
@@ -262,7 +302,11 @@ class ActionLink(Action):
         raise TypeError(f'Linked "{self.target[0]}" must be given via "{source}".')
 
     def _check_type(self, value, cfg=None):
-        return self.parser._check_value_key(self.target[1], value, self.target[0], cfg)
+        try:
+            return self.parser._check_value_key(self.target[1], value, self.target[0], cfg)
+        except (TypeError, ValueError) as ex:
+            link = self.option_strings[0]
+            raise type(ex)(f"Invalid value for link '{link}': {ex}") from ex
 
     def call_compute_fn(self, args):
         try:
@@ -272,6 +316,25 @@ class ActionLink(Action):
             link = self.option_strings[0]
             args = ", ".join(str(a) for a in args)
             raise ValueError(f"Call to compute_fn of link '{link}' with args ({args}) failed: {ex}") from ex
+
+    def validate_value(self, value) -> None:
+        from ._core import ArgumentGroup
+        from ._typehints import ActionTypeHint, adapt_typehints
+
+        # no type hint to validate against, e.g. subclass init args are validated on instantiation
+        if self.type is None or not isinstance(self.target[1], (ActionTypeHint, ArgumentGroup)):
+            return
+        try:
+            with parser_context(parent_parser=self.parser):
+                adapt_typehints(
+                    value,
+                    self.type,
+                    sub_add_kwargs=getattr(self.target[1], "sub_add_kwargs", {}),
+                    logger=self.parser.logger,
+                )
+        except Exception as ex:
+            link = self.option_strings[0]
+            raise ValueError(f"Invalid value for link '{link}': {ex}") from ex
 
     @staticmethod
     def apply_parsing_links(parser: ArgumentParser, cfg: Namespace) -> None:
@@ -365,6 +428,7 @@ class ActionLink(Action):
                 value = source_objects[0]
             else:
                 value = action.call_compute_fn(source_objects)
+            action.validate_value(value)
             ActionLink.set_target_value(action, value, cfg, parser.logger)
             action.applied_value = value
             applied_links.add(action)
@@ -395,7 +459,8 @@ class ActionLink(Action):
 
         if ActionTypeHint.is_subclass_typehint(target_action, all_subtypes=False, also_lists=True):
             if target_key == target_action.dest:
-                target_action._check_type(value)  # type: ignore[union-attr]
+                if action.apply_on == "parse":  # instantiate links are checked by validate_value
+                    action._check_type(value)
             else:
                 assert isinstance(target_action.dest, str)
                 parent = cfg.get(target_action.dest)
@@ -406,7 +471,12 @@ class ActionLink(Action):
                             item[child_key] = value
                     return
                 if target_key not in cfg:
-                    logger.debug(f"Link '{action.option_strings[0]}' ignored since target not found.")
+                    spec = get_target_subclass_spec(action, cfg)
+                    if spec is None:
+                        logger.debug(f"Link '{action.option_strings[0]}' ignored since target not found.")
+                        return
+                    # set in the spec, since the path to it can go through a mapping
+                    spec[f"init_args.{target_key.rsplit('.init_args.', 1)[1]}"] = value
                     return
         cfg[target_key] = value
 

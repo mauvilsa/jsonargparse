@@ -259,6 +259,7 @@ class ArgumentGroup(ActionsContainer, argparse._ArgumentGroup):
     """Extension of argparse._ArgumentGroup to support additional functionalities."""
 
     dest: str | None = None
+    group_class: type | None = None
     parser: "ArgumentParser | ActionsContainer | None" = None
 
 

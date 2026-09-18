@@ -429,7 +429,8 @@ class SignatureArguments(LoggerProperty):
             annotation = Untyped
         is_required_link_target = False
         if is_required and linked_targets is not None and name in linked_targets:
-            default = None
+            # a dataclass-like type is added as a group, which requires a default to expand
+            default = None if is_subclasses_disabled(annotation) else SUPPRESS
             is_required = False
             is_required_link_target = True
             self.logger.debug(
