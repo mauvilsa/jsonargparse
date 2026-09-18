@@ -6,7 +6,7 @@ import sys
 import xml.dom
 from functools import partialmethod
 from random import shuffle
-from typing import Any, Callable, Dict, List, Optional, Protocol, Union
+from typing import Any, Callable, Dict, List, Optional, Protocol, TypedDict, Union
 from unittest.mock import patch
 
 import pytest
@@ -16,10 +16,12 @@ from jsonargparse._optionals import docstring_parser_support
 from jsonargparse._parameter_resolvers import (
     ConditionalDefault,
     ParamData,
+    accepts_unresolved_kwargs,
     is_lambda,
     is_param_subclass_instance_default,
 )
 from jsonargparse._parameter_resolvers import get_signature_parameters as get_params
+from jsonargparse._typehints import Unpack
 from jsonargparse_tests.conftest import BaseClass, capture_logs, source_unavailable, wrap_fn
 
 
@@ -1120,6 +1122,79 @@ def test_get_params_non_existent_call(logger):
     with capture_logs(logger) as logs:
         assert [] == get_params(function_with_bug, logger=logger)
     assert "does_not_exist" in logs.getvalue()
+
+
+# unresolved kwargs tests
+
+
+def accepts_extra_kwargs(component) -> bool:
+    return accepts_unresolved_kwargs(get_params(component, include_var_keyword=True))
+
+
+if Unpack:
+    UnpackParams = TypedDict("UnpackParams", {"ku1": int})
+
+    class ClassUnpackTypedDict:
+        def __init__(self, *args, **kwargs: Unpack[UnpackParams]):
+            self.args = args  # pragma: no cover
+
+
+class ClassExtraPositionals:
+    def __init__(self, ke1: int = 1, *args, **kwargs):
+        self.args = args  # pragma: no cover
+
+
+def function_extra_positionals(**kwargs):  # pragma: no cover
+    return ClassExtraPositionals(1, 2, 3, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        ClassA,  # kwargs not used
+        ClassB,  # kwargs forwarded to a class that accepts extra kwargs
+        ClassU1,  # unsupported type of assign
+        ClassU2,  # kwargs given as keyword parameter
+        ClassU3,  # unsupported super call
+        ClassU4,  # self attribute not used in members
+        ClassU5,  # kwargs attribute given as keyword parameter
+        ClassExtraPositionals,  # kwargs not used
+        function_unsupported_component,  # call to a component that can't be determined
+        function_with_bug,  # call to a name that does not exist
+        function_extra_positionals,  # call with more positionals than the resolved parameters
+    ],
+)
+def test_accepts_extra_kwargs_true(component):
+    assert accepts_extra_kwargs(component) is True
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        ClassE1,  # kwargs used in an attribute forwarded to a function without kwargs
+        ClassG,  # kwargs used in methods without kwargs
+        ClassM1,  # no kwargs in the signature
+        ClassP,  # kwargs used in a property
+        conditional_calls,  # kwargs forwarded to functions without kwargs
+        func_given_kwargs,  # kwargs forwarded to a function without kwargs
+        function_no_args_no_kwargs,  # no kwargs in the signature
+        function_pop_get_from_kwargs,  # kwargs only popped and forwarded to a function without kwargs
+        function_with_kwargs,  # kwargs forwarded to a function without kwargs
+    ],
+)
+def test_accepts_extra_kwargs_false(component):
+    assert accepts_extra_kwargs(component) is False
+
+
+@pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
+def test_accepts_extra_kwargs_unpack_typed_dict():
+    assert accepts_extra_kwargs(ClassUnpackTypedDict) is False
+
+
+def test_accepts_extra_kwargs_from_assumptions():
+    with source_unavailable():
+        assert accepts_extra_kwargs(ClassA) is True
+        assert accepts_extra_kwargs(ClassM1) is False
 
 
 # failure cases

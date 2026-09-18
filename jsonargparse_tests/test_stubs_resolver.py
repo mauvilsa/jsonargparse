@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from email.headerregistry import DateHeader
 from importlib.util import find_spec
 from ipaddress import ip_network
+from json import dumps as json_dumps
 from random import Random, SystemRandom, uniform
 from tarfile import TarFile
 from time import localtime, struct_time
@@ -19,6 +20,7 @@ from uuid import UUID, uuid5
 import pytest
 
 from jsonargparse import ArgumentError, set_parsing_settings
+from jsonargparse._parameter_resolvers import accepts_unresolved_kwargs
 from jsonargparse._parameter_resolvers import get_signature_parameters as get_params
 from jsonargparse._stubs_resolver import get_arg_type, get_mro_method_parent, get_stubs_resolver
 from jsonargparse_tests.conftest import (
@@ -316,6 +318,13 @@ def test_get_params_inspect_signature_failure_function(logger):
     assert params == []
     assert "get_parameters_from_ast failed" in logs.getvalue()
     assert "get_parameters_by_assumptions failed" in logs.getvalue()
+
+
+def test_get_params_inspect_signature_failure_var_keyword():
+    with inspect_signature_failure(json_dumps):
+        params = get_params(json_dumps, include_var_keyword=True)
+    assert "obj" == params[0].name
+    assert accepts_unresolved_kwargs(params)
 
 
 def test_get_params_inspect_signature_failure_method(logger):

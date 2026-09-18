@@ -1533,6 +1533,10 @@ def test_subclass_unresolved_parameters(parser, subtests):
         data = json_or_yaml_load(out)["cls"]
         assert data == expected.as_dict()
 
+    with subtests.test("help notes that dict_kwargs is accepted"):
+        help_str = get_parse_args_stdout(parser, [f"--cls.help={__name__}.UnresolvedParams"])
+        assert "Extra keyword arguments are accepted through dict_kwargs." in help_str
+
     with subtests.test("invalid dict_kwargs"):
         with pytest.raises(ArgumentError):
             parser.parse_args(["--cls=UnresolvedParams", "--cls.dict_kwargs=1"])
@@ -1554,6 +1558,59 @@ def test_subclass_unresolved_parameters_name_clash(parser):
     cfg = parser.parse_args(args)
     assert cfg.cls.init_args.as_dict() == {"dict_kwargs": 2}
     assert cfg.cls.dict_kwargs == {"p1": 3}
+
+
+class ResolvedParams:
+    def __init__(self, p1: int = 1, **kwargs):
+        resolved_params_target(**kwargs)  # pragma: no cover
+
+
+def resolved_params_target(p2: str = "2"):
+    pass  # pragma: no cover
+
+
+dict_kwargs_not_accepted = (
+    f"{__name__}.ResolvedParams does not have an unresolved "
+    r"\*\*kwargs, thus dict_kwargs only accepts keys that are parameters of its signature. Unexpected keys: "
+)
+
+
+def test_subclass_dict_kwargs_not_accepted(parser, subtests, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--cls", type=ResolvedParams)
+
+    with subtests.test("resolved kwargs given in dict_kwargs are moved to init_args"):
+        cfg = parser.parse_args([f"--cls={__name__}.ResolvedParams", "--cls.dict_kwargs.p2=x"])
+        assert cfg.cls.init_args == Namespace(p1=1, p2="x")
+        assert "dict_kwargs" not in cfg.cls
+
+    with subtests.test("args"):
+        with pytest.raises(ArgumentError, match=dict_kwargs_not_accepted + "p9"):
+            parser.parse_args([f"--cls={__name__}.ResolvedParams", "--cls.dict_kwargs.p9=1"])
+
+    with subtests.test("config"):
+        # more than one unexpected key is listed in the order given
+        config = {"cls": {"class_path": f"{__name__}.ResolvedParams", "dict_kwargs": {"p9": 1, "p8": 2}}}
+        Path("config.yaml").write_text(json_or_yaml_dump(config))
+        with pytest.raises(ArgumentError, match=dict_kwargs_not_accepted + r"\{p9,p8\}"):
+            parser.parse_args(["--cfg=config.yaml"])
+
+    with subtests.test("help does not note that dict_kwargs is accepted"):
+        help_str = get_parse_args_stdout(parser, [f"--cls.help={__name__}.ResolvedParams"])
+        assert "dict_kwargs" not in help_str
+
+
+def test_subclass_dict_kwargs_skipped_parameter(parser):
+    parser.add_subclass_arguments(ResolvedParams, "cls", skip={"p1"})
+
+    value = {"class_path": f"{__name__}.ResolvedParams", "dict_kwargs": {"p1": 3}}
+    cfg = parser.parse_args([f"--cls={json.dumps(value)}"])
+    assert cfg.cls.init_args == Namespace(p2="2")
+    assert cfg.cls.dict_kwargs == {"p1": 3}
+
+    value["dict_kwargs"]["p9"] = 4
+    with pytest.raises(ArgumentError, match=dict_kwargs_not_accepted + "p9"):
+        parser.parse_args([f"--cls={json.dumps(value)}"])
 
 
 # add_subclass_arguments tests

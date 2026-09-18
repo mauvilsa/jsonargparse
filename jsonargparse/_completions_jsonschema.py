@@ -544,14 +544,12 @@ class ParserJsonschema:
 
     def class_path_schema(self, class_path: str, action) -> dict:
         schema = new_object(get_doc_short_description(import_object(class_path)))
-        init_args_schema = self.class_parser_schema(class_path, action)
-        schema["properties"].update(
-            {
-                "class_path": {"const": class_path},
-                "init_args": init_args_schema,
-                "dict_kwargs": {"type": "object"},
-            }
-        )
+        class_parser = self.get_class_parser(class_path, action)
+        init_args_schema = {"type": "object"} if class_parser is None else self.parser_schema(class_parser)
+        schema["properties"].update({"class_path": {"const": class_path}, "init_args": init_args_schema})
+        # resolved parameters are only described in init_args, even though parsing also takes them from dict_kwargs
+        if class_parser is None or class_parser._accepted_kwargs[None] is True:
+            schema["properties"]["dict_kwargs"] = {"type": "object"}
         # init_args can only be omitted when none of the init parameters is required
         schema["required"] = ["class_path"] + (["init_args"] if init_args_schema.get("required") else [])
         return schema
@@ -569,14 +567,22 @@ class ParserJsonschema:
         schema["required"] = ["class_path"]
         return schema
 
-    def class_parser_schema(self, class_type, action, description: Optional[str] = None) -> dict:
+    def get_class_parser(self, class_type, action):
         sub_add_kwargs = dict(getattr(action, "sub_add_kwargs", None) or {})
         sub_add_kwargs.pop("linked_targets", None)
         try:
-            class_parser = ActionTypeHint.get_class_parser(class_type, sub_add_kwargs=sub_add_kwargs)
+            return ActionTypeHint.get_class_parser(class_type, sub_add_kwargs=sub_add_kwargs)
         except Exception as ex:
             action.logger.debug(f"Unable to get schema for init args of '{class_type}': {ex}")
-            return {"type": "object"}
+            return None
+
+    def parser_schema(self, parser, description: Optional[str] = None) -> dict:
         schema = new_object(description)
-        self.add_properties(class_parser, schema)
+        self.add_properties(parser, schema)
         return schema
+
+    def class_parser_schema(self, class_type, action, description: Optional[str] = None) -> dict:
+        class_parser = self.get_class_parser(class_type, action)
+        if class_parser is None:
+            return {"type": "object"}
+        return self.parser_schema(class_parser, description)

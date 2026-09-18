@@ -44,6 +44,7 @@ from jsonargparse.typing import (
     Email,
     Path_fr,
     PositiveInt,
+    final,
     register_type,
     restricted_number_type,
 )
@@ -566,7 +567,7 @@ def test_subclass_type(parser):
     for entry in entries.values():
         assert entry["type"] == "object"
         assert entry["additionalProperties"] is False
-        assert entry["properties"]["dict_kwargs"] == {"type": "object"}
+        assert "dict_kwargs" not in entry["properties"]  # all init parameters are resolved
     init_args = {path: entry["properties"]["init_args"] for path, entry in entries.items()}
     assert set(config_properties(init_args[base_paths[0]])) == {"base"}
     assert set(config_properties(init_args[base_paths[1]])) == {"sub"}
@@ -612,7 +613,6 @@ def test_subclass_type_validation(parser):
     # all forms that the parser accepts
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"sub": 2}}})
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub"}})
-    validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "dict_kwargs": {"extra": 1}}})
     validate(schema, {"cls": f"{__name__}.Sub"})
     validate(schema, {"cls": "Sub"})
     validate(schema, {"cls": "sub_config.yaml"})
@@ -620,9 +620,54 @@ def test_subclass_type_validation(parser):
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"flag": True}}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.RequiredSub"}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "bogus": 1}})
+    assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "dict_kwargs": {"extra": 1}}})
     assert iter_errors(schema, {"cls": {"init_args": {"sub": 2}}})
     # stricter than the parser, so that the known subclasses are suggested and validated
     assert iter_errors(schema, {"cls": {"class_path": "not_imported.Class", "init_args": {"anything": 1}}})
+
+
+class ResolvedKwargs:
+    def __init__(self, p1: int = 1, **kwargs):
+        resolved_kwargs_target(**kwargs)  # pragma: no cover
+
+
+def resolved_kwargs_target(p2: str = "2"):
+    pass  # pragma: no cover
+
+
+class UnresolvedKwargs:
+    def __init__(self, p1: int = 1, **kwargs):
+        pass  # pragma: no cover
+
+
+def test_subclass_dict_kwargs_excluded_when_resolved(parser):
+    parser.add_argument("--cls", type=ResolvedKwargs)
+    entry = class_path_entries(get_schema(parser)["$defs"]["ResolvedKwargs"])[f"{__name__}.ResolvedKwargs"]
+    assert set(config_properties(entry)) == {"class_path", "init_args"}
+    assert set(config_properties(entry["properties"]["init_args"])) == {"p1", "p2"}
+
+
+def test_subclass_dict_kwargs_excluded_for_skipped_parameter(parser):
+    # parsing accepts p1 in dict_kwargs, but the schema only describes what init_args accepts
+    parser.add_subclass_arguments(ResolvedKwargs, "cls", skip={"p1"})
+    entry = class_path_entries(get_schema(parser)["$defs"]["ResolvedKwargs"])[f"{__name__}.ResolvedKwargs"]
+    assert set(config_properties(entry)) == {"class_path", "init_args"}
+    assert set(config_properties(entry["properties"]["init_args"])) == {"p2"}
+
+
+def test_subclass_dict_kwargs_any_key_when_unresolved(parser):
+    parser.add_argument("--cls", type=UnresolvedKwargs)
+    entry = class_path_entries(get_schema(parser)["$defs"]["UnresolvedKwargs"])[f"{__name__}.UnresolvedKwargs"]
+    assert entry["properties"]["dict_kwargs"] == {"type": "object"}
+
+
+@skip_if_jsonschema_unavailable
+def test_subclass_dict_kwargs_validation(parser):
+    parser.add_argument("--cls", type=Union[ResolvedKwargs, UnresolvedKwargs])
+    schema = get_schema(parser)
+    validate(schema, {"cls": {"class_path": f"{__name__}.ResolvedKwargs", "init_args": {"p2": "x"}}})
+    validate(schema, {"cls": {"class_path": f"{__name__}.UnresolvedKwargs", "dict_kwargs": {"extra": 1}}})
+    assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.ResolvedKwargs", "dict_kwargs": {"p2": "x"}}})
 
 
 def test_defs_discarded_when_unreachable(parser):
@@ -935,6 +980,22 @@ def test_class_without_resolvable_init_args(logger):
     with capture_logs(logger) as logs:
         entries = class_path_entries(get_schema(parser)["$defs"]["UntypedBase"])
     assert entries[f"{__name__}.UntypedSub"]["properties"]["init_args"] == {"type": "object"}
+    assert entries[f"{__name__}.UntypedSub"]["properties"]["dict_kwargs"] == {"type": "object"}
+    assert "Unable to get schema for init args" in logs.getvalue()
+
+
+@final
+class UntypedFinal:
+    def __init__(self, param, num: int = 1):  # untyped required param, so a parser for the init args fails
+        pass  # pragma: no cover
+
+
+def test_closed_class_without_resolvable_init_args(logger):
+    parser = ArgumentParser(exit_on_error=False, logger=logger)
+    parser.add_argument("--cls", type=Optional[UntypedFinal])  # optional, so the class is not added as a group
+    with capture_logs(logger) as logs:
+        schema = get_schema(parser)
+    assert schema["$defs"]["UntypedFinal"] == {"type": "object"}
     assert "Unable to get schema for init args" in logs.getvalue()
 
 

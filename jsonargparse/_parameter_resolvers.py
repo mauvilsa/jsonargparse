@@ -12,7 +12,7 @@ from copy import deepcopy
 from functools import partial, partialmethod
 from importlib import import_module
 from types import MethodType
-from typing import Any, Union
+from typing import Any, Literal, Union
 
 from ._common import (
     LoggerProperty,
@@ -267,7 +267,7 @@ def remove_given_parameters(node, params, removed_params: set | None = None):
     given_args = set(ast_get_call_positional_indexes(node))
     given_kwargs = set(ast_get_call_keyword_names(node))
     input_params = params
-    params = [p for n, p in enumerate(params) if n not in given_args]
+    params = [p for n, p in enumerate(params) if n not in given_args or p.kind is kinds.VAR_KEYWORD]
     params = [p for p in params if p.name not in given_kwargs]
     if removed_params is not None and len(params) < len(input_params):
         removed_params.update(p.name for p in input_params if p.name in given_kwargs)
@@ -276,6 +276,31 @@ def remove_given_parameters(node, params, removed_params: set | None = None):
 
 def get_arg_kind_index(params, kind):
     return next((n for n, p in enumerate(params) if p.kind == kind), -1)
+
+
+def get_unresolved_kwargs_param(component, parent) -> ParamData:
+    """Parameter that stands for a ``**kwargs`` that the resolvers were unable to resolve.
+
+    Its presence means that keyword arguments other than the resolved ones are accepted. The name
+    is not a valid identifier so that it can't collide with a real parameter.
+    """
+    return ParamData(name="**", annotation=inspect._empty, kind=kinds.VAR_KEYWORD, component=component, parent=parent)
+
+
+def accepts_unresolved_kwargs(params: ParamList) -> bool:
+    """Whether the parameters include an unresolved ``**kwargs``."""
+    return any(p.kind is kinds.VAR_KEYWORD for p in params)
+
+
+def remove_unresolved_kwargs(params: ParamList) -> ParamList:
+    return [p for p in params if p.kind is not kinds.VAR_KEYWORD]
+
+
+def get_accepted_kwargs(params: ParamList) -> set[str] | Literal[True]:
+    """Names of the keyword arguments accepted, or True when any name is accepted."""
+    if accepts_unresolved_kwargs(params):
+        return True
+    return {n for p in params for n in (p.name, *(p.aliases or ()))}
 
 
 def get_signature_parameters_and_indexes(component, parent, logger):
@@ -436,7 +461,7 @@ def is_param_subclass_instance_default(param: ParamData) -> bool:
 
 def split_args_and_kwargs(params: ParamList) -> tuple[ParamList, ParamList]:
     args = [p for p in params if p.kind == kinds.POSITIONAL_ONLY]
-    kwargs = [p for p in params if p.kind in {kinds.KEYWORD_ONLY, kinds.POSITIONAL_OR_KEYWORD}]
+    kwargs = [p for p in params if p.kind in {kinds.KEYWORD_ONLY, kinds.POSITIONAL_OR_KEYWORD, kinds.VAR_KEYWORD}]
     return args, kwargs
 
 
@@ -757,7 +782,9 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                     get_param_args = self.get_node_component(node, source)
                     if get_param_args:
                         try:
-                            params = get_signature_parameters(*get_param_args, logger=self.logger)
+                            params = get_signature_parameters(
+                                *get_param_args, logger=self.logger, include_var_keyword=True
+                            )
                         except Exception:
                             self.log_debug(f"failed to get parameters for call that uses attr: {get_param_args}")
             params = remove_given_parameters(node, params)
@@ -835,10 +862,11 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
             origin=param_kwargs_pop_or_get + self.get_node_origin(node),
         )
 
-    def get_parameters_args_and_kwargs(self) -> tuple[ParamList, ParamList]:
+    def get_parameters_args_and_kwargs(self, kwargs_idx: int) -> tuple[ParamList, ParamList]:
         self.parse_source_tree()
         args_name = getattr(self.component_node.args.vararg, "arg", None)
-        kwargs_name = getattr(self.component_node.args.kwarg, "arg", None)
+        # kwargs_idx is negative when the **kwargs was already replaced, i.e. an Unpack[TypedDict]
+        kwargs_name = getattr(self.component_node.args.kwarg, "arg", None) if kwargs_idx >= 0 else None
         values_to_find = {}
         if args_name:
             values_to_find[args_name] = ast_variable_load(args_name)
@@ -846,15 +874,17 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
             values_to_find[kwargs_name] = ast_variable_load(kwargs_name)
 
         values_found = self.find_values_usage(values_to_find)
-        if not values_found:
-            return [], []
+        kwargs_uses = [(v, s) for k, v, s in values_found if k == kwargs_name] if kwargs_name else []
+        # a **kwargs not used in the body is discarded by the component, but still accepted
+        kwargs_unresolved = bool(kwargs_name) and not kwargs_uses
 
         params_list = []
         removed_params: set[str] = set()
         pop_or_get_params: set[str] = set()
         kwargs_value = kwargs_name and values_to_find[kwargs_name]
         kwargs_value_dump = kwargs_value and ast.dump(kwargs_value)
-        for node, source in [(v, s) for k, v, s in values_found if k == kwargs_name]:
+        for node, source in kwargs_uses:
+            params = None  # None means that where the kwargs go could not be determined
             if isinstance(node, ast.Call):
                 if ast_is_kwargs_pop_or_get(node, kwargs_value_dump):
                     param = self.get_kwargs_pop_or_get_parameter(node, self.component, self.parent, self.doc_params)
@@ -862,39 +892,39 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                     params_list.append([param])
                     continue
                 kwarg = ast_get_call_kwarg_with_value(node, kwargs_value)
-                params = []
                 if kwarg.arg:
                     self.log_debug(f"kwargs given as keyword parameter not supported: {ast.unparse(node)}")
                 elif self.parent and ast_is_super_call(node):
                     if ast_is_supported_super_call(node, self.self_name, self.log_debug):
                         params = get_mro_parameters(
                             node.func.attr,  # type: ignore[attr-defined]
-                            get_signature_parameters,
+                            partial(get_signature_parameters, include_var_keyword=True),
                             self.logger,
                         )
                 else:
                     get_param_args = self.get_node_component(node, source)
                     if get_param_args:
-                        params = get_signature_parameters(*get_param_args, logger=self.logger)
-                params = remove_given_parameters(node, params, removed_params)
-                if params:
-                    self.add_node_origins(params, node)
-                    params_list.append(params)
-            elif isinstance(node, ast_assign_type):
-                self_attr = self.parent and ast_is_attr_assign(node, self.self_name)
-                if self_attr:
-                    params = self.get_parameters_attr_use_in_members(self_attr)
-                    if params:
-                        self.add_node_origins(params, node)
-                        params_list.append(params)
-                else:
-                    self.log_debug(f"unsupported type of assign: {ast.unparse(node)}")
+                        params = get_signature_parameters(*get_param_args, logger=self.logger, include_var_keyword=True)
+                if params is not None:
+                    params = remove_given_parameters(node, params, removed_params)
+            elif self.parent and (self_attr := ast_is_attr_assign(node, self.self_name)):
+                params = self.get_parameters_attr_use_in_members(self_attr) or None
+            else:
+                self.log_debug(f"unsupported type of assign: {ast.unparse(node)}")
+            if params is None:
+                kwargs_unresolved = True
+            elif params:
+                self.add_node_origins(params, node)
+                params_list.append(params)
 
         params = group_parameters(params_list)
         # a pop/get from kwargs means the parameter is accepted, even if the value is then given explicitly
         removed_params -= pop_or_get_params
         params = [p for p in params if p.name not in removed_params]
-        return split_args_and_kwargs(params)
+        args, kwargs = split_args_and_kwargs(params)
+        if kwargs_unresolved and not accepts_unresolved_kwargs(kwargs):
+            kwargs.append(get_unresolved_kwargs_param(self.component, self.parent))
+        return args, kwargs
 
     def get_parameters_attr_use_in_members(self, attr_name) -> ParamList:
         attr_value = ast_attribute_load(self.self_name, attr_name)
@@ -955,7 +985,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
         if args_idx >= 0 or kwargs_idx >= 0:
             self.doc_params = doc_params
             with mro_context(self.parent):
-                args, kwargs = self.get_parameters_args_and_kwargs()
+                args, kwargs = self.get_parameters_args_and_kwargs(kwargs_idx)
             params = replace_args_and_kwargs(params, args, kwargs)
         add_stub_types(stubs, params, self.component)
         params = self.remove_ignore_parameters(params)
@@ -1198,7 +1228,8 @@ def get_parameters_from_stubs(
     if stub_import:
         origin = get_parameter_origins(component, parent)
         aliases = resolver.get_aliases(stub_import)
-        arg_asts = stub_import.info.ast.args.args + stub_import.info.ast.args.kwonlyargs
+        args_ast = stub_import.info.ast.args
+        arg_asts = args_ast.args + args_ast.kwonlyargs
         params = []
         for num, arg_ast in enumerate(arg_asts):
             if parent and num == 0:
@@ -1218,6 +1249,8 @@ def get_parameters_from_stubs(
                     origin=origin,
                 )
             )
+        if args_ast.kwarg:
+            params.append(get_unresolved_kwargs_param(component, parent))
     return params
 
 
@@ -1236,7 +1269,7 @@ def get_parameters_by_assumptions(
             args, kwargs = split_args_and_kwargs(subparams)
             params = replace_args_and_kwargs(params, args, kwargs)
 
-    params = replace_args_and_kwargs(params, [], [])
+    params = replace_args_and_kwargs(params, [], [get_unresolved_kwargs_param(component, parent)])
     add_stub_types(stubs, params, component)
     return params
 
@@ -1245,6 +1278,7 @@ def get_signature_parameters(
     function_or_class: Callable | type,
     method_or_property: str | None = None,
     logger: bool | str | dict | logging.Logger = True,
+    include_var_keyword: bool = False,
 ) -> ParamList:
     """Get parameters by inspecting ASTs, stubs or by inheritance assumptions.
 
@@ -1258,6 +1292,8 @@ def get_signature_parameters(
             which to get the signature parameters. If not provided it returns
             the parameters for ``__init__``.
         logger: Useful for debugging. Only logs at ``DEBUG`` level.
+        include_var_keyword: Whether to include a ``**kwargs`` that could not be resolved, see
+            :func:`get_unresolved_kwargs_param`.
     """
     from ._typehints import is_namedtuple, is_typed_dict
 
@@ -1295,4 +1331,6 @@ def get_signature_parameters(
         attr = inspect.getattr_static(get_generic_origin(parent), method_name)
         if is_partial_method(attr) and component is attr.func:
             params = apply_partial_method(params, attr)
+    if not include_var_keyword:
+        params = remove_unresolved_kwargs(params)
     return params
