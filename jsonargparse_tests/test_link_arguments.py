@@ -739,6 +739,32 @@ def test_on_instantiate_link_invalid_subclass(parser):
     ctx.match(r"Invalid value for link '<lambda>\(c1.a\) --> c2': Not a valid subclass of StrTarget. Got value: 1")
 
 
+def test_on_instantiate_link_subclass_spec(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_argument("--c2", type=StrTarget)
+    parser.link_arguments(
+        "c1.a",
+        "c2",
+        compute_fn=lambda v: {"class_path": f"{__name__}.StrTarget", "init_args": {"b": str(v)}},
+        apply_on="instantiate",
+    )
+
+    cfg = parser.parse_args([])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.c2, StrTarget)
+    assert init.c2.b == "0"
+
+
+def test_on_instantiate_target_with_type_callable(parser):
+    parser.add_class_arguments(IntSource, "c1")
+    parser.add_argument("--c2", type=lambda v: v)
+    parser.link_arguments("c1.a", "c2", apply_on="instantiate")
+
+    cfg = parser.parse_args([])
+    init = parser.instantiate(cfg)
+    assert init.c2 == 0
+
+
 def test_on_instantiate_link_entire_group(parser):
     parser.add_class_arguments(IntSource, "c1")
     parser.add_class_arguments(StrTarget, "c2")

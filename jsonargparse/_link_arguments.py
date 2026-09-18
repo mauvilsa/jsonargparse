@@ -318,12 +318,20 @@ class ActionLink(Action):
             raise ValueError(f"Call to compute_fn of link '{link}' with args ({args}) failed: {ex}") from ex
 
     def validate_value(self, value) -> None:
-        from ._typehints import adapt_typehints
+        from ._core import ArgumentGroup
+        from ._typehints import ActionTypeHint, adapt_typehints
 
-        if self.type is None:  # e.g. subclass init args, which are validated on instantiation
+        # no type hint to validate against, e.g. subclass init args are validated on instantiation
+        if self.type is None or not isinstance(self.target[1], (ActionTypeHint, ArgumentGroup)):
             return
         try:
-            adapt_typehints(value, self.type, logger=self.parser.logger)
+            with parser_context(parent_parser=self.parser):
+                adapt_typehints(
+                    value,
+                    self.type,
+                    sub_add_kwargs=getattr(self.target[1], "sub_add_kwargs", {}),
+                    logger=self.parser.logger,
+                )
         except Exception as ex:
             link = self.option_strings[0]
             raise ValueError(f"Invalid value for link '{link}': {ex}") from ex

@@ -71,6 +71,8 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
 - Value of a link target not removed from a given default (`#982
   <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
+- Instantiate links failing when the value set on a subclass target is a class
+  path dict (`#982 <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
 
 Changed
 ^^^^^^^
