@@ -1612,7 +1612,9 @@ A wide range of type hints is supported for signature parameters, see
   unless they are required.
 
 - The ``skip`` parameter excludes arguments, e.g.
-  ``parser.add_method_arguments(MyClass, 'mymethod', skip={'baz'})``.
+  ``parser.add_method_arguments(MyClass, 'mymethod', skip={'baz'})``. In a
+  subclass spec, a skipped parameter can still be given in ``dict_kwargs``, see
+  :ref:`unresolved-parameters`.
 
 .. note::
 
@@ -1772,6 +1774,8 @@ assumptions resolver, based on assumptions about class inheritance, is the
 fallback for when AST fails. The stubs resolver, which uses ``*.pyi`` stub
 files, is applied on top of both.
 
+.. _unresolved-parameters:
+
 Unresolved parameters
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -1795,8 +1799,7 @@ Take for example the following parsing and instantiation:
 
     class MyClass:
         def __init__(self, foo: int = 0, **kwargs):
-            super().__init__(**kwargs)
-            ...
+            self.kwargs = kwargs
 
 
     MyClass.__module__ = "jsonargparse_tests"
@@ -1811,8 +1814,8 @@ Take for example the following parsing and instantiation:
     cfg = parser.parse_args()
     cfg_init = parser.instantiate(cfg)
 
-If ``MyClass.__init__`` has ``**kwargs`` with some unresolved parameters, the
-following could be a valid config file:
+Since the resolvers can't determine where the ``**kwargs`` of
+``MyClass.__init__`` go, the following is a valid config file:
 
 .. code-block:: yaml
 
@@ -1823,7 +1826,18 @@ following could be a valid config file:
       bar: 2
 
 The value for ``bar`` is not validated, but the class is instantiated as
-``MyClass(foo=1, bar=2)``.
+``MyClass(foo=1, bar=2)``. The help of a class, e.g. ``--myclass.help=MyClass``,
+notes when it accepts extra keyword arguments through ``dict_kwargs``.
+
+Resolved parameters are meant to be given in ``init_args``. When a class has no
+unresolved ``**kwargs``, a ``dict_kwargs`` key that is not one of its parameters
+fails during parsing. Keys that the class does accept are moved to
+``init_args``, so that configs keep working when an improvement of the resolvers
+turns an unresolved parameter into a resolved one.
+
+A parameter excluded with ``skip`` is still a parameter of the class, so
+``dict_kwargs`` accepts it. This is how to give a value to a parameter that had
+to be skipped, e.g. an untyped mandatory one.
 
 Assumptions resolver
 ^^^^^^^^^^^^^^^^^^^^
@@ -3358,12 +3372,15 @@ Subclasses and types that are used in more than one place are added once to
 The schema is meant to accept what the parser accepts, but for subclass types it
 is stricter. A string is accepted, since it can be a class path or a path to a
 sub-config file. An object is only accepted for the known subclasses, i.e. one
-with ``class_path``, ``init_args`` (required only for the subclasses that have a
-required init parameter) and ``dict_kwargs``. Accepting any ``class_path`` would
-keep tools from suggesting the known subclasses and from pointing out a class
-path that has a typo or is not the accepted import path, and its ``init_args``
-would go undescribed. Any ``class_path`` is accepted only when a type has no
-known subclass, and then its ``init_args`` are not described.
+with ``class_path`` and ``init_args`` (required only for the subclasses that
+have a required init parameter). Accepting any ``class_path`` would keep tools
+from suggesting the known subclasses and from pointing out a class path that has
+a typo or is not the accepted import path, and its ``init_args`` would go
+undescribed. Any ``class_path`` is accepted only when a type has no known
+subclass, and then its ``init_args`` are not described. Likewise,
+``dict_kwargs`` is only accepted for subclasses that have an unresolved
+``**kwargs``, so a skipped parameter given there is rejected even though the
+parser accepts it, see :ref:`unresolved-parameters`.
 
 A union that has a subtype accepting anything, i.e. ``Any`` or an unvalidated
 type, is kept as ``{"anyOf": [..., {}]}`` instead of the equivalent ``{}``, so

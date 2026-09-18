@@ -2572,8 +2572,17 @@ def adapt_class_type(
     else:
         if isinstance(dict_kwargs, dict):
             for key in list(dict_kwargs):
-                if find_action(parser, key):
+                # an extra key of a pydantic model that accepts them is also given through init_args
+                if find_action(parser, key) or parser._accepts_extra_key(key):
                     init_args[key] = dict_kwargs.pop(key)
+            accepted_kwargs = parser._accepted_kwargs[None]
+            unexpected = [] if accepted_kwargs is True else [k for k in dict_kwargs if k not in accepted_kwargs]
+            if unexpected:
+                raise ValueError(
+                    f"{value['class_path']} does not have an unresolved **kwargs, thus dict_kwargs only "
+                    f"accepts keys that are parameters of its signature. Unexpected keys: "
+                    f"{iter_to_set_str(unexpected)}"
+                )
         elif dict_kwargs:
             init_args["dict_kwargs"] = dict_kwargs
             dict_kwargs = None

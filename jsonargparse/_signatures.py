@@ -25,7 +25,13 @@ from ._optionals import (
     is_attrs_class,
     is_pydantic_model,
 )
-from ._parameter_resolvers import ParamData, get_parameter_origins, get_signature_parameters
+from ._parameter_resolvers import (
+    ParamData,
+    get_accepted_kwargs,
+    get_parameter_origins,
+    get_signature_parameters,
+    remove_unresolved_kwargs,
+)
 from ._required import set_required
 from ._typehints import (
     ActionTypeHint,
@@ -60,6 +66,11 @@ def validate_fail_untyped(fail_untyped) -> None:
 
 class SignatureArguments(LoggerProperty):
     """Methods to add arguments based on signatures to an :class:`ArgumentParser` instance."""
+
+    # Names of the keyword arguments that a signature accepts, keyed by its nested_key. True means
+    # that keyword arguments other than the resolved ones are also accepted, i.e. the signature has
+    # a **kwargs that the parameter resolvers were unable to resolve.
+    _accepted_kwargs: dict[str | None, set[str] | Literal[True]]
 
     def add_class_arguments(
         self,
@@ -291,7 +302,10 @@ class SignatureArguments(LoggerProperty):
             ValueError: When there are parameters without a type that fail_untyped requires to have one.
         """
         validate_fail_untyped(fail_untyped)
-        params = get_signature_parameters(function_or_class, method_name, logger=self.logger)
+        params = get_signature_parameters(function_or_class, method_name, logger=self.logger, include_var_keyword=True)
+        parser = self.parser if hasattr(self, "parser") else self
+        parser._accepted_kwargs[nested_key] = get_accepted_kwargs(params)
+        params = remove_unresolved_kwargs(params)
 
         skip_positionals = [s for s in (skip or []) if isinstance(s, int) and s != 0]
         if skip_positionals:

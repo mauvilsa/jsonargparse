@@ -986,6 +986,15 @@ def test_pydantic_extra_allow_in_subclass_init_args(parser):
     assert init.cls.model.p3 == "y"
 
 
+def test_pydantic_extra_allow_in_subclass_dict_kwargs(parser):
+    parser.add_argument("--model", type=Optional[PydanticExtraAllow])
+    value = {"class_path": f"{__name__}.PydanticExtraAllow", "dict_kwargs": {"p1": "x", "p3": "y"}}
+    cfg = parser.parse_args([f"--model={json.dumps(value)}"])
+    assert cfg.model == Namespace(p1="x", p2=3, p3="y")
+    init = parser.instantiate(cfg)
+    assert init.model.p3 == "y"
+
+
 def test_pydantic_extra_ignore_group_argument(parser):
     parser.add_argument("--model", type=PydanticExtraIgnore, default=PydanticExtraIgnore(p1="a"))
     cfg = parser.parse_object({"model": {"p1": "x", "p3": "y"}})

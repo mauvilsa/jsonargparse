@@ -418,6 +418,8 @@ class _ActionHelpClassPath(NonParsingAction):
         if partial_skip_args:
             sub_add_kwargs.setdefault("skip", set()).update(partial_skip_args)
         subparser.add_class_arguments(val_class, dest, **sub_add_kwargs)
+        if subparser._accepted_kwargs[dest] is True:
+            subparser.epilog = "Extra keyword arguments are accepted through dict_kwargs."
         subparser._inner_parser = True
         remove_actions(subparser, (_HelpAction, _ActionPrintConfig, _ActionConfigLoad))
         args = self.get_args_after_opt(parser.args)
