@@ -540,7 +540,7 @@ class ActionLink(Action):
                 del_target_key(f"{action.dest}.init_args.{key}")
 
         with parser_context(single_subcommand=False):
-            subcommands, subparsers = get_subcommands(parser, cfg)
+            subcommands, subparsers = get_subcommands(parser, cfg, fail_no_subcommand=False)
         if subcommands is not None:
             for num, subcommand in enumerate(subcommands):
                 if subcommand in cfg:
