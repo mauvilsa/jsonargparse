@@ -332,6 +332,29 @@ def test_subcommand_print_config_default_env(subparser):
     assert json_or_yaml_load(out) == {"o": 1}
 
 
+def test_subcommand_print_config_without_subcommand(parser, subparser):
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--p", type=int, required=True)
+    subparser.add_argument("--o", type=int, default=1)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("a", subparser)
+
+    out = get_parse_args_stdout(parser, ["--print_config"])
+    assert json_or_yaml_load(out) == {"p": None}
+
+
+def test_subcommand_print_config_without_nested_subcommand(parser, subparser, subsubparser):
+    parser.add_argument("--config", action="config")
+    subsubparser.add_argument("--o", type=int, default=1)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("a", subparser)
+    subsubcommands = subparser.add_subcommands()
+    subsubcommands.add_subcommand("b", subsubparser)
+
+    out = get_parse_args_stdout(parser, ["--print_config", "a"])
+    assert json_or_yaml_load(out) == {"a": {}}
+
+
 def test_subcommand_default_config_repeated_keys(parser, subparser, tmp_cwd):
     defaults = tmp_cwd / "defaults.json"
     defaults.write_text('{"test":{"test":"value"}}')

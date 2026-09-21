@@ -419,6 +419,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         with value_source_context(None):
             if not skip_subcommands:
+                if _ActionPrintConfig.is_print_config_requested(self):
+                    fail_no_subcommand = False
                 handle_subcommands(self, cfg, env=env, defaults=defaults, fail_no_subcommand=fail_no_subcommand)
 
             if defaults:

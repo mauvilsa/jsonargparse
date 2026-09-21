@@ -76,6 +76,9 @@ Fixed
 - After a ``parse_args`` call, ``parse_object`` and ``parse_string`` with
   ``defaults=False`` incorrectly adding the defaults of subclass ``init_args``
   (`#983 <https://github.com/mauvilsa/jsonargparse/pull/983>`__).
+- ``--print_config`` failing when a required subcommand is not given, unlike
+  other required arguments (`#984
+  <https://github.com/mauvilsa/jsonargparse/pull/984>`__).
 
 Changed
 ^^^^^^^
