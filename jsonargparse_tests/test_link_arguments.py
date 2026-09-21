@@ -364,13 +364,13 @@ def get_linked_default_parser(**init_args):
 def test_on_parse_linked_init_arg_removed_from_default(subtests):
     with subtests.test("other init args kept"):
         parser = get_linked_default_parser(p1=2, p2="x")
-        expected = {"class_path": f"{__name__}.LinkedDefaultTarget", "init_args": {"p2": "x"}}
+        expected = Namespace(class_path=f"{__name__}.LinkedDefaultTarget", init_args=Namespace(p2="x"))
         assert parser.get_default("b") == expected
         assert parser.parse_args([]).b.init_args == Namespace(p1=1, p2="x")
 
     with subtests.test("init args removed"):
         parser = get_linked_default_parser(p1=2)
-        assert parser.get_default("b") == {"class_path": f"{__name__}.LinkedDefaultTarget"}
+        assert parser.get_default("b") == Namespace(class_path=f"{__name__}.LinkedDefaultTarget")
 
 
 class ClassF:

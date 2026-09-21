@@ -242,6 +242,13 @@ def test_subclass_parse_defaults_disabled(parser):
     assert cfg.op == Namespace(class_path=f"{__name__}.DefaultsDisabled", init_args=Namespace(p1=3))
 
 
+def test_subclass_parse_object_defaults_disabled_after_parse_args(parser):
+    parser.add_argument("--op", type=DefaultsDisabled)
+    parser.parse_args([])
+    cfg = parser.parse_object({"op": {"init_args": {"p1": 3}}}, defaults=False)
+    assert cfg.op == Namespace(class_path=f"{__name__}.DefaultsDisabled", init_args=Namespace(p1=3))
+
+
 def test_subclass_known_subclasses(parser):
     parser.add_argument("--obj", type=BaseC)
     help_str = get_parser_help(parser)
@@ -1278,7 +1285,9 @@ class OverrideMixedMain:
 def test_subclass_discard_init_args_mixed_type(parser, logger):
     _cached_class_parsers.clear()
     parser.logger = logger
-    parser.add_class_arguments(OverrideMixedMain, "main")
+    with capture_logs(logger) as logs:
+        parser.add_class_arguments(OverrideMixedMain, "main")
+    assert "Parsed object: Namespace(param=1)" in logs.getvalue()
     with capture_logs(logger) as logs:
         parser.parse_args(["--main.obj=BaseC"])
     assert "discarding init_args: {'param': 1}" in logs.getvalue()
@@ -1302,7 +1311,9 @@ class OverrideSub2(OverrideBase):
 def test_subclass_discard_init_args_config_with_default(parser, logger):
     parser.logger = logger
     parser.add_argument("--cfg", action="config")
-    parser.add_argument("--s", type=OverrideBase, default=lazy_instance(OverrideSub1, s1="v1"))
+    with capture_logs(logger) as logs:
+        parser.add_argument("--s", type=OverrideBase, default=lazy_instance(OverrideSub1, s1="v1"))
+    assert "Parsed object: Namespace(s1='v1')" in logs.getvalue()
 
     config = {"s": {"class_path": "OverrideSub2", "init_args": {"s2": "v2"}}}
     with capture_logs(logger) as logs:
@@ -1338,9 +1349,7 @@ def test_subclass_discard_init_args_with_default_config_files(parser, tmp_cwd, l
         cfg = parser.parse_args([f'--obj={{"class_path": "{__name__}.BaseC", "init_args": {{"p": 3}}}}'])
     assert "discarding init_args: {'param': '1'}" in logs.getvalue()
     assert cfg.obj.init_args == Namespace(p=3)
-    with capture_logs(logger) as logs:
-        assert type(parser.instantiate(cfg).obj) is BaseC
-    assert logs.getvalue()
+    assert type(parser.instantiate(cfg).obj) is BaseC
 
 
 class Arch:
@@ -1408,7 +1417,9 @@ def test_discard_init_args_config_nested(parser, logger, tmp_cwd, method):
     }
     if method == "class":
         config = {"main": subconfig}
-        parser.add_class_arguments(ConfigDiscardMain, "main")
+        with capture_logs(logger) as logs:
+            parser.add_class_arguments(ConfigDiscardMain, "main")
+        assert "Parsed object: Namespace()" in logs.getvalue()
     else:
         config = {
             "main": {
@@ -1417,7 +1428,9 @@ def test_discard_init_args_config_nested(parser, logger, tmp_cwd, method):
             }
         }
         parser.add_subclass_arguments(ConfigDiscardMain, "main")
-        parser.set_defaults(main=lazy_instance(ConfigDiscardMain))
+        with capture_logs(logger) as logs:
+            parser.set_defaults(main=lazy_instance(ConfigDiscardMain))
+        assert "Parsed object: Namespace()" in logs.getvalue()
 
     config_path = Path("config.yaml")
     config_path.write_text(json_or_yaml_dump(config))
@@ -1425,9 +1438,7 @@ def test_discard_init_args_config_nested(parser, logger, tmp_cwd, method):
     with capture_logs(logger) as logs:
         cfg = parser.parse_args([f"--cfg={config_path}"])
     assert "discarding init_args: {'s1': 'x'}" in logs.getvalue()
-    with capture_logs(logger) as logs:
-        init = parser.instantiate(cfg)
-    assert logs.getvalue()
+    init = parser.instantiate(cfg)
     assert isinstance(init.main, ConfigDiscardMain)
     assert isinstance(init.main.sub, ConfigDiscardSub2)
 
@@ -1456,7 +1467,9 @@ def test_subclass_discard_init_args_dict_looks_like_subclass(parser, logger, tmp
     parser.logger = logger
     parser.add_argument("--cfg", action="config")
     parser.add_subclass_arguments(DictDiscardMain, "main")
-    parser.set_defaults(main=lazy_instance(DictDiscardMain))
+    with capture_logs(logger) as logs:
+        parser.set_defaults(main=lazy_instance(DictDiscardMain))
+    assert "Parsed object: Namespace()" in logs.getvalue()
 
     configs, subconfigs, config_paths = {}, {}, {}
     for c in [1, 2]:
@@ -1478,9 +1491,7 @@ def test_subclass_discard_init_args_dict_looks_like_subclass(parser, logger, tmp
     with capture_logs(logger) as logs:
         cfg = parser.parse_args([f"--cfg={config_paths[1]}", f"--cfg={config_paths[2]}"])
     assert "discarding init_args: {'s1': 1}" in logs.getvalue()
-    with capture_logs(logger) as logs:
-        init = parser.instantiate(cfg)
-    assert logs.getvalue()
+    init = parser.instantiate(cfg)
     assert isinstance(init.main, DictDiscardMain)
     assert isinstance(init.main.sub, dict)
     assert init.main.sub["init_args"]["s2"] == 2

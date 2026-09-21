@@ -377,8 +377,9 @@ def set_parsing_settings(
 
     Args:
         validate_defaults: Whether default values must be valid according to the
-            argument type. The default is ``False``, meaning no default
-            validation, like in argparse.
+            argument type. Defaults are always validated to normalize them, but
+            with the default ``False`` an invalid default is kept as is, like
+            in argparse.
         validate_subclass_spec_in_any: If ``True``, when a value for a type that
             accepts any value, i.e. ``Any``, ``object``, ``Unvalidated<...>`` or
             a dict that doesn't validate its values, looks like a subclass spec
@@ -497,24 +498,27 @@ def get_parsing_setting(name: str):
     return parsing_settings[name]
 
 
-def validate_default(container: ActionsContainer, action: argparse.Action):
-    if (
-        action.default is get_parsing_setting("unset_sentinel")
-        or not get_parsing_setting("validate_defaults")
-        or not hasattr(action, "_check_type")
-    ):
+def validate_default(container: ActionsContainer, action: argparse.Action, logger: logging.Logger) -> None:
+    if action.default is get_parsing_setting("unset_sentinel") or not hasattr(action, "_check_type"):
         return
-    try:
-        from ._core import ArgumentGroup
+    from ._core import ArgumentGroup
+    from ._typehints import ActionTypeHint, normalize_default_value
 
-        if isinstance(container, ArgumentGroup):
-            container = container.parser
+    default = action.default
+    if isinstance(action, ActionTypeHint):
+        default = normalize_default_value(action, default)
+    if isinstance(container, ArgumentGroup):
+        container = container.parser
+    try:
         with parser_context(parent_parser=container, validating_defaults=True):
-            default = action.default
             action.default = None
             action.default = action._check_type_(default)  # type: ignore[attr-defined]
     except Exception as ex:
-        raise ValueError(f"Default value is not valid: {ex}") from ex
+        action.default = default
+        msg = f"Default value is not valid: {ex}"
+        if get_parsing_setting("validate_defaults"):
+            raise ValueError(msg) from ex
+        logger.debug(msg)
 
 
 def get_optionals_as_positionals_actions(parser, include_positionals=False):

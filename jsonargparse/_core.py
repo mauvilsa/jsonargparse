@@ -196,7 +196,7 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
         unset_sentinel = get_parsing_setting("unset_sentinel")
         if unset_sentinel is not None and "default" not in kwargs and action.default is None:
             action.default = unset_sentinel
-        validate_default(self, action)
+        validate_default(self, action, self._logger)
         return action
 
     def add_argument_group(self, *args, name: str | None = None, **kwargs) -> "ArgumentGroup":
@@ -248,9 +248,9 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
                     default = {f"{dest}.{k}": v for k, v in default.items()}
                     self.set_defaults(default)
                     continue
-                if isinstance(action, ActionTypeHint):
-                    default = action.normalize_default(default)
                 self._defaults[dest] = action.default = default
+                validate_default(self, action, self._logger)
+                self._defaults[dest] = action.default
         if kwargs:
             self.set_defaults(kwargs)
 
