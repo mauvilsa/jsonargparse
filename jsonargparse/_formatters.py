@@ -11,6 +11,7 @@ from argparse import (
     _SubParsersAction,
 )
 from collections.abc import Iterable
+from enum import Enum
 from io import StringIO
 from string import Template
 
@@ -38,9 +39,11 @@ from ._typehints import (
     ActionTypeHint,
     get_optional_arg,
     get_subclass_or_closed_types,
+    is_callable_type,
     is_subclass_spec,
     type_to_str,
 )
+from ._util import object_path_serializer
 
 __all__ = ["DefaultHelpFormatter"]
 
@@ -535,6 +538,18 @@ class DefaultHelpFormatter(HelpFormatter):
                 params["default"] = "null"
             elif isinstance(params["default"], Namespace):
                 params["default"] = params["default"].as_dict()
+            elif isinstance(params["default"], Enum):
+                params["default"] = params["default"].name
+            elif (
+                isinstance(action, ActionTypeHint)
+                and is_callable_type(action._typehint)
+                and callable(params["default"])
+            ):
+                try:
+                    params["default"] = object_path_serializer(params["default"])
+                except ValueError:
+                    # kept as is when it can't be imported back, e.g. a closure
+                    pass
         help_str = PercentTemplate(self._get_help_string(action)).safe_substitute(params)
         action.default = orig_default
         return help_str

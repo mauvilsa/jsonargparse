@@ -169,8 +169,11 @@ class ActionSubCommands(_SubParsersAction):
 
 @contextmanager
 def parse_kwargs_context(kwargs):
-    parse_kwargs.set(kwargs)
-    yield
+    token = parse_kwargs.set(kwargs)
+    try:
+        yield
+    finally:
+        parse_kwargs.reset(token)
 
 
 def get_subcommands(

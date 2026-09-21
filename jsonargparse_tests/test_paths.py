@@ -1195,7 +1195,7 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
     with subtests.test("paths list nargs='+' path not exist"):
         pytest.raises(ArgumentError, lambda: parser.parse_args(["--lists", str(list_file4)]))
 
-    with subtests.test("paths list nargs='+' list not exist"):  # TODO: check error message
+    with subtests.test("paths list nargs='+' list not exist"):
         with pytest.raises(ArgumentError) as ctx:
             parser.parse_args(["--lists", "no-such-file"])
         ctx.match("Expected a path but no-such-file either not accessible or invalid")

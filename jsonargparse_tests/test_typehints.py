@@ -695,7 +695,8 @@ def test_enum_dump(parser):
 
 def test_enum_help(parser):
     parser.add_argument("--enum", type=EnumABC, default=EnumABC.B, help="Help")
-    assert EnumABC.B == parser.get_defaults().enum
+    assert parser.get_defaults().enum == EnumABC.B
+    assert parser.get_default("enum") == EnumABC.B
     help_str = get_parser_help(parser)
     assert "--enum {A,B,C}" in help_str
     assert "Help (type: EnumABC, default: B)" in help_str
@@ -2113,6 +2114,19 @@ def test_module_type_default_module_object(parser):
     assert parser.instantiate(cfg).mod is json
 
 
+def test_module_type_parse_object_module_object(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_object({"mod": json})
+    assert cfg.mod == "json"
+
+
+def test_module_type_instantiate_module_object(parser):
+    parser.add_argument("--mod", type=ModuleType)
+    cfg = parser.parse_args(["--mod=json"])
+    cfg.mod = json
+    assert parser.instantiate(cfg).mod is json
+
+
 def test_module_type_list(parser):
     parser.add_argument("--mods", type=List[ModuleType], default=[])
     cfg = parser.parse_args(['--mods=["json", "uuid"]'])
@@ -2893,6 +2907,9 @@ def test_callable_default_not_importable(parser):
 
     cfg = parser.parse_args([])
     assert cfg.callable is closure_callable
+
+    help_str = get_parser_help(parser, strip=True)
+    assert "default: <function make_closure_callable.<locals>.unbound_closure at " in help_str
 
     with assert_dump_warnings("Unable to serialize instance <function"):
         dump = json_or_yaml_load(parser.dump(cfg))

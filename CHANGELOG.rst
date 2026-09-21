@@ -73,6 +73,9 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
 - Instantiate links failing when the value set on a subclass target is a class
   path dict (`#982 <https://github.com/mauvilsa/jsonargparse/pull/982>`__).
+- After a ``parse_args`` call, ``parse_object`` and ``parse_string`` with
+  ``defaults=False`` incorrectly adding the defaults of subclass ``init_args``
+  (`#983 <https://github.com/mauvilsa/jsonargparse/pull/983>`__).
 
 Changed
 ^^^^^^^
@@ -126,6 +129,12 @@ Changed
   are meant to be given in ``init_args``, and the ``jsonschema`` completion type
   only describes them there, see :ref:`unresolved-parameters` (`#981
   <https://github.com/mauvilsa/jsonargparse/pull/981>`__).
+- Defaults are now always normalized. Invalid defaults still only fail when
+  ``validate_defaults`` is enabled (`#983
+  <https://github.com/mauvilsa/jsonargparse/pull/983>`__).
+- A ``types.ModuleType`` value given as a module object is now normalized to its
+  import path, instead of only being normalized when given as a default (`#983
+  <https://github.com/mauvilsa/jsonargparse/pull/983>`__).
 
 Removed
 ^^^^^^^

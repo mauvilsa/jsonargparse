@@ -408,42 +408,6 @@ class ActionTypeHint(Action):
                 kwargs["metavar"] = typehint_metavar(self._typehint)
             super().__init__(**kwargs)
             self._supports_append = self.supports_append(self._typehint)
-            self.default = self.normalize_default(self.default)
-
-    def normalize_default(self, default):
-        from ._signatures import convert_to_dict, is_convertible_to_dict
-
-        is_subclass_type = self.is_subclass_typehint(self._typehint, all_subtypes=False)
-        if isinstance(default, _LazyInitBaseClass):
-            default = default.lazy_get_init_data().as_dict()
-        elif is_convertible_to_dict(default.__class__):
-            default = convert_to_dict(default)
-        elif is_subclass_type and isinstance(default, dict) and "class_path" in default:
-            default = subclass_spec_as_namespace(default)
-            default.class_path = normalize_import_path(default.class_path, self._typehint)
-        elif is_enum_type(self._typehint) and isinstance(default, Enum):
-            default = default.name
-        elif is_module_type(self._typehint) and isinstance(default, ModuleType):
-            default = default.__name__
-        elif is_callable_type(self._typehint) and callable(default) and not inspect.isclass(default):
-            try:
-                default = object_path_serializer(default)
-            except ValueError:
-                # kept as is when it can't be imported back, e.g. a closure, so that dump warns
-                pass
-        elif ActionTypeHint.is_return_subclass_typehint(self._typehint) and inspect.isclass(default):
-            default = {"class_path": get_import_path(default)}
-        elif is_subclass_type and not allow_default_instance.get():
-            from ._parameter_resolvers import UnknownDefault
-
-            default_type = type(default)
-            if (
-                not is_subclass(default_type, UnknownDefault)
-                and self.is_subclass_typehint(default_type)
-                and not any(implements_protocol(default, t) for t in get_subclass_types(self._typehint) or ())
-            ):
-                raise ValueError("Subclass types require as default either a dict with class_path or a lazy instance.")
-        return default
 
     @staticmethod
     def prepare_add_argument(args, kwargs, enable_path, container, logger, sub_add_kwargs=None):
@@ -873,6 +837,32 @@ class ActionTypeHint(Action):
                 msg = "value not yet valid, "
             msg += "expected type " + type_to_str(self._typehint)
             return argcomplete_warn_redraw_prompt(prefix, msg)
+
+
+def normalize_default_value(action, default):
+    from ._signatures import convert_to_dict, is_convertible_to_dict
+
+    is_subclass_type = action.is_subclass_typehint(action._typehint, all_subtypes=False)
+    if isinstance(default, _LazyInitBaseClass):
+        default = default.lazy_get_init_data().as_dict()
+    elif is_convertible_to_dict(default.__class__):
+        default = convert_to_dict(default)
+    elif is_subclass_type and isinstance(default, dict) and "class_path" in default:
+        default = subclass_spec_as_namespace(default)
+        default.class_path = normalize_import_path(default.class_path, action._typehint)
+    elif ActionTypeHint.is_return_subclass_typehint(action._typehint) and inspect.isclass(default):
+        default = {"class_path": get_import_path(default)}
+    elif is_subclass_type and not allow_default_instance.get():
+        from ._parameter_resolvers import UnknownDefault
+
+        default_type = type(default)
+        if (
+            not is_subclass(default_type, UnknownDefault)
+            and action.is_subclass_typehint(default_type)
+            and not any(implements_protocol(default, t) for t in get_subclass_types(action._typehint) or ())
+        ):
+            raise ValueError("Subclass types require as default either a dict with class_path or a lazy instance.")
+    return default
 
 
 def is_pathlike(typehint) -> bool:
@@ -1490,7 +1480,7 @@ def adapt_typehints(
     # Module
     elif typehint is ModuleType:
         if isinstance(val, ModuleType):
-            if serialize:
+            if not instantiate_classes:
                 val = val.__name__
         else:
             if isinstance(val, str):
@@ -2890,12 +2880,6 @@ def get_optional_arg(annotation, ref_type=None):
     if is_optional(annotation, ref_type):
         annotation = next(a for a in annotation.__args__ if a != NoneType)
     return annotation
-
-
-def is_enum_type(annotation):
-    return is_subclass(annotation, Enum) or (
-        get_typehint_origin(annotation) == Union and any(is_subclass(a, Enum) for a in annotation.__args__)
-    )
 
 
 def is_module_type(annotation):

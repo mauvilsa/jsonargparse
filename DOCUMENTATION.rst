@@ -564,8 +564,9 @@ Types can be nested with any complexity. Notes about the support:
   :ref:`stubs-resolver`), that is the callable's return type or a subclass of
   it. Argument types are not validated.
 
-- ``types.ModuleType`` accepts the dot import path of a module, and on
-  ``instantiate`` is replaced by the imported module object.
+- ``types.ModuleType`` accepts the dot import path of a module, or a module
+  object which is normalized to its import path, and on ``instantiate`` is
+  replaced by the imported module object.
 
 - ``types.UnionType`` and ``types.GenericAlias``, commonly found in third party
   libraries in unions such as ``type | UnionType | dict``, accept a string with
@@ -1122,7 +1123,7 @@ Parsing complex-valued points:
 
     >>> parser.add_argument("--point", type=Point2d[complex])  # doctest: +IGNORE_RESULT
     >>> parser.parse_args(["--point.x=(1+2j)"]).point
-    Namespace(x=(1+2j), y=0.0)
+    Namespace(x=(1+2j), y=0j)
 
 A ``TypeVar`` can't be used to validate, so when it is used as a type, e.g.
 ``options: Optional[OptionsT] = None``, it is replaced by what it stands for:
