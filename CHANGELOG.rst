@@ -31,6 +31,15 @@ Added
 - New ``docstrings`` and ``typeshed`` extras, which install individually the
   respective optional dependencies of the ``signatures`` extra (`#988
   <https://github.com/mauvilsa/jsonargparse/pull/988>`__).
+- Support for ``*args`` in signatures, added as a list argument named like the
+  parameter, or a positional with ``as_positional=True``. The AST resolver now
+  also follows a ``*args`` forwarded without ``**kwargs`` or to a callable that
+  has its own ``*args`` (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- New ``instantiate`` parameter of ``add_function_arguments`` and
+  ``add_method_arguments``, and links applied on instantiate can target the
+  parameters of these groups (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 
 Fixed
 ^^^^^
@@ -82,6 +91,14 @@ Fixed
 - ``--print_config`` failing when a required subcommand is not given, unlike
   other required arguments (`#984
   <https://github.com/mauvilsa/jsonargparse/pull/984>`__).
+- ``instantiate``, ``auto_cli`` and ``from_config`` failing when a signature
+  has positional-only parameters (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- AST resolver failing for a method whose ``self`` is positional-only (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- A typed positional with ``nargs="*"`` set in a config file being reset to
+  empty when no values for it are given in the command line (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 
 Changed
 ^^^^^^^
@@ -141,6 +158,11 @@ Changed
 - A ``types.ModuleType`` value given as a module object is now normalized to its
   import path, instead of only being normalized when given as a default (`#983
   <https://github.com/mauvilsa/jsonargparse/pull/983>`__).
+- ``instantiate`` now replaces a group added by ``add_function_arguments`` or
+  ``add_method_arguments`` by a ``functools.partial`` with the arguments bound,
+  or by an ``operator.methodcaller`` for a method that is called with an
+  instance, instead of keeping the parsed namespace (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 
 Removed
 ^^^^^^^
@@ -152,6 +174,19 @@ Removed
 - The ``yaml.SafeDumper`` representer for ``Namespace``, which was only added
   for backward compatibility in pytorch-lightning (`#969
   <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+
+
+v4.53.0 (unreleased)
+--------------------
+
+Deprecated
+^^^^^^^^^^
+- Groups added by ``add_function_arguments`` or ``add_method_arguments`` with a
+  ``nested_key`` are kept as parsed by ``instantiate``. From v5.0.0 they will be
+  replaced by a ``functools.partial`` with the arguments bound, or by an
+  ``operator.methodcaller`` for a method that is called with an instance. Warns
+  only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#985
+  <https://github.com/mauvilsa/jsonargparse/pull/985>`__).
 
 
 v4.52.0 (2026-09-01)

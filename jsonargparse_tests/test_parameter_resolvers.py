@@ -1197,6 +1197,134 @@ def test_accepts_extra_kwargs_from_assumptions():
         assert accepts_extra_kwargs(ClassM1) is False
 
 
+# var-positional parameters tests
+
+
+def get_params_kinds(component, method=None) -> list[tuple[str, str | None]]:
+    params = get_params(component, method, include_var_positional=True)
+    return [(p.name, getattr(p.kind, "name", None)) for p in params]
+
+
+class PositionalTarget:
+    def __init__(self, x: int, y: int = 1, *, k: int = 0):
+        pass  # pragma: no cover
+
+
+class ForwardsOnlyArgs(PositionalTarget):
+    def __init__(self, *args):
+        super().__init__(*args)  # pragma: no cover
+
+
+class VarPositionalTarget:
+    def __init__(self, x: int, *rest: int, k: int = 0):
+        self.rest = rest  # pragma: no cover
+
+
+class ForwardsArgsAndKwargs(VarPositionalTarget):
+    def __init__(self, *args, z: int = 2, **kwargs):
+        super().__init__(*args, **kwargs)  # pragma: no cover
+
+
+class MethodSelfPositionalOnly:
+    def method(self, a: int, /, *rest: int):
+        return rest  # pragma: no cover
+
+
+def function_forwards_with_given_positional(*args, **kwargs):
+    return VarPositionalTarget(1, *args, **kwargs)  # pragma: no cover
+
+
+def function_uses_var_positional(*files: str):
+    return [f.upper() for f in files]  # pragma: no cover
+
+
+def function_var_positional_unresolved_forward(*args):
+    return undefined_function(*args)  # noqa: F821  # pragma: no cover
+
+
+def function_var_positional_multiple_forwards(flag: bool = False, *args):  # pragma: no cover
+    if flag:
+        return function_uses_var_positional(*args)
+    return function_uses_var_positional(*args)
+
+
+def function_var_positional_different_forwards(flag: bool = False, *args):  # pragma: no cover
+    if flag:
+        return function_uses_var_positional(*args)
+    return PositionalTarget(*args)
+
+
+def function_var_positional_used_and_forwarded(*args):  # pragma: no cover
+    print(len(args))
+    return function_uses_var_positional(*args)
+
+
+def function_var_positional_unused(*args, k: int = 0):
+    return k  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    ["component", "method", "expected"],
+    [
+        (ForwardsOnlyArgs, None, [("x", "POSITIONAL_ONLY"), ("y", "POSITIONAL_ONLY")]),
+        (
+            ForwardsArgsAndKwargs,
+            None,
+            [("x", "POSITIONAL_OR_KEYWORD"), ("rest", "VAR_POSITIONAL"), ("z", "KEYWORD_ONLY"), ("k", "KEYWORD_ONLY")],
+        ),
+        (MethodSelfPositionalOnly, "method", [("a", "POSITIONAL_ONLY"), ("rest", "VAR_POSITIONAL")]),
+        (function_forwards_with_given_positional, None, [("rest", "VAR_POSITIONAL"), ("k", "KEYWORD_ONLY")]),
+        (function_uses_var_positional, None, [("files", "VAR_POSITIONAL")]),
+        (
+            function_var_positional_multiple_forwards,
+            None,
+            [("flag", "POSITIONAL_OR_KEYWORD"), ("files", "VAR_POSITIONAL")],
+        ),
+    ],
+)
+def test_get_params_var_positional_resolved(component, method, expected):
+    assert get_params_kinds(component, method) == expected
+
+
+@pytest.mark.parametrize(
+    ["component", "expected", "message"],
+    [
+        (function_var_positional_unresolved_forward, [("args", "VAR_POSITIONAL")], "forwarded to an unresolved call"),
+        (
+            function_var_positional_different_forwards,
+            [("flag", "POSITIONAL_OR_KEYWORD"), ("args", "VAR_POSITIONAL")],
+            "forwarded to calls that differ in their positional parameters",
+        ),
+        (
+            function_var_positional_used_and_forwarded,
+            [("args", "VAR_POSITIONAL")],
+            "used other than forwarded to calls",
+        ),
+        (function_var_positional_unused, [("k", "KEYWORD_ONLY")], "*args is not used"),
+    ],
+)
+def test_get_params_var_positional_not_resolved(component, expected, message, logger):
+    with capture_logs(logger) as logs:
+        params = get_params(component, logger=logger, include_var_positional=True)
+    assert [(p.name, getattr(p.kind, "name", None)) for p in params] == expected
+    assert message in logs.getvalue()
+
+
+def test_get_params_var_positional_not_included_by_default():
+    assert get_params(function_uses_var_positional) == []
+    assert_params(get_params(ForwardsArgsAndKwargs), ["x", "z", "k"], help=False)
+
+
+def test_get_params_var_positional_from_assumptions():
+    with source_unavailable():
+        assert get_params_kinds(function_uses_var_positional) == [("files", "VAR_POSITIONAL")]
+        assert get_params_kinds(ForwardsArgsAndKwargs) == [
+            ("z", "KEYWORD_ONLY"),
+            ("x", "POSITIONAL_OR_KEYWORD"),
+            ("k", "KEYWORD_ONLY"),
+        ]
+
+
 # failure cases
 
 

@@ -266,6 +266,17 @@ def test_from_config_method_dict():
     assert instance.param == "value_from_dict"
 
 
+def test_from_config_method_positional_only_and_var_positional():
+    class FromConfigMethodPositionals(FromConfigMixin):
+        def __init__(self, first: int, /, *rest: int, param: str = "default_value"):
+            self.first = first
+            self.rest = rest
+            self.param = param
+
+    instance = FromConfigMethodPositionals.from_config({"first": 1, "rest": [2, 3]})
+    assert (instance.first, instance.rest, instance.param) == (1, (2, 3), "default_value")
+
+
 def test_from_config_method_default():
     from os import PathLike
     from typing import Literal, Type, TypeVar, Union

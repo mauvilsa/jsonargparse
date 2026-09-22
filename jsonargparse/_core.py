@@ -139,6 +139,7 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
         """Initializer for ActionsContainer instance."""
         super().__init__(*args, **kwargs)
         self._accepted_kwargs = {}
+        self._call_layouts = {}
         self.register("type", None, identity)
         self.register("action", "parsers", ActionSubCommands)
         self.register("action", "config", ActionConfigFile)

@@ -348,7 +348,7 @@ def test_on_parse_subclass_target_in_optional_list(parser):
 
 
 class LinkedDefaultTarget:
-    def __init__(self, p1: int = 0, p2: str = "-"):
+    def __init__(self, p1: int = 0, p2: str = "-"):  # pragma: no cover
         self.p1 = p1
         self.p2 = p2
 
@@ -1227,6 +1227,38 @@ def test_on_instantiate_source_module_type_target_subclass(parser):
     init = parser.instantiate(cfg)
     assert isinstance(init.user, ModuleUser)
     assert init.user.mod is json
+
+
+class FitModel:
+    def __init__(self, size: int = 1):
+        self.size = size
+
+
+def fit(model: FitModel, *callbacks: str, epochs: int = 1):
+    return model, callbacks, epochs
+
+
+def test_on_instantiate_target_function_group(parser):
+    parser.add_function_arguments(fit, "fit")
+    parser.add_class_arguments(FitModel, "model")
+    parser.link_arguments("model", "fit.model", apply_on="instantiate")
+
+    cfg = parser.parse_args(["--model.size=3", '--fit.callbacks=["a", "b"]'])
+    init = parser.instantiate(cfg)
+    model, callbacks, epochs = init.fit()
+    assert model is init.model
+    assert (model.size, callbacks, epochs) == (3, ("a", "b"), 1)
+
+
+def test_on_parse_target_var_positional(parser):
+    parser.add_argument("--names", type=str, default="a,b")
+    parser.add_function_arguments(fit, "fit", skip={"model"})
+    parser.link_arguments("names", "fit.callbacks", compute_fn=lambda names: names.split(","))
+
+    cfg = parser.parse_args(["--names=x,y"])
+    assert cfg.fit.callbacks == ["x", "y"]
+    with pytest.raises(ValueError, match='requires a value for parameter "model"'):
+        parser.instantiate(cfg)
 
 
 # link creation failures

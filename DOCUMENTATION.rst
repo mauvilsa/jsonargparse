@@ -1561,8 +1561,8 @@ and the method run, as follows:
     parser.add_method_arguments(MyClass, "mymethod", "myclass.method")
 
     cfg = parser.parse_args()
-    myclass = MyClass(**cfg.myclass.init.as_dict())
-    myclass.mymethod(**cfg.myclass.method.as_dict())
+    init = parser.instantiate(cfg)
+    init.myclass.method(init.myclass.init)
 
 
 The :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>` call adds
@@ -1574,11 +1574,13 @@ the :meth:`add_method_arguments <.ArgumentParser.add_method_arguments>` call
 adds ``myclass.method.bar`` as a required float and ``myclass.method.baz`` as an
 optional boolean with default false.
 
-Several classes added with :meth:`add_class_arguments
-<.ArgumentParser.add_class_arguments>` are instantiated at once with
-:meth:`instantiate <.ArgumentParser.instantiate>`. In the example above, ``cfg =
-parser.instantiate(cfg)`` makes ``cfg.myclass.init`` an instance of ``MyClass``,
-built from the parsed arguments.
+All the groups added by these methods are instantiated at once with
+:meth:`instantiate <.ArgumentParser.instantiate>`. In the example above,
+``init.myclass.init`` is an instance of ``MyClass`` built from the parsed
+arguments, and ``init.myclass.method`` is an :func:`operator.methodcaller` with
+the arguments of ``mymethod`` bound, which is called with an instance. A function,
+static or class method group becomes a :func:`functools.partial` instead. Give
+``instantiate=False`` to keep a group as parsed.
 
 All values can be given in a single config file (see
 :ref:`configuration-files`). For convenience, the values of each argument group
@@ -1611,6 +1613,13 @@ A wide range of type hints is supported for signature parameters, see
 
 - Parameters whose name starts with ``_`` are considered internal and skipped,
   unless they are required.
+
+- A ``*args`` is added as a list argument with its name, e.g. ``*files: str`` as
+  ``files`` of type ``list[str]``. With ``as_positional=True`` it is a positional
+  that takes zero or more values. When calling, positional-only parameters, and
+  when ``*args`` has values also the ones before it, are given positionally.
+  Binding such values after positionals given on call, e.g. for a ``Callable``
+  that returns a class, requires Python 3.14 or later.
 
 - The ``skip`` parameter excludes arguments, e.g.
   ``parser.add_method_arguments(MyClass, 'mymethod', skip={'baz'})``. In a
@@ -2016,6 +2025,11 @@ these parameters are not included in :meth:`get_defaults
 needed because the parser does not know which call will happen at runtime, and
 including them would make :meth:`instantiate <.ArgumentParser.instantiate>` fail
 with unexpected keyword arguments.
+
+A ``*args`` forwarded to calls is replaced by what the calls take positionally,
+including their own ``*args``, when all the calls agree on it. A ``*args`` that
+the code uses itself, or whose use can't be resolved, is added as a list
+argument, and one that is not used is left out.
 
 .. note::
 
