@@ -2,11 +2,11 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, v4]
     tags:
       - 'v*'
   pull_request:
-    branches: [main]
+    branches: [main, v4]
   workflow_dispatch:
 
 concurrency:
