@@ -629,6 +629,30 @@ def deprecation_warning_error_handler(stacklevel):
     deprecation_warning("ArgumentParser.error_handler", error_handler_message, stacklevel=stacklevel)
 
 
+def mark_group_instantiated_in_v5(container, nested_key: Optional[str], as_group: bool, method: str) -> None:
+    """Marks a function or method group, which in v5 ``instantiate`` replaces by a callable."""
+    parser = container.parser if hasattr(container, "parser") else container
+    group = parser.groups.get(nested_key) if as_group and nested_key is not None else None
+    if group is not None and not hasattr(group, "instantiate_class"):
+        group.instantiated_in_v5 = (nested_key, method)
+
+
+def deprecation_warning_function_groups_instantiate(parser, stacklevel):
+    if os.environ.get("JSONARGPARSE_DEPRECATION_WARNINGS", "").lower() != "all":
+        return
+    for group in parser._action_groups:
+        if hasattr(group, "instantiated_in_v5"):
+            nested_key, method = group.instantiated_in_v5
+            deprecation_warning(
+                group.instantiated_in_v5,
+                f'Group "{nested_key}" added with {method} is currently kept as parsed by instantiate. '
+                "In v5.0.0 it will be replaced by a functools.partial with the arguments bound, or by an "
+                "operator.methodcaller for a method that is called with an instance. To keep it as parsed in "
+                f"v5.0.0, give instantiate=False to {method}.",
+                stacklevel=stacklevel + 1,
+            )
+
+
 default_meta_message = """
     ``default_meta`` property was deprecated in v4.44.0 and will be removed in
     v5.0.0. After removal, config objects will always include metadata. To
