@@ -60,6 +60,7 @@ class InstantiateMethod:
         """
         from ._actions import _ActionConfigLoad, filter_non_parsing_actions
         from ._core import ArgumentGroup
+        from ._deprecated import deprecation_warning_function_groups_instantiate
         from ._link_arguments import ActionLink
         from ._subcommands import get_subcommand
         from ._typehints import ActionTypeHint
@@ -72,6 +73,7 @@ class InstantiateMethod:
                 components.append(action.target[1])
 
         if instantiate_groups:
+            deprecation_warning_function_groups_instantiate(self, stacklevel=2)
             skip = {c.dest for c in components}
             groups = [
                 g

@@ -55,6 +55,14 @@ changes:
   ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
 - **Configs can no longer import and instantiate anything.** See `Subclass specs
   and import paths`_ below.
+- **Function and method groups are instantiated.** For a group added by
+  ``add_function_arguments`` or ``add_method_arguments`` with a ``nested_key``,
+  ``instantiate`` gives in v5 a :func:`functools.partial` with the arguments
+  bound, or an :func:`operator.methodcaller` for a method that is called with an
+  instance, instead of the parsed namespace. Call it, e.g.
+  ``init.fn()`` instead of ``fn(**init.fn)``, or in v5 give
+  ``instantiate=False`` to keep the namespace. Warns only with
+  ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
 
 
 CLI / auto_cli

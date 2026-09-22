@@ -18,7 +18,7 @@ from ._common import (
     is_subclass,
     is_subclasses_disabled,
 )
-from ._deprecated import deprecation_warning, renamed_parameter_warning
+from ._deprecated import deprecation_warning, mark_group_instantiated_in_v5, renamed_parameter_warning
 from ._instantiation import get_class_instantiator
 from ._namespace import Namespace, get_value_and_parent
 from ._optionals import attrs_support, get_doc_short_description, is_attrs_class, is_pydantic_model
@@ -190,7 +190,7 @@ class SignatureArguments(LoggerProperty):
         if not hasattr(unaliased_type, method_name) or not callable(getattr(unaliased_type, method_name)):
             raise ValueError('Expected "method_name" argument to be a callable member of the class.')
 
-        return self._add_signature_arguments(
+        added_args = self._add_signature_arguments(
             class_type,
             method_name,
             nested_key,
@@ -200,6 +200,8 @@ class SignatureArguments(LoggerProperty):
             fail_untyped,
             sub_configs=sub_configs,
         )
+        mark_group_instantiated_in_v5(self, nested_key, as_group, "add_method_arguments")
+        return added_args
 
     def add_function_arguments(
         self,
@@ -240,7 +242,7 @@ class SignatureArguments(LoggerProperty):
             function = function.__class__
             method_name = "__call__"
 
-        return self._add_signature_arguments(
+        added_args = self._add_signature_arguments(
             function,
             method_name,
             nested_key,
@@ -250,6 +252,8 @@ class SignatureArguments(LoggerProperty):
             fail_untyped,
             sub_configs=sub_configs,
         )
+        mark_group_instantiated_in_v5(self, nested_key, as_group, "add_function_arguments")
+        return added_args
 
     def _add_signature_arguments(
         self,

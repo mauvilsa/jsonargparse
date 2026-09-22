@@ -1433,6 +1433,48 @@ def test_fail_untyped_false_required_parameter_deprecation(parser, monkeypatch):
     assert parser.get_defaults() == Namespace(a1=None, a2=None, b1=None, b2=None)
 
 
+def function_group(a: int = 1):
+    return a  # pragma: no cover
+
+
+class WithMethodGroup:
+    def method(self, b: int = 2):
+        return b  # pragma: no cover
+
+
+def test_function_and_method_groups_instantiate_deprecation(parser, monkeypatch):
+    parser.add_function_arguments(function_group, "fn")
+    parser.add_method_arguments(WithMethodGroup, "method", "m")
+    parser.add_function_arguments(function_group)  # without nested_key it is not instantiated in v5
+    parser.add_function_arguments(function_group, "nogroup", as_group=False)
+    cfg = parser.parse_args([])
+
+    monkeypatch.delenv("JSONARGPARSE_DEPRECATION_WARNINGS", raising=False)
+    with catch_warnings(record=True) as w:
+        init = parser.instantiate(cfg)
+    assert w == []
+    assert init == cfg
+
+    monkeypatch.setenv("JSONARGPARSE_DEPRECATION_WARNINGS", "all")
+    with catch_warnings(record=True) as w:
+        parser.instantiate(cfg, instantiate_groups=False)
+    assert w == []
+
+    with catch_warnings(record=True) as w:
+        init = parser.instantiate(cfg)
+    assert init == cfg
+    assert len(w) == 2
+    assert 'Group "fn" added with add_function_arguments' in str(w[0].message)
+    assert "functools.partial" in str(w[0].message)
+    assert_deprecation_warn(
+        w,
+        message='Group "m" added with add_method_arguments',
+        code="init = parser.instantiate(cfg)",
+    )
+    assert "operator.methodcaller" in str(w[1].message)
+    assert "instantiate=False" in str(w[1].message)
+
+
 def test_instantiate_subclass_spec_in_any_deprecation(parser):
     shown_deprecation_warnings.clear()
     parser.add_argument("--any", type=Any)

@@ -12,6 +12,19 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
+v4.53.0 (unreleased)
+--------------------
+
+Deprecated
+^^^^^^^^^^
+- Groups added by ``add_function_arguments`` or ``add_method_arguments`` with a
+  ``nested_key`` are kept as parsed by ``instantiate``. From v5.0.0 they will be
+  replaced by a ``functools.partial`` with the arguments bound, or by an
+  ``operator.methodcaller`` for a method that is called with an instance. Warns
+  only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#985
+  <https://github.com/mauvilsa/jsonargparse/pull/985>`__).
+
+
 v4.52.0 (2026-09-01)
 --------------------
 
