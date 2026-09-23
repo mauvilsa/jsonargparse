@@ -107,6 +107,23 @@ argument and relying on the local scope) is removed. Pass components explicitly:
    auto_cli([ComponentA, ComponentB])
 
 
+ActionConfigFile / action="config"
+----------------------------------
+
+A config argument is now recommended to be added with the registered
+``"config"`` action, instead of importing ``ActionConfigFile``. The import keeps
+working, but the class is not part of the public API, so prefer the action name:
+
+.. code-block:: python
+
+   # before
+   from jsonargparse import ActionConfigFile
+   parser.add_argument("--config", action=ActionConfigFile)
+
+   # after
+   parser.add_argument("--config", action="config")
+
+
 Parser methods
 --------------
 

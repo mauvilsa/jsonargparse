@@ -44,7 +44,7 @@ docstring. Both are shown in the help. In a shell:
 .. note::
 
     Parsing of docstrings is optional. For the help to show the descriptions,
-    install jsonargparse with the ``signatures`` extra, see :ref:`installation`.
+    install jsonargparse with the ``docstrings`` extra, see :ref:`installation`.
 
 Given a single class, the first arguments are the class init parameters, then
 comes a method name (methods become :ref:`sub-commands`), and then the
@@ -1649,8 +1649,8 @@ Docstring parsing
 -----------------
 
 Parameter descriptions in the help require the `docstring-parser
-<https://pypi.org/project/docstring-parser/>`__ package, which is included in
-the ``signatures`` extra, see :ref:`installation`.
+<https://pypi.org/project/docstring-parser/>`__ package, which is installed by
+the ``docstrings`` extra, see :ref:`installation`.
 
 Two options can be configured, both related to parsing speed. By default the
 style is ``docstring_parser.DocstringStyle.AUTO``, which tries all supported
@@ -2032,7 +2032,7 @@ Stubs resolver
 The stubs resolver uses the `typeshed-client
 <https://pypi.org/project/typeshed-client/>`__ package to find parameters and
 their type hints in stub files ``*.pyi``. To enable it, install jsonargparse
-with the ``signatures`` extra, see :ref:`installation`.
+with the ``typeshed`` extra, see :ref:`installation`.
 
 Most of the Python standard library has its types in stubs, for example:
 

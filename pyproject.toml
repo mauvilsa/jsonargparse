@@ -45,9 +45,9 @@ all = [
     "jsonargparse[typing-extensions]",
 ]
 signatures = [
+    "jsonargparse[docstrings]",
+    "jsonargparse[typeshed]",
     "jsonargparse[typing-extensions]",
-    "docstring-parser>=0.17",
-    "typeshed-client>=2.8.2",
 ]
 yaml = [
     "PyYAML>=3.13",
@@ -79,6 +79,12 @@ ruamel = [
 ]
 omegaconf = [
     "omegaconf>=2.1.1",
+]
+docstrings = [
+    "docstring-parser>=0.17",
+]
+typeshed = [
+    "typeshed-client>=2.8.2",
 ]
 typing-extensions = [
     "typing-extensions>=4.12.0; python_version < '3.11'",
