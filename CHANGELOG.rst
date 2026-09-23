@@ -99,6 +99,9 @@ Fixed
 - A typed positional with ``nargs="*"`` set in a config file being reset to
   empty when no values for it are given in the command line (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- A positional-only parameter that has a default being required, even though
+  the call can omit it (`#986
+  <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 
 Changed
 ^^^^^^^

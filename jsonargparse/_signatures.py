@@ -462,14 +462,11 @@ class SignatureArguments(LoggerProperty):
                     "so it is not included in the parsed namespace unless given."
                 )
         # Determine argument characteristics based on parameter kind and default value
-        if kind == kinds.POSITIONAL_ONLY:
-            is_required = True  # Always required
-            is_non_positional = False  # Can be positional
-        elif kind == kinds.KEYWORD_ONLY:
+        if kind == kinds.KEYWORD_ONLY:
             is_required = default == inspect_empty  # Required if no default
             is_non_positional = True  # Must use --flag style
-        elif kind in {kinds.POSITIONAL_OR_KEYWORD, None}:
-            # POSITIONAL_OR_KEYWORD or programmatically created parameters without kind
+        elif kind in {kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD, None}:
+            # None is for programmatically created parameters without kind
             is_required = default == inspect_empty  # Required if no default
             is_non_positional = False  # Can be positional
         elif kind == kinds.VAR_POSITIONAL:

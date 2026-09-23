@@ -1254,6 +1254,30 @@ def function_var_positional_different_forwards(flag: bool = False, *args):  # pr
     return PositionalTarget(*args)
 
 
+def target_int_positional(x: int = 1):
+    return x  # pragma: no cover
+
+
+def target_str_positional(x: str = "two"):
+    return x  # pragma: no cover
+
+
+def function_var_positional_forwards_differ_in_type(flag: bool = False, *args):  # pragma: no cover
+    if flag:
+        return target_int_positional(*args)
+    return target_str_positional(*args)
+
+
+def target_int_positional_other_default(x: int = 3):
+    return x  # pragma: no cover
+
+
+def function_var_positional_forwards_differ_in_default(flag: bool = False, *args):  # pragma: no cover
+    if flag:
+        return target_int_positional(*args)
+    return target_int_positional_other_default(*args)
+
+
 def function_var_positional_used_and_forwarded(*args):  # pragma: no cover
     print(len(args))
     return function_uses_var_positional(*args)
@@ -1292,6 +1316,16 @@ def test_get_params_var_positional_resolved(component, method, expected):
         (function_var_positional_unresolved_forward, [("args", "VAR_POSITIONAL")], "forwarded to an unresolved call"),
         (
             function_var_positional_different_forwards,
+            [("flag", "POSITIONAL_OR_KEYWORD"), ("args", "VAR_POSITIONAL")],
+            "forwarded to calls that differ in their positional parameters",
+        ),
+        (
+            function_var_positional_forwards_differ_in_type,
+            [("flag", "POSITIONAL_OR_KEYWORD"), ("args", "VAR_POSITIONAL")],
+            "forwarded to calls that differ in their positional parameters",
+        ),
+        (
+            function_var_positional_forwards_differ_in_default,
             [("flag", "POSITIONAL_OR_KEYWORD"), ("args", "VAR_POSITIONAL")],
             "forwarded to calls that differ in their positional parameters",
         ),

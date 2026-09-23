@@ -1021,6 +1021,27 @@ def test_add_class_positional_only_instantiate(parser):
     init = parser.instantiate(cfg)
     assert isinstance(init.cls, ClassPositionalOnly)
     assert (init.cls.a, init.cls.b) == (1, 2)
+    with pytest.raises(ArgumentError, match="the following arguments are required: cls.a"):
+        parser.parse_args([])
+
+
+def func_positional_only_default(a: int = 1, /, b: int = 2):
+    return a, b
+
+
+def test_add_function_positional_only_default_not_required(parser):
+    parser.add_function_arguments(func_positional_only_default, "fn")
+    cfg = parser.parse_args([])
+    assert cfg.fn == Namespace(a=1, b=2)
+    assert parser.instantiate(cfg).fn() == (1, 2)
+    cfg = parser.parse_args(["--fn.a=3"])
+    assert parser.instantiate(cfg).fn() == (3, 2)
+
+
+def test_add_function_positional_only_default_as_positional(parser):
+    parser.add_function_arguments(func_positional_only_default, as_positional=True)
+    assert parser.parse_args([]) == Namespace(a=1, b=2)
+    assert parser.parse_args(["--a=3"]) == Namespace(a=3, b=2)
 
 
 class ClassVarPositional:

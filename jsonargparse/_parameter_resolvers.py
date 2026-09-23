@@ -930,8 +930,8 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                 return None
             params = remove_given_parameters(node, params)
             resolved.append(split_args_and_kwargs(params, forwards_kwargs=any(node is n for n in kwargs_calls))[0])
-        kinds_list = [[(p.name, p.kind) for p in params] for params in resolved]
-        if any(k != kinds_list[0] for k in kinds_list[1:]):
+        signatures = [[(p.name, p.kind, p.annotation, p.default) for p in params] for params in resolved]
+        if any(s != signatures[0] for s in signatures[1:]):
             self.log_debug(f"*{args_name} is forwarded to calls that differ in their positional parameters")
             return None
         return resolved[0]

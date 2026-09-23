@@ -1607,19 +1607,19 @@ A wide range of type hints is supported for signature parameters, see
 
 - ``fail_untyped`` decides which parameters without a type annotation raise an
   exception instead: the required ones with the default ``True``, all of them
-  with ``"all"``, and none with ``False``. Positional-only parameters are always
-  required. Use ``"all"`` only for code you own, since one untyped parameter of
-  a dependency would make its signature impossible to add.
+  with ``"all"``, and none with ``False``. Use ``"all"`` only for code you own,
+  since one untyped parameter of a dependency would make its signature
+  impossible to add.
 
 - Parameters whose name starts with ``_`` are considered internal and skipped,
   unless they are required.
 
 - A ``*args`` is added as a list argument with its name, e.g. ``*files: str`` as
-  ``files`` of type ``list[str]``. With ``as_positional=True`` it is a positional
-  that takes zero or more values. When calling, positional-only parameters, and
-  when ``*args`` has values also the ones before it, are given positionally.
-  Binding such values after positionals given on call, e.g. for a ``Callable``
-  that returns a class, requires Python 3.14 or later.
+  ``files`` of type ``list[str]``. With ``as_positional=True`` it is a
+  positional that takes zero or more values. When calling, positional-only
+  parameters, and when ``*args`` has values also the ones before it, are given
+  positionally. Binding such values after positionals given on call, e.g. for a
+  ``Callable`` that returns a class, requires Python 3.14 or later.
 
 - The ``skip`` parameter excludes arguments, e.g.
   ``parser.add_method_arguments(MyClass, 'mymethod', skip={'baz'})``. In a
