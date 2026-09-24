@@ -75,7 +75,7 @@ from ._common import (
     parser_context,
     validating_defaults,
 )
-from ._instantiation import dynamic_class_instantiator
+from ._instantiation import bind_call, dynamic_class_instantiator
 from ._loaders_dumpers import (
     basic_json_or_yaml_load,
     get_load_value_mode,
@@ -665,6 +665,8 @@ class ActionTypeHint(Action):
                 raise ValueError("ActionTypeHint does not allow nargs=0.")
             return ActionTypeHint(**kwargs)
         parser, cfg, val, opt_str = args
+        if not self.option_strings and self.nargs == "*" and (val == [] or val is self.default) and self.dest in cfg:
+            return None  # a positional not given in the command line keeps the value from defaults or configs
         source = command_line_source(self, opt_str)
         # a nested parse of the value, e.g. of an init arg of a subclass, refers to the same option
         with parser_context(command_line_option=source.origin), value_source_context(source):
@@ -2537,14 +2539,16 @@ def adapt_class_type(
         # only the top level keys, since a value can be a namespace, e.g. a subclass spec
         # kept as is for an Any typed parameter, which must not be expanded into kwargs
         init_kwargs = dict(init_args.items(branches=True, nested=False))
+        instantiator = bind_call(
+            partial(dynamic_class_instantiator, val_class),
+            parser._call_layouts[None],
+            {**init_kwargs, **dict_kwargs},
+            component=val_class,
+        )
 
         if partial_skip_args is not None:  # an empty set for a factory that takes no arguments
-            return partial(
-                dynamic_class_instantiator,
-                val_class,
-                **{**init_kwargs, **dict_kwargs},
-            )
-        return dynamic_class_instantiator(val_class, **{**init_kwargs, **dict_kwargs})
+            return instantiator
+        return instantiator()
 
     prev_init_args = prev_val.get("init_args") if isinstance(prev_val, Namespace) else None
 

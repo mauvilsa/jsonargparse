@@ -5,6 +5,8 @@ import inspect
 import re
 from argparse import SUPPRESS, ArgumentParser
 from collections.abc import Callable
+from functools import partial
+from operator import methodcaller
 from typing import Any, Literal, Optional, Union
 
 from ._actions import _ActionConfigLoad
@@ -16,7 +18,13 @@ from ._common import (
     is_subclass,
     is_subclasses_disabled,
 )
-from ._instantiation import dynamic_class_instantiator
+from ._instantiation import (
+    CallLayout,
+    bind_call,
+    dynamic_class_instantiator,
+    get_call_arguments,
+    get_call_layout,
+)
 from ._namespace import Namespace, get_value_and_parent
 from ._optionals import (
     attrs_support,
@@ -71,6 +79,8 @@ class SignatureArguments(LoggerProperty):
     # that keyword arguments other than the resolved ones are also accepted, i.e. the signature has
     # a **kwargs that the parameter resolvers were unable to resolve.
     _accepted_kwargs: dict[str | None, set[str] | Literal[True]]
+    # How the values of the parameters of a signature are given in a call, keyed by its nested_key.
+    _call_layouts: dict[str | None, CallLayout]
 
     def add_class_arguments(
         self,
@@ -175,6 +185,7 @@ class SignatureArguments(LoggerProperty):
         as_group: bool = True,
         as_positional: bool = False,
         skip: set[str | int] | None = None,
+        instantiate: bool = True,
         fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
     ) -> list[str]:
@@ -189,6 +200,10 @@ class SignatureArguments(LoggerProperty):
             as_group: Whether arguments should be added to a new argument group.
             as_positional: Whether to add required parameters as positional arguments.
             skip: Names of parameters or number of positionals that should be skipped.
+            instantiate: Whether :meth:`instantiate <.ArgumentParser.instantiate>` should replace
+                the group by a callable with the arguments bound: for a static or class method a
+                :func:`functools.partial`, and for other methods an :func:`operator.methodcaller`
+                which is called with the instance.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
@@ -206,6 +221,16 @@ class SignatureArguments(LoggerProperty):
         if not hasattr(unaliased_type, method_name) or not callable(getattr(unaliased_type, method_name)):
             raise ValueError('Expected "method_name" argument to be a callable member of the class.')
 
+        call_target: Callable | str = method_name
+        attr = inspect.getattr_static(get_generic_origin(unaliased_type), method_name)
+        if isinstance(attr, (staticmethod, classmethod)):
+            call_target = getattr(unaliased_type, method_name)
+        elif instantiate and nested_key is not None and any(isinstance(s, int) for s in skip or []):
+            raise ValueError(
+                "Skipping positionals of a method that is called with an instance is not supported when the group "
+                "is instantiated. Use instantiate=False."
+            )
+
         return self._add_signature_arguments(
             class_type,
             method_name,
@@ -215,6 +240,8 @@ class SignatureArguments(LoggerProperty):
             skip,
             fail_untyped,
             sub_configs=sub_configs,
+            instantiate=instantiate,
+            call_target=call_target,
         )
 
     def add_function_arguments(
@@ -224,6 +251,7 @@ class SignatureArguments(LoggerProperty):
         as_group: bool = True,
         as_positional: bool = False,
         skip: set[str | int] | None = None,
+        instantiate: bool = True,
         fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
     ) -> list[str]:
@@ -237,6 +265,8 @@ class SignatureArguments(LoggerProperty):
             as_group: Whether arguments should be added to a new argument group.
             as_positional: Whether to add required parameters as positional arguments.
             skip: Names of parameters or number of positionals that should be skipped.
+            instantiate: Whether :meth:`instantiate <.ArgumentParser.instantiate>` should replace
+                the group by a :func:`functools.partial` of the function with the arguments bound.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
@@ -251,6 +281,7 @@ class SignatureArguments(LoggerProperty):
         if not callable(function):
             raise ValueError('Expected "function" argument to be a callable object.')
 
+        call_target = function
         method_name = None
         if hasattr(function, "__class__") and callable_instances(function.__class__):
             function = function.__class__
@@ -265,6 +296,8 @@ class SignatureArguments(LoggerProperty):
             skip,
             fail_untyped,
             sub_configs=sub_configs,
+            instantiate=instantiate,
+            call_target=call_target,
         )
 
     def _add_signature_arguments(
@@ -280,6 +313,7 @@ class SignatureArguments(LoggerProperty):
         instantiate: bool = True,
         linked_targets: set[str] | None = None,
         help: str | None = None,
+        call_target: Callable | str | None = None,
     ) -> list[str]:
         """Adds arguments from parameters of objects based on signatures and docstrings.
 
@@ -293,7 +327,9 @@ class SignatureArguments(LoggerProperty):
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
             sub_configs: Whether subclass type hints should be loadable from inner config file.
-            instantiate: Whether the class group should be instantiated.
+            instantiate: Whether the group should be instantiated.
+            call_target: For a function or method, what the group is bound to on instantiation,
+                a callable or the name of a method to call on an instance.
 
         Returns:
             The list of arguments added.
@@ -302,7 +338,13 @@ class SignatureArguments(LoggerProperty):
             ValueError: When there are parameters without a type that fail_untyped requires to have one.
         """
         validate_fail_untyped(fail_untyped)
-        params = get_signature_parameters(function_or_class, method_name, logger=self.logger, include_var_keyword=True)
+        params = get_signature_parameters(
+            function_or_class,
+            method_name,
+            logger=self.logger,
+            include_var_keyword=True,
+            include_var_positional=True,
+        )
         parser = self.parser if hasattr(self, "parser") else self
         parser._accepted_kwargs[nested_key] = get_accepted_kwargs(params)
         params = remove_unresolved_kwargs(params)
@@ -316,6 +358,8 @@ class SignatureArguments(LoggerProperty):
             self.logger.debug(
                 f"Skipping parameters {names} because {skip_positionals[0]} positionals requested to be skipped."
             )
+        call_layout = get_call_layout(params, open_positionals=skip_positionals[0] if skip_positionals else 0)
+        parser._call_layouts[nested_key] = call_layout
 
         prefix = "--" + (nested_key + "." if nested_key else "")
         for param in params:
@@ -340,6 +384,8 @@ class SignatureArguments(LoggerProperty):
             doc_group,
             config_load=len(params) > 0,
             instantiate=instantiate,
+            call_layout=call_layout,
+            call_target=call_target,
         )
 
         ## Add parameter arguments ##
@@ -409,16 +455,18 @@ class SignatureArguments(LoggerProperty):
                     "so it is not included in the parsed namespace unless given."
                 )
         # Determine argument characteristics based on parameter kind and default value
-        if kind == kinds.POSITIONAL_ONLY:
-            is_required = True  # Always required
-            is_non_positional = False  # Can be positional
-        elif kind == kinds.KEYWORD_ONLY:
+        if kind == kinds.KEYWORD_ONLY:
             is_required = default == inspect_empty  # Required if no default
             is_non_positional = True  # Must use --flag style
-        elif kind in {kinds.POSITIONAL_OR_KEYWORD, None}:
-            # POSITIONAL_OR_KEYWORD or programmatically created parameters without kind
+        elif kind in {kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD, None}:
+            # None is for programmatically created parameters without kind
             is_required = default == inspect_empty  # Required if no default
             is_non_positional = False  # Can be positional
+        elif kind == kinds.VAR_POSITIONAL:
+            is_required = False  # Zero values are accepted
+            is_non_positional = False  # Can be positional
+            if default == inspect_empty:
+                default = []
         else:
             raise RuntimeError(f"The code should never reach here: kind={kind}")  # pragma: no cover
         if annotation != inspect_empty:
@@ -448,10 +496,18 @@ class SignatureArguments(LoggerProperty):
                     "With fail_untyped='all', all parameters must have a supported type."
                     f" Parameter '{name}' from '{src}' does not specify a type."
                 )
-            if not is_required:
+            if kind == kinds.VAR_POSITIONAL:
+                annotation = Untyped
+            elif not is_required:
                 # The type of the default is attempted first, so that a value that it accepts is
                 # converted as it would be for a parameter that has the type in its signature.
                 annotation = Union[type(default), Untyped]
+        is_positional = as_positional and not is_non_positional and (is_required or kind == kinds.VAR_POSITIONAL)
+        if kind == kinds.VAR_POSITIONAL:
+            if is_positional:
+                kwargs["nargs"] = "*"  # the type is of each value
+            else:
+                annotation = list[annotation]  # type: ignore[valid-type]
         if "help" not in kwargs:
             kwargs["help"] = param.doc
         if not is_required:
@@ -478,7 +534,7 @@ class SignatureArguments(LoggerProperty):
         nested_skip: set[str] = set()
         subclasses_disabled = is_subclasses_disabled(annotation)
         dest = (nested_key + "." if nested_key else "") + name
-        args = [dest if is_required and as_positional and not is_non_positional else "--" + dest]
+        args = [dest if is_positional else "--" + dest]
         if param.aliases and args[0].startswith("--"):
             args += self._get_alias_args(param, nested_key, container, subclasses_disabled, src)
         if param.origin:
@@ -641,6 +697,8 @@ class SignatureArguments(LoggerProperty):
         config_load_type=None,
         required=False,
         instantiate=True,
+        call_layout=None,
+        call_target=None,
     ):
         if required:
             if nested_key is None:
@@ -662,10 +720,16 @@ class SignatureArguments(LoggerProperty):
                 group.add_argument("--" + nested_key, action=_ActionConfigLoad(basetype=config_load_type))
             # a subscripted generic is instantiated as its origin class, since the subscript
             # only says what its type parameters stand for
-            if inspect.isclass(get_generic_origin(obj)) and nested_key is not None and instantiate:
-                group.dest = nested_key.replace("-", "_")
-                group.group_class = get_generic_origin(obj)
-                group.instantiate_class = group_instantiate_class
+            if nested_key is not None and instantiate:
+                if inspect.isclass(get_generic_origin(obj)):
+                    group.dest = nested_key.replace("-", "_")
+                    group.group_class = get_generic_origin(obj)
+                    group.instantiate_class = group_instantiate_class
+                elif call_target is not None:
+                    group.dest = nested_key.replace("-", "_")
+                    group.call_target = call_target
+                    group.instantiate_class = group_bind_callable
+                group.call_layout = call_layout
         return group
 
 
@@ -676,14 +740,28 @@ def set_group_extra_defaults(parser, nested_key, extras: dict) -> None:
         action.default = Namespace(**extras)
 
 
-def group_instantiate_class(group, cfg):
+def get_group_values(group, cfg) -> tuple[dict, Namespace, str]:
     try:
         value, parent, key = get_value_and_parent(cfg, group.dest)
     except KeyError:
-        value = {}
-        parent = cfg
-        key = group.dest
-    parent[key] = dynamic_class_instantiator(group.group_class, **value)
+        return {}, cfg, group.dest
+    # only the top level keys, since a value can be a namespace, e.g. a subclass spec kept as is
+    return dict(value.items(branches=True, nested=False)), parent, key
+
+
+def group_instantiate_class(group, cfg):
+    values, parent, key = get_group_values(group, cfg)
+    instantiator = partial(dynamic_class_instantiator, group.group_class)
+    parent[key] = bind_call(instantiator, group.call_layout, values, component=group.group_class)()
+
+
+def group_bind_callable(group, cfg):
+    values, parent, key = get_group_values(group, cfg)
+    if isinstance(group.call_target, str):
+        args, kwargs = get_call_arguments(group.call_layout, values, group.call_target)
+        parent[key] = methodcaller(group.call_target, *args, **kwargs)
+    else:
+        parent[key] = bind_call(group.call_target, group.call_layout, values)
 
 
 def strip_title(value):

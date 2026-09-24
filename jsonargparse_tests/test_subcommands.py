@@ -506,6 +506,25 @@ def test_subsubcommands_wrong_add_order(parser):
     ctx.match("Multiple levels of subcommands must be added in level order")
 
 
+def test_add_subcommands_after_variable_nargs_positional(subtests):
+    for nargs in ["*", "+", "..."]:
+        with subtests.test(nargs=nargs):
+            parser = ArgumentParser()
+            parser.add_argument("files", nargs=nargs)
+            with pytest.raises(ValueError) as ctx:
+                parser.add_subcommands()
+            ctx.match("'files' accepts a variable number of values")
+
+
+def test_add_subcommands_after_single_value_positional(parser, subparser):
+    parser.add_argument("file")
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("cmd", subparser)
+    cfg = parser.parse_args(["x", "cmd"])
+    assert cfg.file == "x"
+    assert cfg.subcommand == "cmd"
+
+
 def test_subcommands_custom_instantiator(parser, subparser, subtests, clear_instantiators):
     subparser.add_argument("--cls", type=CustomInstantiationBase)
     subcommands = parser.add_subcommands()

@@ -6,6 +6,7 @@ from typing import TypeVar
 
 from ._common import parser_context
 from ._core import ArgumentParser
+from ._instantiation import CallLayout, bind_call
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._optionals import _get_config_read_mode
 from ._paths import path_dir_context
@@ -57,12 +58,14 @@ class FromConfigMixin:
         Args:
             config: Path to a config file or a dict with config values.
         """
-        kwargs, cls = _parse_class_kwargs_from_config(cls, config, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
-        return cls(**kwargs)
+        kwargs, cls, call_layout = _parse_class_kwargs_from_config(cls, config, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
+        return bind_call(cls, call_layout, kwargs)()
 
 
-def _parse_class_kwargs_from_config(cls: type[T], config: str | PathLike | dict, **kwargs) -> tuple[dict, type[T]]:
-    """Parse the init kwargs for ``cls`` from a config file or dict."""
+def _parse_class_kwargs_from_config(
+    cls: type[T], config: str | PathLike | dict, **kwargs
+) -> tuple[dict, type[T], CallLayout]:
+    """Parse the init kwargs for ``cls`` from a config file or dict, and how they are given in the call."""
     parser = ArgumentParser(exit_on_error=False, **kwargs)
     cfg_path = None
     if not isinstance(config, dict):
@@ -96,7 +99,7 @@ def _parse_class_kwargs_from_config(cls: type[T], config: str | PathLike | dict,
         clear_required(parser, required)
     with load_config_path_context(cfg_path), path_dir_context(cfg_path):
         cfg = parser.parse_object(config, defaults=False)
-    return parser.instantiate(cfg).as_dict(), cls
+    return parser.instantiate(cfg).as_dict(), cls, parser._call_layouts[None]
 
 
 def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:
@@ -107,7 +110,7 @@ def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:
     if not (isinstance(config, (str, PathLike)) and Path(config).is_file()):
         return
 
-    defaults, cls = _parse_class_kwargs_from_config(cls, config, **parser_kwargs)
+    defaults, cls, _ = _parse_class_kwargs_from_config(cls, config, **parser_kwargs)
     _override_init_defaults_this_class(cls, defaults)
     _override_init_defaults_parent_classes(cls, defaults)
 

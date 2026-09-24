@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import functools
 import json
+import operator
+import pickle
 import sys
 from pathlib import Path
 from typing import Any, Dict, Generic, List, Optional, Tuple, TypedDict, TypeVar, Union
@@ -392,7 +394,8 @@ def test_add_class_skip_parameter_debug_logging(parser, logger):
     parser.logger = logger
     with capture_logs(logger) as logs:
         parser.add_class_arguments(Debug2, skip={"c2_a2"})
-    assert 1 == len(logs.getvalue().strip().split("\n"))
+    assert 2 == len(logs.getvalue().strip().split("\n"))
+    assert "*args is not used, so its values would be discarded" in logs.getvalue()
     assert 'Skipping parameter "c2_a2"' in logs.getvalue()
     assert "because of: Parameter requested to be skipped" in logs.getvalue()
 
@@ -1001,3 +1004,272 @@ def test_add_function_positional_and_keyword_only_parameters(parser):
         parser.parse_args(["1", "--b=2", "--c=3", "--d=4"])
     with pytest.raises(ArgumentError, match="the following arguments are required: c"):
         parser.parse_args(["1", "2", "--d=4"])
+
+
+# positional-only and var-positional parameters tests
+
+
+class ClassPositionalOnly:
+    def __init__(self, a: int, /, b: int = 2):
+        self.a = a
+        self.b = b
+
+
+def test_add_class_positional_only_instantiate(parser):
+    parser.add_class_arguments(ClassPositionalOnly, "cls")
+    cfg = parser.parse_args(["--cls.a=1"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.cls, ClassPositionalOnly)
+    assert (init.cls.a, init.cls.b) == (1, 2)
+    with pytest.raises(ArgumentError, match="the following arguments are required: cls.a"):
+        parser.parse_args([])
+
+
+def func_positional_only_default(a: int = 1, /, b: int = 2):
+    return a, b
+
+
+def test_add_function_positional_only_default_not_required(parser):
+    parser.add_function_arguments(func_positional_only_default, "fn")
+    cfg = parser.parse_args([])
+    assert cfg.fn == Namespace(a=1, b=2)
+    assert parser.instantiate(cfg).fn() == (1, 2)
+    cfg = parser.parse_args(["--fn.a=3"])
+    assert parser.instantiate(cfg).fn() == (3, 2)
+
+
+def test_add_function_positional_only_default_as_positional(parser):
+    parser.add_function_arguments(func_positional_only_default, as_positional=True)
+    assert parser.parse_args([]) == Namespace(a=1, b=2)
+    assert parser.parse_args(["--a=3"]) == Namespace(a=3, b=2)
+
+
+class ClassVarPositional:
+    def __init__(self, a: int, *args: int, b: int = 0):
+        """
+        Args:
+            a: a description
+            args: args description
+        """
+        self.a = a
+        self.args = args
+        self.b = b
+
+
+def test_add_class_var_positional(parser):
+    added_args = parser.add_class_arguments(ClassVarPositional, "cls")
+    assert added_args == ["cls.a", "cls.args", "cls.b"]
+    assert parser.get_defaults().cls == Namespace(a=None, args=[], b=0)
+    assert find_action(parser, "cls.args")._typehint == list[int]
+
+    cfg = parser.parse_args(["--cls.a=1", "--cls.args=[2, 3]", "--cls.b=4"])
+    assert cfg.cls == Namespace(a=1, args=[2, 3], b=4)
+    init = parser.instantiate(cfg)
+    assert (init.cls.a, init.cls.args, init.cls.b) == (1, (2, 3), 4)
+
+    cfg = parser.parse_args(["--cls.a=1", "--cls.args+=5", "--cls.args+=6"])
+    assert cfg.cls.args == [5, 6]
+
+    with pytest.raises(ArgumentError, match='Parser key "cls.args"'):
+        parser.parse_args(["--cls.a=1", "--cls.args=[x]"])
+
+    init = parser.instantiate(parser.parse_args(["--cls.a=1"]))
+    assert (init.cls.a, init.cls.args, init.cls.b) == (1, (), 0)
+
+
+@skip_if_docstring_parser_unavailable
+def test_add_class_var_positional_help(parser):
+    parser.add_class_arguments(ClassVarPositional, "cls")
+    help_str = get_parser_help(parser)
+    assert "--cls.args [ITEM,...]" in help_str
+    assert "args description (type: list[int], default: [])" in help_str
+
+
+def test_add_class_var_positional_skip(parser):
+    added_args = parser.add_class_arguments(ClassVarPositional, "cls", skip={"args"})
+    assert added_args == ["cls.a", "cls.b"]
+    init = parser.instantiate(parser.parse_args(["--cls.a=1"]))
+    assert init.cls.args == ()
+
+
+class ClassPositionalDefaultThenVarPositional:
+    def __init__(self, a: int = 1, *args: int):
+        self.a = a
+        self.args = args
+
+
+def test_var_positional_skipped_preceding_positional_uses_default(parser):
+    parser.add_class_arguments(ClassPositionalDefaultThenVarPositional, "cls", skip={"a"})
+    init = parser.instantiate(parser.parse_args(["--cls.args=[2, 3]"]))
+    assert (init.cls.a, init.cls.args) == (1, (2, 3))
+
+
+def test_var_positional_skipped_preceding_required_positional(parser):
+    parser.add_class_arguments(ClassVarPositional, "cls", skip={"a"})
+    cfg = parser.parse_args(["--cls.args=[2, 3]"])
+    with pytest.raises(ValueError, match='requires a value for parameter "a", since it precedes "args"'):
+        parser.instantiate(cfg)
+
+
+def func_var_positional_untyped(*args, k: int = 0):
+    return args, k
+
+
+def test_add_function_var_positional_untyped(parser):
+    parser.add_function_arguments(func_var_positional_untyped, "fn")
+    assert find_action(parser, "fn.args")._typehint == list[Untyped]
+    cfg = parser.parse_args(['--fn.args=[1, "x", 2.5]'])
+    assert cfg.fn.args == [1, "x", 2.5]
+    init = parser.instantiate(cfg)
+    assert init.fn() == ((1, "x", 2.5), 0)
+
+
+def test_add_function_var_positional_untyped_fail_untyped_all(parser):
+    with pytest.raises(ValueError, match="Parameter 'args' from .* does not specify a type"):
+        parser.add_function_arguments(func_var_positional_untyped, "fn", fail_untyped="all")
+
+
+def func_var_positional_underscore(*_rest: Any, k: int = 0):
+    return _rest, k  # pragma: no cover
+
+
+def test_add_function_var_positional_underscore_skipped(parser, logger):
+    parser.logger = logger
+    with capture_logs(logger) as logs:
+        added_args = parser.add_function_arguments(func_var_positional_underscore, "fn")
+    assert added_args == ["fn.k"]
+    assert 'Skipping parameter "_rest"' in logs.getvalue()
+
+
+def func_positional_only_and_var_positional(a: int, /, b: str, *rest: float, c: bool = False):
+    return a, b, rest, c
+
+
+def test_add_function_positional_only_and_var_positional(parser):
+    parser.add_function_arguments(func_positional_only_and_var_positional, "fn")
+    cfg = parser.parse_args(["--fn.a=1", "--fn.b=x", "--fn.rest=[0.5]"])
+    assert cfg.fn == Namespace(a=1, b="x", rest=[0.5], c=False)
+    init = parser.instantiate(cfg)
+    assert init.fn() == (1, "x", (0.5,), False)
+    cfg = parser.parse_args(["--fn.a=1", "--fn.b=x"])
+    assert parser.instantiate(cfg).fn() == (1, "x", (), False)
+
+
+def test_add_function_skip_positional_var_positional_empty(parser):
+    parser.add_function_arguments(func_positional_only_and_var_positional, "fn", skip={1})
+    init = parser.instantiate(parser.parse_args(["--fn.b=x"]))
+    assert isinstance(init.fn, functools.partial)
+    assert init.fn(3) == (3, "x", (), False)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="functools.Placeholder introduced in python 3.14")
+def test_add_function_skip_positional_var_positional_placeholder(parser):
+    parser.add_function_arguments(func_positional_only_and_var_positional, "fn", skip={1})
+    cfg = parser.parse_args(["--fn.b=x", "--fn.rest=[0.5, 1.5]", "--fn.c=true"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.fn, functools.partial)
+    assert init.fn.args == (functools.Placeholder, "x", 0.5, 1.5)
+    assert init.fn(3) == (3, "x", (0.5, 1.5), True)
+    assert init.fn(3, 2.5) == (3, "x", (0.5, 1.5, 2.5), True)
+    assert init.fn(3, c=False) == (3, "x", (0.5, 1.5), False)
+    assert pickle.loads(pickle.dumps(init.fn))(4) == (4, "x", (0.5, 1.5), True)
+    with pytest.raises(TypeError, match="missing positional arguments"):
+        init.fn()
+
+
+@pytest.mark.skipif(sys.version_info >= (3, 14), reason="functools.Placeholder introduced in python 3.14")
+def test_add_function_skip_positional_var_positional_before_python_3_14(parser):
+    parser.add_function_arguments(func_positional_only_and_var_positional, "fn", skip={1})
+    cfg = parser.parse_args(["--fn.b=x", "--fn.rest=[0.5, 1.5]"])
+    with pytest.raises(ValueError, match="only supported in Python 3.14 or later"):
+        parser.instantiate(cfg)
+
+
+# instantiate of function and method groups tests
+
+
+def test_add_function_instantiate_partial(parser):
+    parser.add_function_arguments(func, "fn")
+    cfg = parser.parse_args(["--fn.a1=x"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.fn, functools.partial)
+    assert init.fn.func is func
+    assert init.fn.keywords == {"a1": "x", "a2": 2.0, "a3": False, "a4": None}
+    assert init.fn() == "x"
+    assert pickle.loads(pickle.dumps(init.fn))() == "x"
+    assert cfg.fn == Namespace(a1="x", a2=2.0, a3=False, a4=None)
+
+
+def test_add_function_instantiate_false(parser):
+    parser.add_function_arguments(func, "fn", instantiate=False)
+    cfg = parser.parse_args(["--fn.a1=x"])
+    assert parser.instantiate(cfg) == cfg
+
+
+def test_add_function_instantiate_groups_false(parser):
+    parser.add_function_arguments(func, "fn")
+    cfg = parser.parse_args(["--fn.a1=x"])
+    assert parser.instantiate(cfg, instantiate_groups=False) == cfg
+
+
+def test_add_function_without_nested_key_not_bound(parser):
+    parser.add_function_arguments(func)
+    cfg = parser.parse_args(["--a1=x"])
+    assert parser.instantiate(cfg) == cfg
+
+
+def test_add_function_callable_instance_instantiate(parser):
+    instance = Class1(c1_a1="-")
+    parser.add_function_arguments(instance, "fn")
+    init = parser.instantiate(parser.parse_args([]))
+    assert init.fn.func is instance
+    assert init.fn() == "-"
+
+
+class WithMethodKinds:
+    def __init__(self, p: int = 0):
+        self.p = p
+
+    def normal_method(self, a: int, /, *rest: int, k: str = "-"):
+        return self.p, a, rest, k
+
+    @staticmethod
+    def static_method(a: int, *rest: int):
+        return a, rest
+
+    @classmethod
+    def class_method(cls, a: int):
+        return cls, a
+
+
+class SubWithMethodKinds(WithMethodKinds):
+    def normal_method(self, a: int, /, *rest: int, k: str = "-"):
+        return "sub", a, rest, k
+
+
+def test_add_method_instantiate_normal_method(parser):
+    parser.add_method_arguments(WithMethodKinds, "normal_method", "m")
+    cfg = parser.parse_args(["--m.a=1", "--m.rest=[2, 3]"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.m, operator.methodcaller)
+    assert init.m(WithMethodKinds(p=5)) == (5, 1, (2, 3), "-")
+    assert init.m(SubWithMethodKinds()) == ("sub", 1, (2, 3), "-")
+    assert pickle.loads(pickle.dumps(init.m))(WithMethodKinds()) == (0, 1, (2, 3), "-")
+
+
+def test_add_method_instantiate_static_and_class_methods(parser):
+    parser.add_method_arguments(WithMethodKinds, "static_method", "s")
+    parser.add_method_arguments(SubWithMethodKinds, "class_method", "c")
+    init = parser.instantiate(parser.parse_args(["--s.a=1", "--s.rest=[2]", "--c.a=3"]))
+    assert isinstance(init.s, functools.partial)
+    assert init.s() == (1, (2,))
+    assert isinstance(init.c, functools.partial)
+    assert init.c() == (SubWithMethodKinds, 3)
+
+
+def test_add_method_instantiate_skip_positionals(parser):
+    with pytest.raises(ValueError, match="Skipping positionals of a method that is called with an instance"):
+        parser.add_method_arguments(WithMethodKinds, "normal_method", "m", skip={1})
+    parser.add_method_arguments(WithMethodKinds, "normal_method", "m", skip={1}, instantiate=False)
+    cfg = parser.parse_args(["--m.k=x"])
+    assert parser.instantiate(cfg) == cfg

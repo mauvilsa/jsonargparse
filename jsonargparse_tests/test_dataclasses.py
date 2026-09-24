@@ -521,7 +521,7 @@ class DataWithOptionalA:
 
 
 def data_with_optional(a: DataWithOptionalA):
-    pass  # pragma: no cover
+    return a
 
 
 def test_dataclass_with_optional_default(parser):
@@ -529,7 +529,8 @@ def test_dataclass_with_optional_default(parser):
     cfg = parser.parse_args([])
     assert cfg.data == Namespace(a=Namespace(b=Namespace(c=3)))
     init = parser.instantiate(cfg)
-    assert init.data.a == DataWithOptionalA()
+    assert init.data.keywords["a"] == DataWithOptionalA()
+    assert init.data.keywords["a"] == init.data()
 
 
 @dataclasses.dataclass

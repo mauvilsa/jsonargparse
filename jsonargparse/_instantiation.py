@@ -1,10 +1,85 @@
+import dataclasses
+import functools
 import inspect
-from typing import Protocol
+import sys
+from collections.abc import Callable, Mapping
+from functools import partial
+from typing import Any, Protocol
 
 from ._common import ClassType, applied_instantiation_links, get_parsing_setting, is_subclass, parser_context
 from ._namespace import Namespace, get_value_and_parent, split_key
 
 __all__ = ["add_instantiator"]
+
+kinds = inspect._ParameterKind
+
+
+@dataclasses.dataclass(frozen=True)
+class CallLayout:
+    """How the values of the parameters of a signature are given in a call."""
+
+    # parameters that can be given positionally, in order, i.e. positional-only ones and the ones
+    # before a *args
+    positional: tuple[str, ...] = ()
+    # number of leading positional ones that are always given positionally, i.e. up to the last
+    # positional-only one. The rest are only given positionally when *args is not empty.
+    always_positional: int = 0
+    var_positional: str | None = None
+    # defaults of the positional ones, used when one was not given, e.g. because it was skipped
+    defaults: Mapping[str, Any] = dataclasses.field(default_factory=dict)
+    # number of leading positionals that are not bound, but given when calling, e.g. by the
+    # caller of a callable that returns a class
+    open_positionals: int = 0
+
+
+def get_call_layout(params: list, open_positionals: int = 0) -> CallLayout:
+    """Gets the call layout for a list of resolved parameters."""
+    var_idx = next((n for n, p in enumerate(params) if p.kind == kinds.VAR_POSITIONAL), None)
+    positional_only_idxs = [n for n, p in enumerate(params) if p.kind == kinds.POSITIONAL_ONLY]
+    end = var_idx if var_idx is not None else (positional_only_idxs[-1] + 1 if positional_only_idxs else 0)
+    positional = [p for p in params[:end] if p.kind in {kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD}]
+    always = [n for n, p in enumerate(positional) if p.kind == kinds.POSITIONAL_ONLY]
+    return CallLayout(
+        positional=tuple(p.name for p in positional),
+        always_positional=always[-1] + 1 if always else 0,
+        var_positional=None if var_idx is None else params[var_idx].name,
+        defaults={p.name: p.default for p in positional if p.default is not inspect._empty},
+        open_positionals=open_positionals,
+    )
+
+
+def get_call_arguments(layout: CallLayout, values: Mapping[str, Any], component: Any) -> tuple[list, dict]:
+    """Splits values into the positional and keyword arguments with which to call a component."""
+    kwargs = dict(values)
+    var_positional = list(kwargs.pop(layout.var_positional, ())) if layout.var_positional else []
+    num_positional = len(layout.positional) if var_positional else layout.always_positional
+    args = []
+    for num, name in enumerate(layout.positional[:num_positional]):
+        if name in kwargs:
+            args.append(kwargs.pop(name))
+        elif name in layout.defaults:
+            args.append(layout.defaults[name])
+        else:
+            following = layout.var_positional if var_positional else layout.positional[num_positional - 1]
+            raise ValueError(
+                f'Calling {component} requires a value for parameter "{name}", since it precedes "{following}" '
+                "which is given positionally."
+            )
+    return args + var_positional, kwargs
+
+
+def bind_call(func: Callable, layout: CallLayout, values: Mapping[str, Any], component: Any = None) -> Callable:
+    """Binds values to func according to a call layout, returning a callable that makes the call."""
+    args, kwargs = get_call_arguments(layout, values, component or func)
+    if layout.open_positionals and args:
+        # the open positionals are given on call, before the bound ones
+        if sys.version_info < (3, 14):
+            raise ValueError(
+                f"Binding values to positionals of {component or func} that follow {layout.open_positionals} "
+                "positionals given on call is only supported in Python 3.14 or later."
+            )
+        args = [functools.Placeholder] * layout.open_positionals + args
+    return partial(func, *args, **kwargs)
 
 
 class InstantiatorCallable(Protocol):
@@ -32,8 +107,8 @@ class InstantiateMethod:
         - **Class/subclass type arguments** (``add_argument`` with a class type
           or ``add_class_arguments``/``add_subclass_arguments``): An object with
           ``class_path`` and optionally ``init_args`` is replaced by an instance
-          of the referenced class, created by calling
-          ``class_type(**init_args)``. For the case of classes with disabled
+          of the referenced class, created by calling the class with the
+          ``init_args``. For the case of classes with disabled
           subclasses, the namespace can have directly the init args without the
           ``class_path`` + ``init_args`` wrapper.
 
@@ -45,6 +120,12 @@ class InstantiateMethod:
           call arguments are provided yet — a :func:`functools.partial` bound to
           the given ``init_args``.
 
+        - **Function and method groups** (``add_function_arguments`` or
+          ``add_method_arguments`` with a ``nested_key``): Replaced by a
+          :func:`functools.partial` with the arguments bound, or by an
+          :func:`operator.methodcaller` for a method that is called with an
+          instance.
+
         - **Instantiation order**: Components are processed in the order
           determined by argument links applied on instantiation.
 
@@ -52,7 +133,7 @@ class InstantiateMethod:
             namespace: The configuration object to use. Must have been produced
                 by one of the ``parse_*`` methods and not modified in a way that
                 breaks the structure expected by the parser.
-            instantiate_groups: Whether class groups should be instantiated.
+            instantiate_groups: Whether class, function and method groups should be instantiated.
 
         Returns:
             A new configuration object where every registered signature

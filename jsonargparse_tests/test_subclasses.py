@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import textwrap
 import warnings
 from abc import ABC, abstractmethod
@@ -1622,6 +1623,110 @@ def test_subclass_dict_kwargs_skipped_parameter(parser):
     value["dict_kwargs"]["p9"] = 4
     with pytest.raises(ArgumentError, match=dict_kwargs_not_accepted + "p9"):
         parser.parse_args([f"--cls={json.dumps(value)}"])
+
+
+# positional-only and var-positional parameters tests
+
+
+class VarPositional:
+    def __init__(self, *a: int, b: int):
+        self.a = a
+        self.b = b
+
+
+def test_subclass_var_positional(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--a", type=VarPositional)
+
+    config = {"a": {"class_path": f"{__name__}.VarPositional", "init_args": {"a": [1, 2], "b": 3}}}
+    Path("config.yaml").write_text(json_or_yaml_dump(config))
+    cfg = parser.parse_args(["--cfg=config.yaml"])
+    assert cfg.a.init_args == Namespace(a=[1, 2], b=3)
+    init = parser.instantiate(cfg)
+    assert isinstance(init.a, VarPositional)
+    assert (init.a.a, init.a.b) == ((1, 2), 3)
+
+    cfg = parser.parse_args(["--cfg=config.yaml", "--a.a+=4"])
+    assert cfg.a.init_args.a == [1, 2, 4]
+
+    help_str = get_parse_args_stdout(parser, [f"--a.help={__name__}.VarPositional"])
+    assert "--a.a [ITEM,...]" in help_str
+
+
+def test_subclass_var_positional_in_dict_kwargs(parser):
+    parser.add_argument("--a", type=VarPositional)
+    value = {"class_path": f"{__name__}.VarPositional", "init_args": {"b": 3}, "dict_kwargs": {"a": [1]}}
+    cfg = parser.parse_args([f"--a={json.dumps(value)}"])
+    assert cfg.a.init_args == Namespace(a=[1], b=3)
+    assert "dict_kwargs" not in cfg.a
+    assert parser.instantiate(cfg).a.a == (1,)
+
+
+class PositionalOnly:
+    def __init__(self, x: int, /, y: int = 1):
+        self.x = x
+        self.y = y
+
+
+def test_subclass_positional_only(parser):
+    parser.add_argument("--p", type=PositionalOnly)
+    cfg = parser.parse_args([f"--p={__name__}.PositionalOnly", "--p.x=2"])
+    init = parser.instantiate(cfg)
+    assert (init.p.x, init.p.y) == (2, 1)
+
+
+class ForwardsVarPositional(PositionalOnly):
+    def __init__(self, *args, z: int = 3, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.z = z
+
+
+def test_subclass_forwarded_positional_only(parser):
+    parser.add_argument("--p", type=PositionalOnly)
+    cfg = parser.parse_args([f"--p={__name__}.ForwardsVarPositional", "--p.x=2", "--p.y=4"])
+    assert cfg.p.init_args == Namespace(x=2, z=3, y=4)
+    init = parser.instantiate(cfg)
+    assert (init.p.x, init.p.y, init.p.z) == (2, 4, 3)
+
+
+class CallableVarPositional:
+    def __init__(self, x: int, *layers: int, k: int = 0):
+        self.x = x
+        self.layers = layers
+        self.k = k
+
+
+callable_var_positional_value = {
+    "class_path": f"{__name__}.CallableVarPositional",
+    "init_args": {"layers": [2, 3], "k": 4},
+}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="functools.Placeholder introduced in python 3.14")
+def test_callable_return_class_var_positional(parser):
+    parser.add_argument("--fn", type=Callable[[int], CallableVarPositional])
+    cfg = parser.parse_args([f"--fn={json.dumps(callable_var_positional_value)}"])
+    init = parser.instantiate(cfg)
+    obj = init.fn(1)
+    assert isinstance(obj, CallableVarPositional)
+    assert (obj.x, obj.layers, obj.k) == (1, (2, 3), 4)
+
+
+@pytest.mark.skipif(sys.version_info >= (3, 14), reason="functools.Placeholder introduced in python 3.14")
+def test_callable_return_class_var_positional_before_python_3_14(parser):
+    parser.add_argument("--fn", type=Callable[[int], CallableVarPositional])
+    cfg = parser.parse_args([f"--fn={json.dumps(callable_var_positional_value)}"])
+    with pytest.raises(ValueError, match="only supported in Python 3.14 or later"):
+        parser.instantiate(cfg)
+
+
+def test_callable_return_class_var_positional_empty(parser):
+    parser.add_argument("--fn", type=Callable[[int], CallableVarPositional])
+    cfg = parser.parse_args([f"--fn={__name__}.CallableVarPositional"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.fn, partial)
+    obj = init.fn(1)
+    assert (obj.x, obj.layers, obj.k) == (1, (), 0)
 
 
 # add_subclass_arguments tests

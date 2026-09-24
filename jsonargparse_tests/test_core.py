@@ -58,6 +58,15 @@ def test_add_argument_positional_with_default_nargs_star(parser):
     assert parser.parse_args(["x", "y"]) == Namespace(pos=["x", "y"])
 
 
+@pytest.mark.parametrize("default", [None, [0]])
+def test_positional_nargs_star_not_given_keeps_config_value(parser, default):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("pos", nargs="*", type=int, default=default)
+    assert parser.parse_args(['--cfg={"pos": [1, 2]}']).pos == [1, 2]
+    assert parser.parse_args(['--cfg={"pos": [1, 2]}', "3"]).pos == [3]
+    assert parser.parse_args([]).pos == default
+
+
 def test_add_argument_positional_with_default_nargs_question(parser):
     parser.add_argument("pos", nargs="?", default="abc")
     assert parser.parse_args([]) == Namespace(pos="abc")

@@ -139,6 +139,7 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
         """Initializer for ActionsContainer instance."""
         super().__init__(*args, **kwargs)
         self._accepted_kwargs = {}
+        self._call_layouts = {}
         self.register("type", None, identity)
         self.register("action", "parsers", ActionSubCommands)
         self.register("action", "config", ActionConfigFile)
@@ -807,6 +808,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             **kwargs: All options that `argparse.ArgumentParser.add_subparsers
                 <https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.add_subparsers>`_ accepts.
         """
+        for action in self._actions:
+            if not action.option_strings and action.nargs in {"*", "+", argparse.REMAINDER}:
+                raise ValueError(
+                    f"Positional '{action.dest}' accepts a variable number of values, which argparse is unable to "
+                    "combine with subcommands. It must be an optional argument, in auto_cli by setting "
+                    "as_positional=False."
+                )
         if "description" not in kwargs:
             kwargs["description"] = "For more details of each subcommand, add it as an argument followed by --help."
         default_config_files = self.default_config_files

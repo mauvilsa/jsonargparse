@@ -323,6 +323,61 @@ def test_class_property_value():
         assert "Description of property" in help_str
 
 
+# positional-only and var-positional parameters tests
+
+
+def function_positional_only(a: int, /, b: str = "-"):
+    return a, b
+
+
+def function_var_positional(first: int, *rest: float, flag: bool = False):
+    return first, rest, flag
+
+
+class PositionalOnlyAndVarPositional:
+    def __init__(self, x: int, /, *extra: str):
+        self.x = x
+        self.extra = extra
+
+    def method(self, a: int, /, *rest: int):
+        return self.x, self.extra, a, rest
+
+
+def test_function_positional_only():
+    assert (1, "-") == auto_cli(function_positional_only, args=["1"])
+
+
+def test_function_var_positional():
+    assert (1, (2.5, 3.0), False) == auto_cli(function_var_positional, args=["1", "2.5", "3"])
+    assert (1, (), True) == auto_cli(function_var_positional, args=["1", "--flag=true"])
+    config = '--config={"first": 1, "rest": [2.5]}'
+    assert (1, (2.5,), False) == auto_cli(function_var_positional, args=[config])
+    assert (1, (3.0,), False) == auto_cli(function_var_positional, args=[config, "1", "3"])
+    assert (1, (2.5,), False) == auto_cli(function_var_positional, as_positional=False, args=[config])
+    help_str = get_cli_stdout(function_var_positional, args=["--help"])
+    assert "first [rest ...]" in help_str
+
+
+def test_class_positional_only_and_var_positional():
+    args = ["--x=1", '--extra=["a"]', "method", "--a=2", "--rest=[3,4]"]
+    assert (1, ("a",), 2, (3, 4)) == auto_cli(PositionalOnlyAndVarPositional, as_positional=False, args=args)
+    obj = auto_cli(PositionalOnlyAndVarPositional, args=["1", "a", "b"], return_instance=True)
+    assert (obj.x, obj.extra) == (1, ("a", "b"))
+
+
+def test_class_var_positional_and_subcommands_unsupported():
+    with pytest.raises(ValueError) as ctx:
+        auto_parser(PositionalOnlyAndVarPositional)
+    ctx.match("'extra' accepts a variable number of values")
+    ctx.match("as_positional=False")
+
+
+def test_subcommands_positional_only_and_var_positional():
+    components = {"fn": {"po": function_positional_only}, "cls": PositionalOnlyAndVarPositional}
+    assert (1, "-") == auto_cli(components, as_positional=False, args=["fn", "po", "--a=1"])
+    assert (1, (), 2, ()) == auto_cli(components, as_positional=False, args=["cls", "--x=1", "method", "--a=2"])
+
+
 # function and class tests
 
 

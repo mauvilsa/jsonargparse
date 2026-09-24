@@ -6,6 +6,7 @@ from typing import Any
 
 from ._actions import ActionConfigFile, _ActionPrintConfig, remove_actions
 from ._core import ArgumentParser
+from ._instantiation import bind_call, get_call_arguments
 from ._namespace import Namespace, dict_to_namespace
 from ._optionals import get_doc_short_description
 from ._signatures import FailUntyped
@@ -90,7 +91,7 @@ def auto_cli(
             parser.set_defaults(set_defaults)
         cfg = parser.parse_args(args)
         init = parser.instantiate(cfg)
-        return _run_component(components, init)
+        return _run_component(components, init, parser)
 
     elif isinstance(components, list):
         components = {c.__name__: c for c in components}
@@ -110,7 +111,9 @@ def auto_cli(
         else:
             break
     component = components_ns[subcommand]
-    return _run_component(component, init.get(subcommand))
+    for name in subcommand.split("."):
+        parser = parser._subcommands_action._name_parser_map[name]  # type: ignore[union-attr]
+    return _run_component(component, init.get(subcommand), parser)
 
 
 def auto_parser(*args, **kwargs) -> ArgumentParser:
@@ -200,17 +203,23 @@ def _add_component_to_parser(
     return added_args
 
 
-def _run_component(component, cfg):
+def _get_call_values(cfg: Namespace) -> dict:
+    return dict(cfg.items(branches=True, nested=False))
+
+
+def _run_component(component, cfg, parser):
     cfg.pop("config", None)
     subcommand = cfg.pop("subcommand")
     if inspect.isclass(component) and subcommand:
         subcommand_cfg = cfg.pop(subcommand, {})
         subcommand_cfg.pop("config", None)
-        component_obj = component(**cfg)
+        component_obj = bind_call(component, parser._call_layouts[None], _get_call_values(cfg))()
         if isinstance(getattr(component, subcommand), property):
             return getattr(component_obj, subcommand)
         component = getattr(component_obj, subcommand)
+        parser = parser._subcommands_action._name_parser_map[subcommand]
         cfg = subcommand_cfg
+    args, kwargs = get_call_arguments(parser._call_layouts[None], _get_call_values(cfg), component)
     if inspect.iscoroutinefunction(component):
-        return __import__("asyncio").run(component(**cfg))
-    return component(**cfg)
+        return __import__("asyncio").run(component(*args, **kwargs))
+    return component(*args, **kwargs)
