@@ -1616,10 +1616,12 @@ A wide range of type hints is supported for signature parameters, see
 
 - A ``*args`` is added as a list argument with its name, e.g. ``*files: str`` as
   ``files`` of type ``list[str]``. With ``as_positional=True`` it is a
-  positional that takes zero or more values. When calling, positional-only
-  parameters, and when ``*args`` has values also the ones before it, are given
-  positionally. Binding such values after positionals given on call, e.g. for a
-  ``Callable`` that returns a class, requires Python 3.14 or later.
+  positional that takes zero or more values, which argparse is unable to combine
+  with subcommands, so ``as_positional=False`` is required then. When calling,
+  positional-only parameters, and when ``*args`` has values also the ones before
+  it, are given positionally. Binding such values after positionals given on
+  call, e.g. for a ``Callable`` that returns a class, requires Python 3.14 or
+  later.
 
 - The ``skip`` parameter excludes arguments, e.g.
   ``parser.add_method_arguments(MyClass, 'mymethod', skip={'baz'})``. In a

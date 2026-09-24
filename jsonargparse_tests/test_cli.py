@@ -359,16 +359,23 @@ def test_function_var_positional():
 
 
 def test_class_positional_only_and_var_positional():
-    args = ["1", '--extra=["a"]', "method", "2", "3", "4"]
-    assert (1, ("a",), 2, (3, 4)) == auto_cli(PositionalOnlyAndVarPositional, args=args)
+    args = ["--x=1", '--extra=["a"]', "method", "--a=2", "--rest=[3,4]"]
+    assert (1, ("a",), 2, (3, 4)) == auto_cli(PositionalOnlyAndVarPositional, as_positional=False, args=args)
     obj = auto_cli(PositionalOnlyAndVarPositional, args=["1", "a", "b"], return_instance=True)
     assert (obj.x, obj.extra) == (1, ("a", "b"))
 
 
+def test_class_var_positional_and_subcommands_unsupported():
+    with pytest.raises(ValueError) as ctx:
+        auto_parser(PositionalOnlyAndVarPositional)
+    ctx.match("'extra' accepts a variable number of values")
+    ctx.match("as_positional=False")
+
+
 def test_subcommands_positional_only_and_var_positional():
     components = {"fn": {"po": function_positional_only}, "cls": PositionalOnlyAndVarPositional}
-    assert (1, "-") == auto_cli(components, args=["fn", "po", "1"])
-    assert (1, (), 2, ()) == auto_cli(components, args=["cls", "1", "method", "2"])
+    assert (1, "-") == auto_cli(components, as_positional=False, args=["fn", "po", "--a=1"])
+    assert (1, (), 2, ()) == auto_cli(components, as_positional=False, args=["cls", "--x=1", "method", "--a=2"])
 
 
 # function and class tests

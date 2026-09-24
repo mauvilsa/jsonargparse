@@ -166,6 +166,10 @@ Changed
   or by an ``operator.methodcaller`` for a method that is called with an
   instance, instead of keeping the parsed namespace (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- ``add_subcommands`` now raises an error when the parser already has a
+  positional that accepts a variable number of values, since argparse parses
+  this combination incorrectly, e.g. taking the subcommand name as one of the
+  values (`#986 <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 
 Removed
 ^^^^^^^

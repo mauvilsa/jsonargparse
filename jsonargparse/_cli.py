@@ -182,8 +182,7 @@ def _add_component_to_parser(
             if not parser.description:
                 parser.description = get_help_str(component, parser.logger)
             return added_args
-        # a *args as positional would consume the subcommand
-        added_args = parser.add_class_arguments(component, var_positional_as_positional=False, **kwargs)
+        added_args = parser.add_class_arguments(component, **kwargs)
         subcommands = parser.add_subcommands(required=True)
         for method in class_methods:
             method_object = getattr(component, method)

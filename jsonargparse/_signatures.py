@@ -134,12 +134,11 @@ class SignatureArguments(LoggerProperty):
             raise ValueError(
                 f"Expected 'default' to be dict, Namespace, lazy instance or dataclass-like, got: {default}"
             )
-        linked_targets, help_, _, var_positional_as_positional = get_private_kwargs(
+        linked_targets, help_, _ = get_private_kwargs(
             kwargs,
             linked_targets=None,
             help=None,
             required=None,  # Ignored because provided when adding signatures, remove with dataclass inheritance support
-            var_positional_as_positional=True,
         )
 
         added_args = self._add_signature_arguments(
@@ -154,7 +153,6 @@ class SignatureArguments(LoggerProperty):
             instantiate=instantiate,
             linked_targets=linked_targets,
             help=help_,
-            var_positional_as_positional=var_positional_as_positional,
         )
 
         if default:
@@ -316,7 +314,6 @@ class SignatureArguments(LoggerProperty):
         linked_targets: set[str] | None = None,
         help: str | None = None,
         call_target: Callable | str | None = None,
-        var_positional_as_positional: bool = True,
     ) -> list[str]:
         """Adds arguments from parameters of objects based on signatures and docstrings.
 
@@ -333,8 +330,6 @@ class SignatureArguments(LoggerProperty):
             instantiate: Whether the group should be instantiated.
             call_target: For a function or method, what the group is bound to on instantiation,
                 a callable or the name of a method to call on an instance.
-            var_positional_as_positional: Whether with as_positional a ``*args`` is added as a
-                positional, i.e. False when subcommands follow, which it would consume.
 
         Returns:
             The list of arguments added.
@@ -406,7 +401,6 @@ class SignatureArguments(LoggerProperty):
                 sub_configs=sub_configs,
                 linked_targets=linked_targets,
                 as_positional=as_positional,
-                var_positional_as_positional=var_positional_as_positional,
             )
 
         return added_args
@@ -424,7 +418,6 @@ class SignatureArguments(LoggerProperty):
         instantiate: bool = True,
         linked_targets: set[str] | None = None,
         default: Any = inspect_empty,
-        var_positional_as_positional: bool = True,
         **kwargs,
     ):
         name = param.name
@@ -471,7 +464,7 @@ class SignatureArguments(LoggerProperty):
             is_non_positional = False  # Can be positional
         elif kind == kinds.VAR_POSITIONAL:
             is_required = False  # Zero values are accepted
-            is_non_positional = not var_positional_as_positional
+            is_non_positional = False  # Can be positional
             if default == inspect_empty:
                 default = []
         else:
