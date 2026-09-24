@@ -105,6 +105,9 @@ Fixed
 - Parse errors logged multiple times when raised from a nested parse, e.g. an
   invalid value in a config given as argument (`#989
   <https://github.com/mauvilsa/jsonargparse/pull/989>`__).
+- Subcommand parsers not logging when the logger of the parent parser is set
+  after adding the subcommands (`#989
+  <https://github.com/mauvilsa/jsonargparse/pull/989>`__).
 
 Changed
 ^^^^^^^

@@ -18,6 +18,7 @@ from jsonargparse import (
     add_instantiator,
 )
 from jsonargparse_tests.conftest import (
+    capture_logs,
     get_parse_args_stderr,
     get_parse_args_stdout,
     get_parser_help,
@@ -311,6 +312,17 @@ def test_subcommand_required_false(parser, subparser):
     subcommands.add_subcommand("foo", subparser)
     cfg = parser.parse_args([])
     assert cfg == Namespace(subcommand=None)
+
+
+def test_subcommand_logger_set_after_adding(parser, subparser, logger):
+    subparser.add_argument("--int", type=int)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("foo", subparser)
+    parser.logger = logger
+    assert subparser.logger is logger
+    with pytest.raises(ArgumentError), capture_logs(logger) as logs:
+        parser.parse_args(["foo", "--int=invalid"])
+    assert 1 == logs.getvalue().count('Parser key "int"')
 
 
 def test_subcommand_without_options(parser, subparser):
