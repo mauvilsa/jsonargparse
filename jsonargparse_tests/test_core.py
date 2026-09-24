@@ -1150,6 +1150,15 @@ def test_debug_environment_variable(logger):
     assert "Debug enabled, thus raising exception instead of exit" in logs.getvalue()
 
 
+def test_nested_error_logged_once(logger):
+    parser = ArgumentParser(exit_on_error=False, logger=logger)
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--int", type=int)
+    with pytest.raises(ArgumentError), capture_logs(logger) as logs:
+        parser.parse_args(["--cfg", '{"int": "invalid"}'])
+    assert 1 == logs.getvalue().count('Parser key "int"')
+
+
 def test_parse_known_args_not_implemented(parser):
     pytest.raises(NotImplementedError, lambda: parser.parse_known_args([]))
 

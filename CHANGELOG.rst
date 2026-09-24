@@ -102,6 +102,12 @@ Fixed
 - A positional-only parameter that has a default being required, even though
   the call can omit it (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- Parse errors logged multiple times when raised from a nested parse, e.g. an
+  invalid value in a config given as argument (`#989
+  <https://github.com/mauvilsa/jsonargparse/pull/989>`__).
+- Subcommand parsers not logging when the logger of the parent parser is set
+  after adding the subcommands (`#989
+  <https://github.com/mauvilsa/jsonargparse/pull/989>`__).
 
 Changed
 ^^^^^^^

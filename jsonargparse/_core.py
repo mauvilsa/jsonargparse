@@ -23,6 +23,7 @@ from ._actions import (
     previous_config,
 )
 from ._common import (
+    LoggerProperty,
     command_line_source,
     config_schema_key,
     debug_mode_active,
@@ -1201,7 +1202,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         error = argument_error(message)
         if source is not None:
             error.value_source_reported = True  # type: ignore[attr-defined]  # so that it is not added again
-        self._logger.error(message)
+        if not getattr(ex, "error_logged", False):  # a nested error was already logged
+            self._logger.error(message)
+        error.error_logged = True  # type: ignore[attr-defined]
         if not self.exit_on_error:
             raise error from ex
         elif debug_mode_active():
@@ -1673,6 +1676,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         ):
             raise ValueError("Expected dump_header to be None or a list of strings.")
         self._dump_header = dump_header
+
+    @LoggerProperty.logger.setter  # type: ignore[attr-defined]
+    def logger(self, logger: bool | str | dict | logging.Logger):
+        LoggerProperty.logger.fset(self, logger)  # type: ignore[attr-defined]
+        if self._subcommands_action:
+            for subparser in self._subcommands_action._name_parser_map.values():
+                subparser.logger = self._logger
 
     # Not supported methods
 
