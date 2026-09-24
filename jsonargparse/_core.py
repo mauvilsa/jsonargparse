@@ -1201,7 +1201,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         error = argument_error(message)
         if source is not None:
             error.value_source_reported = True  # type: ignore[attr-defined]  # so that it is not added again
-        self._logger.error(message)
+        if not getattr(ex, "error_logged", False):  # a nested error was already logged
+            self._logger.error(message)
+        error.error_logged = True  # type: ignore[attr-defined]
         if not self.exit_on_error:
             raise error from ex
         elif debug_mode_active():

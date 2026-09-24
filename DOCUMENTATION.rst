@@ -3662,7 +3662,9 @@ When a parse method fails, by default it prints a short message and exits with a
 non-zero code. During development this is not enough information to find the
 root of the problem. Setting the ``JSONARGPARSE_DEBUG`` environment variable to
 ``true`` changes this, without touching the source code: an
-:class:`.ArgumentError` is raised and the full stack trace is printed.
+:class:`.ArgumentError` is raised, the full stack trace is printed and parsers
+without a logger log at debug level. Debug logs can include the raw input given
+to parsers, secrets included, so only enable them for troubleshooting.
 
 The parsers log some basic events, though this is disabled by default. To enable
 it, set the ``logger`` argument when creating an :class:`.ArgumentParser`. The
