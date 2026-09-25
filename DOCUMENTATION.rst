@@ -1386,6 +1386,7 @@ Adding a config file argument and parsing some arguments then gives:
 
     os.chdir(cwd)
     shutil.rmtree(tmpdir)
+    set_parsing_settings(config_include_enabled=False)
 
 .. doctest:: config
 
@@ -1415,6 +1416,71 @@ argument given through an environment variable overrides it.
 To parse a config file or a config string without parsing command line
 arguments, use :meth:`parse_path <.ArgumentParser.parse_path>` or
 :meth:`parse_string <.ArgumentParser.parse_string>`.
+
+.. _including-configs:
+
+Including configs
+-----------------
+
+A config can be composed from others with an ``__include__`` key, which is
+enabled with ``set_parsing_settings(config_include_enabled=True)``. Its value is
+the path of a config file or a list of them, relative to the config that has the
+key. It is accepted at any level, also in sub-config files, and must be the
+first key where it is given, since the keys that follow override what the
+included configs set. Included configs can include others, and the paths in them
+are relative to their own directory, so a group of config files can be moved
+around without being modified. Unlike :ref:`sub-config-files`, where a path
+replaces the value of an argument, an include composes the config that has it
+and does not depend on ``sub_configs``. :meth:`save <.ArgumentParser.save>` with
+``multifile=True`` does not keep them as separate files.
+
+The included configs, and then the keys that follow, are merged exactly as if
+they had been given one after the other, e.g. as several ``--config``. So the
+same rules apply, for instance a ``dict`` value is replaced, items are appended
+when the key is given with a ``+`` suffix, see :ref:`list-append`, and changing
+a ``class_path`` discards the ``init_args`` that the new class does not accept,
+also for the items of a list of classes. An ``__include__`` is not supported
+within a value that is not validated, e.g. ``Any``, since nothing merges it.
+
+Continuing with the example above:
+
+.. testcode:: config
+
+    set_parsing_settings(config_include_enabled=True)
+
+.. code-block:: yaml
+
+    # File: lev1.yaml
+    opt1: from lev1
+
+.. code-block:: yaml
+
+    # File: main.yaml
+    __include__: example.yaml
+    lev1:
+      __include__: lev1.yaml
+      opt2: from main
+
+.. testsetup:: config
+
+    pathlib.Path("lev1.yaml").write_text("opt1: from lev1\n")
+    pathlib.Path("main.yaml").write_text(
+        "__include__: example.yaml\nlev1:\n  __include__: lev1.yaml\n  opt2: from main\n"
+    )
+
+.. doctest:: config
+
+    >>> cfg = parser.parse_args(["--config", "main.yaml"])
+    >>> cfg.lev1.opt1
+    'from lev1'
+    >>> cfg.lev1.opt2
+    'from main'
+
+.. note::
+
+    Including configs is experimental. Behavior details might change in
+    non-major releases.
+
 
 Serialization
 -------------
@@ -2455,7 +2521,9 @@ checkpoint_hook.yaml]``, or appending one item at a time as explained in
 Relative paths inside a sub-config file are resolved with respect to the
 directory of that file, so a group of config files can be moved around without
 being modified. :meth:`save <.ArgumentParser.save>` with ``multifile=True``
-writes each sub-config back to its own file, keeping the original structure.
+writes each sub-config back to its own file, keeping the original structure. To
+override some values of a sub-config file in the same config, use
+``__include__`` instead, see :ref:`including-configs`.
 
 :ref:`subclasses-disabled` types also accept a sub-config file, whose content is
 the fields of the type, without ``class_path`` and ``init_args``. This only
@@ -3361,7 +3429,18 @@ the config can point to the generated schema with a ``$schema`` key:
 The key is accepted in any config that a parser loads, :ref:`sub-config-files`
 included, and it is removed before parsing, so it never becomes part of the
 parsed namespace. Accordingly, every object in the schema that describes a
-config accepts the key.
+config accepts the key. With ``config_include_enabled``, these objects also
+accept the ``__include__`` key, see :ref:`including-configs`, and no keys are
+required, since a config that includes others, or is included, can be partial.
+
+A config that is not the root, e.g. a sub-config file or an included config,
+needs the part of the schema for where it goes. Since not all editors support a
+JSON pointer in ``$schema``, the config can point to a small schema that
+references that part:
+
+.. code-block:: json
+
+    {"$ref": "schema.json#/$defs/mymodule.MyModel/properties/init_args"}
 
 The schema is derived from the same information that the ``--help`` output is
 based on, so it includes:
@@ -3391,6 +3470,10 @@ based on, so it includes:
 
 Subclasses and types that are used in more than one place are added once to
 ``$defs`` and referenced with ``$ref``, which also makes recursive types work.
+Each known subclass has its own definition named by its import path, e.g.
+``mymodule.MyModel``. When an argument accepts different init parameters of a
+class than other arguments, e.g. due to ``skip``, its definition is a variant
+named after the first argument that uses it, e.g. ``mymodule.MyModel@model``.
 
 The schema is meant to accept what the parser accepts, but for subclass types it
 is stricter. A string is accepted, since it can be a class path or a path to a

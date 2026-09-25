@@ -21,7 +21,9 @@ from typing import (
 
 from ._common import (
     check_import_path,
+    config_schema_key,
     get_generic_origin,
+    get_parsing_setting,
     get_partial_method,
     parser_capture,
     parser_context,
@@ -161,6 +163,104 @@ def identity(value):
 
 NestedArg = namedtuple("NestedArg", "key val")
 
+config_include_key = "__include__"
+
+
+class ComposedConfig:
+    """A config that has an ``__include__``, kept unmerged until reaching the code that merges its value.
+
+    Merging depends on what a key is, e.g. a class type discards the ``init_args`` that a new
+    ``class_path`` does not accept, which is only known once the key is matched to an argument.
+    So the included configs are not merged when loaded, but where configs given one after the
+    other are merged, making an include behave exactly the same.
+    """
+
+    __slots__ = ("includes", "own")
+
+    def __init__(self, includes: list, own: Any):
+        self.includes = includes  # the included configs and the paths they were loaded from
+        self.own = own  # what the config sets itself, which overrides the included configs
+
+    def layers(self) -> list:
+        """Returns the configs that are merged in order, expanding the included ones that are composed themselves."""
+        layers = []
+        for included, _ in self.includes:
+            layers += included.layers() if isinstance(included, ComposedConfig) else [included]
+        return layers + [self.own]
+
+
+def resolve_config_includes(value: Any) -> Any:
+    """Replaces in a loaded config each mapping that has an ``__include__`` with a ComposedConfig.
+
+    Only done when ``config_include_enabled``. An ``__include__`` accepts a config path or a list
+    of them, relative to the config that has the key, and is accepted at any level. It must be
+    the first key, since what follows overrides what the included configs set.
+
+    Args:
+        value: The loaded config, modified in place.
+
+    Returns:
+        The config with its includes loaded.
+    """
+    if not get_parsing_setting("config_include_enabled"):
+        return value
+    if isinstance(value, list):
+        for num, item in enumerate(value):
+            value[num] = resolve_config_includes(item)
+        return value
+    if not isinstance(value, dict):
+        return value
+    includes = []
+    if config_include_key in value:
+        keys = [k for k in value if k != config_schema_key]  # the schema key is only meant for editors
+        if keys[0] != config_include_key:
+            raise TypeError(
+                f'"{config_include_key}" must be the first key where it is given, since what follows '
+                f"overrides the included configs. Got keys: {keys}"
+            )
+        includes = [_load_included(path) for path in _include_paths(value.pop(config_include_key))]
+    for name, item in value.items():
+        value[name] = resolve_config_includes(item)
+    return ComposedConfig(includes, value) if includes else value
+
+
+def _include_paths(value: Any) -> list:
+    paths = value if isinstance(value, list) else [value]
+    if not all(isinstance(path, str) for path in paths):
+        raise TypeError(f'"{config_include_key}" expects a config path or a list of config paths. Got value: {value}')
+    return paths
+
+
+def _load_included(path_str: str) -> tuple[Any, Path]:
+    """Loads a config to be included, together with the path it was loaded from."""
+    from ._loaders_dumpers import get_loader_exceptions
+
+    try:
+        path = Path(path_str, mode=_get_config_read_mode())
+    except TypeError as ex:
+        raise TypeError(f'"{config_include_key}" value "{path_str}": {ex}') from ex
+    with load_config_path_context(path), path.relative_path_context():
+        try:
+            value = load_value(path.read_text())
+        except get_loader_exceptions() as ex:
+            raise TypeError(f'Problems parsing config included from "{path_str}": {ex}') from ex
+        if not isinstance(value, dict):
+            raise TypeError(f'Expected config included from "{path_str}" to be a mapping. Got value: {value}')
+        value.pop(config_schema_key, None)  # only meant for editors, also when included into a plain dict
+        return resolve_config_includes(value), path
+
+
+def check_no_composed_config(value: Any, key: str = "") -> None:
+    """Fails if an include reached a value that has nothing to merge it, e.g. an untyped argument."""
+    if isinstance(value, ComposedConfig):
+        raise TypeError(f'Key "{key}": "{config_include_key}" is not supported for this argument')
+    if isinstance(value, (dict, Namespace)):
+        for name, item in value.items():
+            check_no_composed_config(item, f"{key}.{name}" if key else name)
+    elif isinstance(value, list):
+        for num, item in enumerate(value):
+            check_no_composed_config(item, f"{key}[{num}]")
+
 
 def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bool = False) -> tuple[Any, Path | None]:
     """Parses yaml/json config in a string or a path"""
@@ -177,6 +277,7 @@ def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bo
         else:
             with load_config_path_context(cfg_path), cfg_path.relative_path_context():
                 value = load_value(cfg_path.read_text(), simple_types=simple_types)
+                value = resolve_config_includes(value)
     if type(value) is str and value.strip() != "":
         parsed_val = load_value(value, simple_types=simple_types)
         if type(parsed_val) is not str:

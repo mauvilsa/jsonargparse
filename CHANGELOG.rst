@@ -40,6 +40,10 @@ Added
   ``add_method_arguments``, and links applied on instantiate can target the
   parameters of these groups (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- New ``__include__`` key accepted at any level of a config, which merges into it
+  the configs that it gives, so that a config can be composed from others.
+  Enabled with the new ``config_include_enabled`` of ``set_parsing_settings``
+  (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 
 Fixed
 ^^^^^
@@ -108,6 +112,10 @@ Fixed
 - Subcommand parsers not logging when the logger of the parent parser is set
   after adding the subcommands (`#989
   <https://github.com/mauvilsa/jsonargparse/pull/989>`__).
+- The ``jsonschema`` completion described the init parameters of a class as
+  accepted by the first argument that has it, e.g. for other arguments that
+  ``skip`` different parameters of the class (`#990
+  <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 
 Changed
 ^^^^^^^
@@ -176,6 +184,10 @@ Changed
   positional that accepts a variable number of values, since argparse parses
   this combination incorrectly, e.g. taking the subcommand name as one of the
   values (`#986 <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
+- The ``jsonschema`` completion now has in ``$defs`` the schema of the
+  ``$schema`` key and one definition per known subclass, named by its import
+  path, so that parts of the schema can be referenced from other schemas (`#990
+  <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 
 Removed
 ^^^^^^^

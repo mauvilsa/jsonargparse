@@ -104,13 +104,16 @@ from ._typehints import (
     subclasses_disabled_remove_class_path,
 )
 from ._util import (
+    ComposedConfig,
     Path,
     argument_error,
+    check_no_composed_config,
     get_argument_group_class,
     get_private_kwargs,
     identity,
     load_config_path_context,
     merge_config,
+    resolve_config_includes,
     return_parser_if_captured,
 )
 
@@ -418,6 +421,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         """
         if env is None and self._default_env:
             env = True
+        check_no_composed_config(cfg)
 
         with value_source_context(None):
             if not skip_subcommands:
@@ -782,7 +786,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             raise TypeError(f"Problems parsing config: {ex}") from ex
         if not isinstance(cfg_dict, dict):
             raise TypeError(f"Unexpected config: {content}")
-        return self._apply_actions(cfg_dict, prev_cfg=prev_cfg)
+        return self._apply_actions(resolve_config_includes(cfg_dict), prev_cfg=prev_cfg)
 
     ## Methods for adding to the parser ##
 
@@ -1414,6 +1418,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         skip_fn: Callable[[Any], bool] | None = None,
     ) -> Namespace:
         """Runs _check_value_key on actions present in config."""
+        # Included configs are applied first, and what they set is merged below what the config sets
+        included_configs: list[Namespace] = []
+        if isinstance(cfg, ComposedConfig):
+            prev_cfg = self._apply_included_configs(cfg, parent_key, prev_cfg, included_configs)
+            cfg = cfg.own
         # A source being applied is only set to raw values, i.e. the ones given in dicts. Values
         # already in namespaces were parsed before, so processing them keeps their sources.
         source = value_source.get()
@@ -1462,6 +1471,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     value = cfg[key]
                     if action is None and self._accepts_extra_key(key):
                         continue  # unknown key of a pydantic model, its value is given as is to the model
+                    if isinstance(value, ComposedConfig):
+                        prev_cfg = self._apply_included_configs(value, key, prev_cfg, included_configs)
+                        value = value.own
                     if isinstance(value, dict):
                         value = Namespace(value)
                         if key in raw_keys:
@@ -1499,7 +1511,29 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 elif getattr(action, "jsonnet_ext_vars", False):
                     prev_cfg[action_dest] = value
                 cfg[action_dest] = value
+        if included_configs:
+            base = Namespace()
+            for included in included_configs:
+                base = merge_config(self, included, base)
+            cfg = merge_config(self, cfg, base)
         return cfg[parent_key] if parent_key else cfg
+
+    def _apply_included_configs(
+        self, composed: ComposedConfig, key: str, prev_cfg: Namespace | None, included_configs: list
+    ) -> Namespace:
+        """Applies the configs included at a key, each over the previous one as when given one after the other.
+
+        Returns the previous config for what the config sets itself, i.e. including what was included.
+        """
+        prev_cfg = prev_cfg if prev_cfg is not None else Namespace()
+        included = Namespace()  # from the parser's root, like the configs it is merged with
+        for layer, path in composed.includes:
+            source = ValueSource("config file", path, self.parser_mode)
+            with load_config_path_context(path), path_dir_context(path), value_source_context(source):
+                applied = self._apply_actions(layer, parent_key=key, prev_cfg=merge_config(self, included, prev_cfg))
+            included = merge_config(self, Namespace({key: applied}) if key else applied, included)
+        included_configs.append(included)
+        return merge_config(self, included, prev_cfg)
 
     def _check_value_key(
         self, action: argparse.Action, value: Any, key: str, cfg: Namespace | None, append: bool = False
