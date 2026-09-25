@@ -197,7 +197,7 @@ def resolve_config_includes(value: Any) -> Any:
     the first key, since what follows overrides what the included configs set.
 
     Args:
-        value: The loaded config, modified in place.
+        value: The loaded config, which is not modified.
 
     Returns:
         The config with its includes loaded.
@@ -205,9 +205,7 @@ def resolve_config_includes(value: Any) -> Any:
     if not get_parsing_setting("config_include_enabled"):
         return value
     if isinstance(value, list):
-        for num, item in enumerate(value):
-            value[num] = resolve_config_includes(item)
-        return value
+        return [resolve_config_includes(item) for item in value]
     if not isinstance(value, dict):
         return value
     includes = []
@@ -218,9 +216,8 @@ def resolve_config_includes(value: Any) -> Any:
                 f'"{config_include_key}" must be the first key where it is given, since what follows '
                 f"overrides the included configs. Got keys: {keys}"
             )
-        includes = [_load_included(path) for path in _include_paths(value.pop(config_include_key))]
-    for name, item in value.items():
-        value[name] = resolve_config_includes(item)
+        includes = [_load_included(path) for path in _include_paths(value[config_include_key])]
+    value = {name: resolve_config_includes(item) for name, item in value.items() if name != config_include_key}
     return ComposedConfig(includes, value) if includes else value
 
 
@@ -281,7 +278,7 @@ def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bo
     if type(value) is str and value.strip() != "":
         parsed_val = load_value(value, simple_types=simple_types)
         if type(parsed_val) is not str:
-            value = parsed_val
+            value = resolve_config_includes(parsed_val)
     if isinstance(value, dict) and cfg_path is not None:
         value["__path__"] = cfg_path
     if nested_arg:

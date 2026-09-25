@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from jsonargparse import ArgumentError, ArgumentParser, set_parsing_settings
+from jsonargparse import ArgumentError, ArgumentParser, FromConfigMixin, Namespace, set_parsing_settings
 from jsonargparse._formatters import describe_source
 from jsonargparse._namespace import get_provenance
 from jsonargparse._optionals import toml_load_available
@@ -149,6 +149,30 @@ def test_include_config_string_in_command_line(config_parser, tmp_cwd):
     write("base.json", {"a": 1})
     cfg = config_parser.parse_args(["--config=" + json.dumps({"__include__": "base.json", "b": 2})])
     assert (cfg.a, cfg.b) == (1, 2)
+
+
+def test_include_parse_object(config_parser, tmp_cwd):
+    write("base.json", {"a": 1})
+    obj = {"__include__": "base.json", "b": 2}
+    cfg = config_parser.parse_object(obj)
+    assert (cfg.a, cfg.b) == (1, 2)
+    assert obj == {"__include__": "base.json", "b": 2}
+
+
+def test_include_in_group_value_in_command_line(parser, tmp_cwd):
+    parser.add_class_arguments(Model, "model")
+    write("model.json", {"lr": 0.5, "encoder": {"layers": 3}})
+    cfg = parser.parse_args(["--model=" + json.dumps({"__include__": "model.json", "encoder": {"dropout": 0.2}})])
+    assert cfg.model.lr == 0.5
+    assert cfg.model.encoder == Namespace(layers=3, dropout=0.2)
+
+
+def test_include_in_subclass_value_in_command_line(parser, tmp_cwd):
+    parser.add_argument("--hook", type=Hook)
+    write("hook.json", {"class_path": log_hook, "init_args": {"verbose": True}})
+    cfg = parser.parse_args(["--hook=" + json.dumps({"__include__": "hook.json", "init_args": {"log_file": "a.log"}})])
+    assert cfg.hook.class_path == log_hook
+    assert cfg.hook.init_args == Namespace(verbose=True, log_file="a.log")
 
 
 def test_include_default_config_file(config_parser, tmp_cwd):
@@ -659,6 +683,40 @@ def test_include_from_config_mixin_chained(tmp_cwd):
     write("main.json", {"__include__": "two.json", "z": 3})
     component = Component.from_config("main.json")
     assert (component.x, component.y, component.z) == (1, 2, 3)
+
+
+class Component(FromConfigMixin):
+    def __init__(self, x: int, y: int = 0):
+        self.x = x
+        self.y = y
+
+
+class LogComponent(Component):
+    def __init__(self, log_file: str = "run.log", **kwargs):
+        super().__init__(**kwargs)
+        self.log_file = log_file
+
+
+class TimerComponent(Component):
+    def __init__(self, interval: int = 60, **kwargs):
+        super().__init__(**kwargs)
+        self.interval = interval
+
+
+def test_include_from_config_mixin_class_path_change(tmp_cwd):
+    write("base.json", {"class_path": "LogComponent", "init_args": {"log_file": "a.log", "y": 1}})
+    main = {"__include__": "base.json", "class_path": "TimerComponent", "init_args": {"x": 2, "interval": 5}}
+    write("main.json", main)
+    component = Component.from_config("main.json")
+    assert isinstance(component, TimerComponent)
+    assert (component.x, component.y, component.interval) == (2, 1, 5)
+
+
+def test_include_from_config_mixin_class_path_in_included(tmp_cwd):
+    write("base.json", {"class_path": "LogComponent", "init_args": {"x": 1}})
+    component = Component.from_config({"__include__": "base.json", "init_args": {"log_file": "b.log"}})
+    assert isinstance(component, LogComponent)
+    assert (component.x, component.log_file) == (1, "b.log")
 
 
 def test_include_subcommand_config(parser, subparser, tmp_cwd):

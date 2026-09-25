@@ -939,6 +939,17 @@ def test_include_enabled_validation(parser, subparser, parsing_settings_patch):
     assert iter_errors(schema, {"cls": {"init_args": {"bogus": 2}}})
 
 
+def test_include_key_schema_not_replaced_by_class_with_same_name(parser, parsing_settings_patch):
+    set_parsing_settings(config_include_enabled=True)
+    data = dataclasses.make_dataclass("__include__", [("num", int, 0)])
+    parser.add_argument("--data", type=List[data])
+    schema = get_schema(parser)
+    assert "description" in schema["$defs"]["__include__"]
+    ref = schema["properties"]["data"]["items"]["$ref"]
+    assert ref != "#/$defs/__include__"
+    assert "num" in schema["$defs"][ref.rsplit("/", 1)[-1]]["properties"]
+
+
 # ActionJsonSchema
 
 

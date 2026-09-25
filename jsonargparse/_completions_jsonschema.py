@@ -313,7 +313,7 @@ class ParserJsonschema:
             self.defs[config_include_key] = dict(include_key_schema)
         # configs that include others, or are included, are partial, so their keys can't be required
         self.config_required = not include_enabled
-        self.def_types: dict = {}
+        self.def_types: dict = dict.fromkeys(self.defs)  # reserved, so that classes with these names are renamed
         self.variants: dict = {}  # (base key, frozen kwargs) -> name of the definition
         self.bases: dict = {}  # base key -> (plain name, function that builds the definition for some kwargs)
         self.dest = ""  # full key of the argument being described, which names the variants

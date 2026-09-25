@@ -572,7 +572,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 cfg = merge_config(self, namespace, cfg)
 
             cfg = self._apply_actions(cfg)
-            cfg_apply = self._apply_actions(obj, prev_cfg=cfg)
+            with parser_context(load_value_mode=self.parser_mode):
+                cfg_apply = self._apply_actions(resolve_config_includes(obj), prev_cfg=cfg)
             cfg = merge_config(self, cfg_apply, cfg)
 
             parsed_cfg = self._parse_common(

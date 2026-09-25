@@ -12,7 +12,7 @@ from ._optionals import _get_config_read_mode
 from ._paths import path_dir_context
 from ._required import clear_required, iter_required_keys
 from ._typehints import is_subclass_spec, resolve_class_path_by_name
-from ._util import ComposedConfig, import_object, load_config_path_context, resolve_config_includes
+from ._util import ComposedConfig, config_include_key, import_object, load_config_path_context, resolve_config_includes
 
 __all__ = ["FromConfigMixin"]
 
@@ -82,33 +82,46 @@ def _parse_class_kwargs_from_config(
                 config = load_value(cfg_str, path=str(config))
             except get_loader_exceptions() as ex:
                 raise TypeError(f"Problems parsing config '{config}': {ex}") from ex
-            if isinstance(config, dict):
-                config = resolve_config_includes(config)
 
-    if isinstance(config, dict):
-        config = dict(config)  # its spec is replaced below, which must not change the given dict
-    elif not isinstance(config, ComposedConfig):
+    if not isinstance(config, dict):
         raise TypeError(f"Expected config to be a dict or parse into a dict: {config}")
 
-    layers = config.layers() if isinstance(config, ComposedConfig) else [config]
-    specs = [layer for layer in layers if is_subclass_spec(layer)]
-    if specs:
-        class_path = resolve_class_path_by_name(cls, specs[-1]["class_path"])
+    with load_config_path_context(cfg_path), path_dir_context(cfg_path):
+        config = _merge_included_subclass_specs(cls, config, kwargs)
+
+    if is_subclass_spec(config):
+        class_path = resolve_class_path_by_name(cls, config["class_path"])
         obj = import_object(class_path)
         if not issubclass(obj, cls):
             raise TypeError(f"Class '{class_path}' is not a subclass of '{cls.__name__}'")
         cls = obj
-        for spec in specs:  # in place, so that the includes are kept for parse_object to merge them
-            init_args = {**spec.get("init_args", {}), **spec.get("dict_kwargs", {})}
-            spec.clear()
-            spec.update(init_args)
+        config = {**config.get("init_args", {}), **config.get("dict_kwargs", {})}
 
     parser.add_class_arguments(cls)
     for required in iter_required_keys(parser):
         clear_required(parser, required)
     with load_config_path_context(cfg_path), path_dir_context(cfg_path):
-        cfg = parser.parse_object(config, defaults=False)  # type: ignore[arg-type]
+        cfg = parser.parse_object(config, defaults=False)
     return parser.instantiate(cfg).as_dict(), cls, parser._call_layouts[None]
+
+
+def _merge_included_subclass_specs(cls: type, config: dict, parser_kwargs: dict) -> dict:
+    """Merges into one subclass spec a config whose includes give a class_path.
+
+    The merging is done by a subclass type, so that it is the same as when parsing, e.g. a
+    class_path change discards the init_args that the new class does not accept. It is lenient,
+    since the config is not expected to give all required init args.
+    """
+    if config_include_key not in config:  # includes at deeper levels can't change the class
+        return config
+    parser = ArgumentParser(exit_on_error=False, **parser_kwargs)
+    with parser_context(load_value_mode=parser.parser_mode):
+        resolved = resolve_config_includes(config)
+    if not isinstance(resolved, ComposedConfig) or not any(is_subclass_spec(c) for c in resolved.layers()):
+        return config
+    parser.add_argument("--spec", type=cls)
+    with parser_context(lenient_check=True):
+        return parser.parse_object({"spec": resolved}, defaults=False).spec.as_dict()
 
 
 def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:

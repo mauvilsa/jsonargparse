@@ -1425,9 +1425,11 @@ Including configs
 A config can be composed from others with an ``__include__`` key, which is
 enabled with ``set_parsing_settings(config_include_enabled=True)``. Its value is
 the path of a config file or a list of them, relative to the config that has the
-key. It is accepted at any level, also in sub-config files, and must be the
-first key where it is given, since the keys that follow override what the
-included configs set. Included configs can include others, and the paths in them
+key, or to the working directory for a config not from a file, e.g. a command
+line value or given to :meth:`parse_object <.ArgumentParser.parse_object>`. It
+is accepted at any level, also in sub-config files, and must be the first key
+where it is given, since the keys that follow override what the included configs
+set. Included configs can include others, and the paths in them
 are relative to their own directory, so a group of config files can be moved
 around without being modified. Unlike :ref:`sub-config-files`, where a path
 replaces the value of an argument, an include composes the config that has it
