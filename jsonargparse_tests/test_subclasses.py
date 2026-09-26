@@ -2890,7 +2890,29 @@ def test_subclass_implicit_class_path(parser):
     ctx.match("Option 'c' is not accepted")
 
 
+def test_subclass_implicit_class_path_local_class(parser):
+    class LocalImplicit:
+        def __init__(self, a: int = 1):
+            self.a = a
+
+    parser.add_argument("--implicit", type=LocalImplicit)
+    cfg = parser.parse_args(['--implicit={"a": 2}'])
+    assert cfg.implicit.class_path.endswith("<locals>.LocalImplicit")
+    assert cfg.implicit.init_args == Namespace(a=2)
+    init = parser.instantiate(cfg)
+    assert isinstance(init.implicit, LocalImplicit)
+    assert init.implicit.a == 2
+
+
 # error messages tests
+
+
+def test_subclass_sub_config_path_invalid_class_path(parser, tmp_cwd):
+    parser.add_argument("--cls", type=Calendar, sub_configs=True)
+    Path("sub.json").write_text(json.dumps({"class_path": "not_subclass.Other"}))
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cls=sub.json"])
+    ctx.match("No module named 'not_subclass'")
 
 
 class ErrorIndentation1:

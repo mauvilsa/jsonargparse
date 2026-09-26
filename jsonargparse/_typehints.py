@@ -111,6 +111,7 @@ from ._util import (
     ComposedConfig,
     NestedArg,
     NoneType,
+    get_code_given_class_path,
     get_import_path,
     get_typehint_origin,
     import_object,
@@ -737,7 +738,8 @@ class ActionTypeHint(Action):
                         raise ex
                     try:
                         if isinstance(orig_val, str):
-                            with load_config_path_context(config_path), path_dir_context(config_path):
+                            # without load_config_path_context, since orig_val could be the path it would load
+                            with path_dir_context(config_path):
                                 val = adapt_typehints(orig_val, self._typehint, default=self.default, **kwargs)
                             ex = None
                     except ValueError:
@@ -1806,7 +1808,7 @@ def adapt_typehints(
         if prev_val is unset_sentinel and not inspect.isabstract(typehint) and not is_protocol(typehint):
             with suppress(ValueError):
                 # implicit prev_val class_path
-                prev_val = Namespace(class_path=get_import_path(typehint))
+                prev_val = Namespace(class_path=get_code_given_class_path(typehint))
                 if parse_kwargs.get().get("defaults") is True:
                     prev_implicit_defaults = True
 
@@ -1818,13 +1820,13 @@ def adapt_typehints(
         if (isinstance(prev_val, (dict, Namespace)) and prev_val["class_path"] is None) or (
             isinstance(val, NestedArg) and is_subclasses_disabled(typehint)
         ):
-            class_type_path = Namespace(class_path=get_import_path(typehint))
+            class_type_path = Namespace(class_path=get_code_given_class_path(typehint))
             val = subclass_spec_as_namespace(val, class_type_path)
         else:
             val = subclass_spec_as_namespace(val, prev_val)
         if val and not is_subclass_spec(val) and "init_args" not in val:
             # implicit val class_path
-            val = Namespace(class_path=get_import_path(typehint), init_args=val)
+            val = Namespace(class_path=get_code_given_class_path(typehint), init_args=val)
 
         if not is_subclass_spec(val):
             msg = "Does not implement protocol" if is_protocol(typehint) else "Not a valid subclass of"

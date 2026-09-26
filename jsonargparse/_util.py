@@ -181,13 +181,6 @@ class ComposedConfig:
         self.includes = includes  # the included configs and the paths they were loaded from
         self.own = own  # what the config sets itself, which overrides the included configs
 
-    def layers(self) -> list:
-        """Returns the configs that are merged in order, expanding the included ones that are composed themselves."""
-        layers = []
-        for included, _ in self.includes:
-            layers += included.layers() if isinstance(included, ComposedConfig) else [included]
-        return layers + [self.own]
-
 
 def resolve_config_includes(value: Any) -> Any:
     """Replaces in a loaded config each mapping that has an ``__include__`` with a ComposedConfig.
@@ -286,12 +279,34 @@ def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bo
     return value, cfg_path
 
 
+code_given_classes: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+
+
+def get_code_given_class_path(cls: type) -> str:
+    """Returns the import path of a class given in code, e.g. as a type.
+
+    A class that can't be imported from its path, like one defined in a
+    function, is remembered so that :func:`import_object` resolves its path.
+    """
+    cls = get_generic_origin(cls)
+    path = get_import_path(cls)
+    try:
+        importable = import_object(path, check_path=False) is cls
+    except (ValueError, ImportError, AttributeError):
+        importable = False
+    if not importable:
+        code_given_classes[path] = cls
+    return path
+
+
 def import_object(name: str, check_path: bool = True):
     """Returns an object in a module given its dot import path.
 
     ``check_path`` must only be false when the path comes from code, e.g. a type
     annotation, instead of from a parsed value.
     """
+    if isinstance(name, str) and name in code_given_classes:
+        return code_given_classes[name]
     if not isinstance(name, str) or "." not in name:
         raise ValueError(f"Expected a dot import path string: {name}")
     if not all(x.isidentifier() for x in name.split(".")):
@@ -428,7 +443,7 @@ class ResolvedImportPaths:
 resolved_import_paths = ResolvedImportPaths()
 
 
-def get_import_path(value: Any) -> str | None:
+def get_import_path(value: Any) -> str:
     """Returns the shortest dot import path for the given object."""
     remembered = resolved_import_paths.get(value)
     if remembered:

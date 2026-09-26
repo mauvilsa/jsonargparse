@@ -116,6 +116,9 @@ Fixed
   accepted by the first argument that has it, e.g. for other arguments that
   ``skip`` different parameters of the class (`#990
   <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
+- A config file given as value of a subclass type failing with ``Config file
+  loop detected`` instead of the actual error, e.g. an invalid ``class_path``
+  (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 
 Changed
 ^^^^^^^
@@ -188,6 +191,9 @@ Changed
   ``$schema`` key and one definition per known subclass, named by its import
   path, so that parts of the schema can be referenced from other schemas (`#990
   <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
+- ``from_config`` now fails with ``ArgumentError`` for an invalid config,
+  including a missing required parameter, instead of ``TypeError`` or
+  ``ImportDenied`` (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 
 Removed
 ^^^^^^^
