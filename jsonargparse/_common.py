@@ -285,6 +285,7 @@ parsing_settings: dict = {
     "add_print_completion_argument": False,
     "stubs_resolver_allow_py_files": False,
     "omegaconf_absolute_to_relative_paths": False,
+    "config_include_enabled": False,
     "unset_sentinel": None,
     "import_path_verdicts": {entry: False for entry in default_import_path_denylist},
 }
@@ -366,6 +367,7 @@ def set_parsing_settings(
     add_print_completion_argument: bool | None = None,
     stubs_resolver_allow_py_files: bool | None = None,
     omegaconf_absolute_to_relative_paths: bool | None = None,
+    config_include_enabled: bool | None = None,
     unset_sentinel: bool | None = None,
     subclasses_disabled: list[type | Callable[[type], bool]] | None = None,
     subclasses_enabled: list[type | str] | None = None,
@@ -419,6 +421,11 @@ def set_parsing_settings(
             with ``omegaconf+`` parser mode, absolute interpolation paths are
             converted to relative. This is only intended for backward
             compatibility with ``omegaconf`` parser mode.
+        config_include_enabled: If ``True``, configs accept an ``__include__``
+            key to be composed from other configs, see :ref:`including-configs`.
+            The ``jsonschema`` completion type then accepts the key and requires
+            no keys in configs, since these can be partial. Default is
+            ``False``.
         unset_sentinel: If ``True``, parsers will use the :obj:`.Unset` sentinel
             for arguments that have not been given a value (instead of
             ``None``). This allows distinguishing between ``None`` as an
@@ -456,6 +463,7 @@ def set_parsing_settings(
         "add_print_completion_argument": add_print_completion_argument,
         "stubs_resolver_allow_py_files": stubs_resolver_allow_py_files,
         "omegaconf_absolute_to_relative_paths": omegaconf_absolute_to_relative_paths,
+        "config_include_enabled": config_include_enabled,
     }
     for name, value in bool_settings.items():
         if isinstance(value, bool):

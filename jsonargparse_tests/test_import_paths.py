@@ -445,7 +445,7 @@ def test_from_config_class_path_denied(tmp_cwd):
     set_parsing_settings(import_path_denylist=["calendar"])
     config = json_or_yaml_dump({"class_path": "calendar.TextCalendar"})
     (tmp_cwd / "config.yaml").write_text(config)
-    with pytest.raises(ImportDenied):
+    with pytest.raises(ArgumentError, match="'calendar.TextCalendar' is not allowed"):
         Base.from_config("config.yaml")
 
 

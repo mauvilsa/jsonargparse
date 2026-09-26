@@ -21,7 +21,9 @@ from typing import (
 
 from ._common import (
     check_import_path,
+    config_schema_key,
     get_generic_origin,
+    get_parsing_setting,
     get_partial_method,
     parser_capture,
     parser_context,
@@ -161,6 +163,94 @@ def identity(value):
 
 NestedArg = namedtuple("NestedArg", "key val")
 
+config_include_key = "__include__"
+
+
+class ComposedConfig:
+    """A config that has an ``__include__``, kept unmerged until reaching the code that merges its value.
+
+    Merging depends on what a key is, e.g. a class type discards the ``init_args`` that a new
+    ``class_path`` does not accept, which is only known once the key is matched to an argument.
+    So the included configs are not merged when loaded, but where configs given one after the
+    other are merged, making an include behave exactly the same.
+    """
+
+    __slots__ = ("includes", "own")
+
+    def __init__(self, includes: list, own: Any):
+        self.includes = includes  # the included configs and the paths they were loaded from
+        self.own = own  # what the config sets itself, which overrides the included configs
+
+
+def resolve_config_includes(value: Any) -> Any:
+    """Replaces in a loaded config each mapping that has an ``__include__`` with a ComposedConfig.
+
+    Only done when ``config_include_enabled``. An ``__include__`` accepts a config path or a list
+    of them, relative to the config that has the key, and is accepted at any level. It must be
+    the first key, since what follows overrides what the included configs set.
+
+    Args:
+        value: The loaded config, which is not modified.
+
+    Returns:
+        The config with its includes loaded.
+    """
+    if not get_parsing_setting("config_include_enabled"):
+        return value
+    if isinstance(value, list):
+        return [resolve_config_includes(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    includes = []
+    if config_include_key in value:
+        keys = [k for k in value if k != config_schema_key]  # the schema key is only meant for editors
+        if keys[0] != config_include_key:
+            raise TypeError(
+                f'"{config_include_key}" must be the first key where it is given, since what follows '
+                f"overrides the included configs. Got keys: {keys}"
+            )
+        includes = [_load_included(path) for path in _include_paths(value[config_include_key])]
+    value = {name: resolve_config_includes(item) for name, item in value.items() if name != config_include_key}
+    return ComposedConfig(includes, value) if includes else value
+
+
+def _include_paths(value: Any) -> list:
+    paths = value if isinstance(value, list) else [value]
+    if not all(isinstance(path, str) for path in paths):
+        raise TypeError(f'"{config_include_key}" expects a config path or a list of config paths. Got value: {value}')
+    return paths
+
+
+def _load_included(path_str: str) -> tuple[Any, Path]:
+    """Loads a config to be included, together with the path it was loaded from."""
+    from ._loaders_dumpers import get_loader_exceptions
+
+    try:
+        path = Path(path_str, mode=_get_config_read_mode())
+    except TypeError as ex:
+        raise TypeError(f'"{config_include_key}" value "{path_str}": {ex}') from ex
+    with load_config_path_context(path), path.relative_path_context():
+        try:
+            value = load_value(path.read_text())
+        except get_loader_exceptions() as ex:
+            raise TypeError(f'Problems parsing config included from "{path_str}": {ex}') from ex
+        if not isinstance(value, dict):
+            raise TypeError(f'Expected config included from "{path_str}" to be a mapping. Got value: {value}')
+        value.pop(config_schema_key, None)  # only meant for editors, also when included into a plain dict
+        return resolve_config_includes(value), path
+
+
+def check_no_composed_config(value: Any, key: str = "") -> None:
+    """Fails if an include reached a value that has nothing to merge it, e.g. an untyped argument."""
+    if isinstance(value, ComposedConfig):
+        raise TypeError(f'Key "{key}": "{config_include_key}" is not supported for this argument')
+    if isinstance(value, (dict, Namespace)):
+        for name, item in value.items():
+            check_no_composed_config(item, f"{key}.{name}" if key else name)
+    elif isinstance(value, list):
+        for num, item in enumerate(value):
+            check_no_composed_config(item, f"{key}[{num}]")
+
 
 def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bool = False) -> tuple[Any, Path | None]:
     """Parses yaml/json config in a string or a path"""
@@ -177,15 +267,36 @@ def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bo
         else:
             with load_config_path_context(cfg_path), cfg_path.relative_path_context():
                 value = load_value(cfg_path.read_text(), simple_types=simple_types)
+                value = resolve_config_includes(value)
     if type(value) is str and value.strip() != "":
         parsed_val = load_value(value, simple_types=simple_types)
         if type(parsed_val) is not str:
-            value = parsed_val
+            value = resolve_config_includes(parsed_val)
     if isinstance(value, dict) and cfg_path is not None:
         value["__path__"] = cfg_path
     if nested_arg:
         value = NestedArg(key=nested_arg.key, val=value)  # type: ignore[union-attr]
     return value, cfg_path
+
+
+code_given_classes: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+
+
+def get_code_given_class_path(cls: type) -> str:
+    """Returns the import path of a class given in code, e.g. as a type.
+
+    A class that can't be imported from its path, like one defined in a
+    function, is remembered so that :func:`import_object` resolves its path.
+    """
+    cls = get_generic_origin(cls)
+    path = get_import_path(cls)
+    try:
+        importable = import_object(path, check_path=False) is cls
+    except (ValueError, ImportError, AttributeError):
+        importable = False
+    if not importable:
+        code_given_classes[path] = cls
+    return path
 
 
 def import_object(name: str, check_path: bool = True):
@@ -194,6 +305,8 @@ def import_object(name: str, check_path: bool = True):
     ``check_path`` must only be false when the path comes from code, e.g. a type
     annotation, instead of from a parsed value.
     """
+    if isinstance(name, str) and name in code_given_classes:
+        return code_given_classes[name]
     if not isinstance(name, str) or "." not in name:
         raise ValueError(f"Expected a dot import path string: {name}")
     if not all(x.isidentifier() for x in name.split(".")):
@@ -330,7 +443,7 @@ class ResolvedImportPaths:
 resolved_import_paths = ResolvedImportPaths()
 
 
-def get_import_path(value: Any) -> str | None:
+def get_import_path(value: Any) -> str:
     """Returns the shortest dot import path for the given object."""
     remembered = resolved_import_paths.get(value)
     if remembered:

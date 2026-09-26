@@ -108,8 +108,10 @@ from ._required import clear_required
 from ._subcommands import find_action, find_parent_action, parse_kwargs
 from ._type_checking import ArgumentParser
 from ._util import (
+    ComposedConfig,
     NestedArg,
     NoneType,
+    get_code_given_class_path,
     get_import_path,
     get_typehint_origin,
     import_object,
@@ -118,6 +120,7 @@ from ._util import (
     load_config_path_context,
     object_path_serializer,
     parse_value_or_config,
+    resolve_config_includes,
     warning,
 )
 from .typing import _LazyInitBaseClass, get_registered_type, is_pydantic_type, is_secret_type
@@ -735,7 +738,8 @@ class ActionTypeHint(Action):
                         raise ex
                     try:
                         if isinstance(orig_val, str):
-                            with load_config_path_context(config_path), path_dir_context(config_path):
+                            # without load_config_path_context, since orig_val could be the path it would load
+                            with path_dir_context(config_path):
                                 val = adapt_typehints(orig_val, self._typehint, default=self.default, **kwargs)
                             ex = None
                     except ValueError:
@@ -920,7 +924,7 @@ def adapt_subconfig_path(val, typehint, adapt_kwargs):
         return not_a_subconfig_path
     try:
         with load_config_path_context(path), path.relative_path_context():
-            subconfig = load_value(path.read_text())
+            subconfig = resolve_config_includes(load_value(path.read_text()))
     except get_loader_exceptions() as ex:
         raise_unexpected_value(f"Invalid content in sub-config file {val}: {ex}", exception=ex)
     with load_config_path_context(path), path_dir_context(path):
@@ -929,6 +933,23 @@ def adapt_subconfig_path(val, typehint, adapt_kwargs):
     if isinstance(val, (Namespace, dict)):
         val["__path__"] = path
     return val
+
+
+def adapt_composed_config(val: ComposedConfig, typehint, adapt_kwargs: dict):
+    """Adapts a config that has includes, merging them as if the configs had been given one after the other.
+
+    Each included config is adapted with the previous one as prev_val, the same as for values that
+    come one after the other, so merging is not implemented again, e.g. for a change of class_path.
+    """
+    prev_val = adapt_kwargs["prev_val"]
+    for included, path in val.includes:
+        source = ValueSource("config file", path, get_load_value_mode())
+        kwargs = {**adapt_kwargs, "prev_val": prev_val, "orig_val": included, "append": False}
+        with load_config_path_context(path), path_dir_context(path), value_source_context(source):
+            prev_val = adapt_typehints(included, typehint, **kwargs)
+    if not val.own:  # e.g. a dict would be replaced by an empty one
+        return prev_val
+    return adapt_typehints(val.own, typehint, **{**adapt_kwargs, "prev_val": prev_val})
 
 
 def raise_unexpected_value(message: str, val: Any = inspect._empty, exception: Exception | None = None) -> NoReturn:
@@ -1392,6 +1413,8 @@ def adapt_typehints(
         "sub_add_kwargs": sub_add_kwargs or {},
         "logger": logger,
     }
+    if isinstance(val, ComposedConfig):
+        return adapt_composed_config(val, typehint, adapt_kwargs)
     subtypehints = getattr(typehint, "__args__", None)
     typehint_origin = get_typehint_origin(typehint) or typehint
     if type(typehint_origin) in typed_dict_meta_types:
@@ -1785,7 +1808,7 @@ def adapt_typehints(
         if prev_val is unset_sentinel and not inspect.isabstract(typehint) and not is_protocol(typehint):
             with suppress(ValueError):
                 # implicit prev_val class_path
-                prev_val = Namespace(class_path=get_import_path(typehint))
+                prev_val = Namespace(class_path=get_code_given_class_path(typehint))
                 if parse_kwargs.get().get("defaults") is True:
                     prev_implicit_defaults = True
 
@@ -1797,13 +1820,13 @@ def adapt_typehints(
         if (isinstance(prev_val, (dict, Namespace)) and prev_val["class_path"] is None) or (
             isinstance(val, NestedArg) and is_subclasses_disabled(typehint)
         ):
-            class_type_path = Namespace(class_path=get_import_path(typehint))
+            class_type_path = Namespace(class_path=get_code_given_class_path(typehint))
             val = subclass_spec_as_namespace(val, class_type_path)
         else:
             val = subclass_spec_as_namespace(val, prev_val)
         if val and not is_subclass_spec(val) and "init_args" not in val:
             # implicit val class_path
-            val = Namespace(class_path=get_import_path(typehint), init_args=val)
+            val = Namespace(class_path=get_code_given_class_path(typehint), init_args=val)
 
         if not is_subclass_spec(val):
             msg = "Does not implement protocol" if is_protocol(typehint) else "Not a valid subclass of"
