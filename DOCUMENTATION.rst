@@ -1429,12 +1429,11 @@ key, or to the working directory for a config not from a file, e.g. a command
 line value or given to :meth:`parse_object <.ArgumentParser.parse_object>`. It
 is accepted at any level, also in sub-config files, and must be the first key
 where it is given, since the keys that follow override what the included configs
-set. Included configs can include others, and the paths in them
-are relative to their own directory, so a group of config files can be moved
-around without being modified. Unlike :ref:`sub-config-files`, where a path
-replaces the value of an argument, an include composes the config that has it
-and does not depend on ``sub_configs``. :meth:`save <.ArgumentParser.save>` with
-``multifile=True`` does not keep them as separate files.
+set. Included configs can include others, and since paths are relative, a group
+of config files can be moved around without being modified. Unlike
+:ref:`sub-config-files`, includes do not depend on ``sub_configs``, and
+:meth:`save <.ArgumentParser.save>` with ``multifile=True`` does not keep them
+as separate files.
 
 The included configs, and then the keys that follow, are merged exactly as if
 they had been given one after the other, e.g. as several ``--config``. So the
@@ -3432,8 +3431,9 @@ The key is accepted in any config that a parser loads, :ref:`sub-config-files`
 included, and it is removed before parsing, so it never becomes part of the
 parsed namespace. Accordingly, every object in the schema that describes a
 config accepts the key. With ``config_include_enabled``, these objects also
-accept the ``__include__`` key, see :ref:`including-configs`, and no keys are
-required, since a config that includes others, or is included, can be partial.
+accept the ``__include__`` key, see :ref:`including-configs`, and require none
+of their keys, since a config that includes others, or is included, can be
+partial.
 
 A config that is not the root, e.g. a sub-config file or an included config,
 needs the part of the schema for where it goes. Since not all editors support a
@@ -3473,9 +3473,9 @@ based on, so it includes:
 Subclasses and types that are used in more than one place are added once to
 ``$defs`` and referenced with ``$ref``, which also makes recursive types work.
 Each known subclass has its own definition named by its import path, e.g.
-``mymodule.MyModel``. When an argument accepts different init parameters of a
-class than other arguments, e.g. due to ``skip``, its definition is a variant
-named after the first argument that uses it, e.g. ``mymodule.MyModel@model``.
+``mymodule.MyModel``. When an argument accepts different init parameters than
+the class has, e.g. due to ``skip``, its definition is a variant named after the
+first argument that uses it, e.g. ``mymodule.MyModel@model``.
 
 The schema is meant to accept what the parser accepts, but for subclass types it
 is stricter. A string is accepted, since it can be a class path or a path to a

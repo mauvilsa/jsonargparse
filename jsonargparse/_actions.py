@@ -19,21 +19,20 @@ from ._common import (
     parser_context,
 )
 from ._loaders_dumpers import get_loader_exceptions, load_value
-from ._namespace import Namespace, ValueSource, copy_provenance, value_source_context
+from ._namespace import Namespace, copy_provenance
 from ._optionals import _get_config_read_mode, ruamel_support
-from ._paths import path_dir_context
 from ._type_checking import ArgumentParser
 from ._util import (
     ComposedConfig,
     Path,
     argument_error,
+    config_file_context,
     default_config_option_help,
     get_import_path,
     import_object,
     indent_text,
     iter_to_or_str,
     iter_to_set_str,
-    load_config_path_context,
     merge_config,
     parse_value_or_config,
 )
@@ -320,8 +319,7 @@ class _ActionConfigLoad(Action):
                 cfg = self.resolve_subclass_spec(cfg)
             if not isinstance(cfg, (dict, Namespace, ComposedConfig)):
                 raise TypeError(f'Parser key "{self.dest}": Unable to load config "{value}"')
-            source = None if cfg_path is None else ValueSource("config file", cfg_path, parser.parser_mode)
-            with load_config_path_context(cfg_path), path_dir_context(cfg_path), value_source_context(source):
+            with config_file_context(cfg_path, parser.parser_mode):
                 cfg = parser._apply_actions(cfg, parent_key=self.dest)
             if cfg_path is not None:
                 cfg["__path__"] = cfg_path

@@ -29,9 +29,9 @@ from ._common import (
     parser_context,
 )
 from ._loaders_dumpers import json_compact_dump, load_value
-from ._namespace import Namespace, value_source_context
+from ._namespace import Namespace, ValueSource, value_source_context
 from ._optionals import _get_config_read_mode
-from ._paths import Path
+from ._paths import Path, path_dir_context
 from ._type_checking import ArgumentParser
 
 __all__ = [
@@ -107,6 +107,14 @@ def load_config_path_context(cfg_path: Path | None) -> Iterator[None]:
         yield
     finally:
         config_load_stack.reset(token)
+
+
+@contextmanager
+def config_file_context(cfg_path: Path | None, mode: str) -> Iterator[None]:
+    """Context for applying a config loaded from a file: relative paths, loop detection and provenance."""
+    source = None if cfg_path is None else ValueSource("config file", cfg_path, mode)
+    with load_config_path_context(cfg_path), path_dir_context(cfg_path), value_source_context(source):
+        yield
 
 
 class JsonargparseWarning(UserWarning):
@@ -242,6 +250,8 @@ def _load_included(path_str: str) -> tuple[Any, Path]:
 
 def check_no_composed_config(value: Any, key: str = "") -> None:
     """Fails if an include reached a value that has nothing to merge it, e.g. an untyped argument."""
+    if not get_parsing_setting("config_include_enabled"):
+        return
     if isinstance(value, ComposedConfig):
         raise TypeError(f'Key "{key}": "{config_include_key}" is not supported for this argument')
     if isinstance(value, (dict, Namespace)):

@@ -111,6 +111,7 @@ from ._util import (
     ComposedConfig,
     NestedArg,
     NoneType,
+    config_file_context,
     get_code_given_class_path,
     get_import_path,
     get_typehint_origin,
@@ -943,9 +944,8 @@ def adapt_composed_config(val: ComposedConfig, typehint, adapt_kwargs: dict):
     """
     prev_val = adapt_kwargs["prev_val"]
     for included, path in val.includes:
-        source = ValueSource("config file", path, get_load_value_mode())
         kwargs = {**adapt_kwargs, "prev_val": prev_val, "orig_val": included, "append": False}
-        with load_config_path_context(path), path_dir_context(path), value_source_context(source):
+        with config_file_context(path, get_load_value_mode()):
             prev_val = adapt_typehints(included, typehint, **kwargs)
     if not val.own:  # e.g. a dict would be replaced by an empty one
         return prev_val

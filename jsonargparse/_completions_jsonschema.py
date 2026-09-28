@@ -316,7 +316,6 @@ class ParserJsonschema:
         self.def_types: dict = dict.fromkeys(self.defs)  # reserved, so that classes with these names are renamed
         self.variants: dict = {}  # (base key, frozen kwargs) -> name of the definition
         self.bases: dict = {}  # base key -> (plain name, function that builds the definition for some kwargs)
-        self.dest = ""  # full key of the argument being described, which names the variants
 
     def generate(self, parser) -> dict:
         schema = self.config_object(parser.description)
@@ -360,9 +359,8 @@ class ParserJsonschema:
             if isinstance(action, ActionSubCommands):
                 self.add_subcommands(action, schema, prefix)
                 continue
-            self.dest = prefix + action.dest
             required = action.dest in required_keys
-            action_schema = self.action_schema(action, required, consts.get(action.dest))
+            action_schema = self.action_schema(action, prefix + action.dest, required, consts.get(action.dest))
             self.set_dest(schema, action.dest, action_schema, required, descriptions, extras)
 
     def set_dest(
@@ -406,8 +404,8 @@ class ParserJsonschema:
 
     # actions
 
-    def action_schema(self, action, required: bool, consts: Optional[list]) -> dict:
-        schema: dict = self.action_type_schema(action, consts)
+    def action_schema(self, action, key: str, required: bool, consts: Optional[list]) -> dict:
+        schema: dict = self.action_type_schema(action, key, consts)
         if action.nargs in {"+", "*"}:
             schema = {"type": "array", "items": schema}
             if action.nargs == "+":
@@ -427,11 +425,11 @@ class ParserJsonschema:
             schema["default"] = json_value(default)
         return schema
 
-    def action_type_schema(self, action, consts: Optional[list]) -> dict:
+    def action_type_schema(self, action, key: str, consts: Optional[list]) -> dict:
         if action.choices:
             return {"enum": [json_value(choice) for choice in action.choices]}
         if isinstance(action, ActionTypeHint):
-            return self.typehint_schema(action._typehint, action)
+            return self.typehint_schema(action._typehint, action, key)
         if isinstance(action, ActionJsonSchema):
             return dict(action._validator.schema)
         if isinstance(action, ActionYesNo):
@@ -457,7 +455,8 @@ class ParserJsonschema:
 
     # type hints
 
-    def typehint_schema(self, typehint, action) -> dict:
+    def typehint_schema(self, typehint, action, key: str) -> dict:
+        """Describes a type, where ``key`` is the full key of the argument, which names variant definitions."""
         typehint = get_unaliased_type(typehint)
         origin = get_typehint_origin(typehint)
         root = origin if origin is not None else typehint  # unsubscripted generics, e.g. list instead of list[int]
@@ -465,7 +464,7 @@ class ParserJsonschema:
         if typehint in {Any, object}:
             return {}
         if origin in typed_dict_key_qualifiers:  # requiredness and mutability come from the TypedDict
-            return self.typehint_schema(typehint.__args__[0], action)
+            return self.typehint_schema(typehint.__args__[0], action, key)
         if typehint is uuid.UUID:
             return dict(uuid_schema)
         if typehint in basic_type_schemas:
@@ -476,51 +475,51 @@ class ParserJsonschema:
         if is_subclass(typehint, Enum):
             return {"enum": list(typehint.__members__)}
         if type(typehint) in typed_dict_meta_types:
-            return self.typed_dict_schema(typehint, action)
+            return self.typed_dict_schema(typehint, action, key)
         if is_namedtuple(typehint):
-            return self.namedtuple_schema(typehint, action)
+            return self.namedtuple_schema(typehint, action, key)
         if root in literal_types:
             return {"enum": [json_value(arg) for arg in typehint.__args__]}
         if origin is Union:
-            return anyof_schema([self.typehint_schema(a, action) for a in typehint.__args__])
+            return anyof_schema([self.typehint_schema(a, action, key) for a in typehint.__args__])
         if root is type:
             return {"type": "string"}
         if root in callable_origin_types:
-            return self.callable_schema(typehint, action)
+            return self.callable_schema(typehint, action, key)
         if root in tuple_origin_types:
-            return self.tuple_schema(typehint, action)
+            return self.tuple_schema(typehint, action, key)
         if root in set_origin_types:
-            return self.items_schema(typehint, action, {"type": "array", "uniqueItems": True})
+            return self.items_schema(typehint, action, key, {"type": "array", "uniqueItems": True})
         if root in sequence_origin_types:
-            return self.items_schema(typehint, action, {"type": "array"})
+            return self.items_schema(typehint, action, key, {"type": "array"})
         if root in mapping_origin_types:
             args: tuple = getattr(typehint, "__args__", ())
             if len(args) == 2:
-                values_schema = self.typehint_schema(args[1], action)
+                values_schema = self.typehint_schema(args[1], action, key)
                 if values_schema:
                     return {"type": "object", "additionalProperties": values_schema}
             return {"type": "object"}
         if is_single_subclass_type(typehint, origin):
-            return self.class_ref(typehint, action, subclass=True)
+            return self.class_ref(typehint, action, key, subclass=True)
         if is_single_subclass_or_closed_type(typehint, origin):
-            return self.class_ref(typehint, action, subclass=False)
+            return self.class_ref(typehint, action, key, subclass=False)
         return {}
 
-    def items_schema(self, typehint, action, schema: dict) -> dict:
+    def items_schema(self, typehint, action, key: str, schema: dict) -> dict:
         args = getattr(typehint, "__args__", ())
         if args:
-            items = self.typehint_schema(args[0], action)
+            items = self.typehint_schema(args[0], action, key)
             if items:
                 schema["items"] = items
         return schema
 
-    def tuple_schema(self, typehint, action) -> dict:
+    def tuple_schema(self, typehint, action, key: str) -> dict:
         args = getattr(typehint, "__args__", ())
         if not args:
             return {"type": "array"}
         if len(args) == 2 and args[1] is Ellipsis:
-            return self.items_schema(typehint, action, {"type": "array"})
-        prefix_items = [self.typehint_schema(a, action) for a in args]
+            return self.items_schema(typehint, action, key, {"type": "array"})
+        prefix_items = [self.typehint_schema(a, action, key) for a in args]
         return {
             "type": "array",
             "prefixItems": prefix_items,
@@ -528,30 +527,30 @@ class ParserJsonschema:
             "minItems": len(prefix_items),
         }
 
-    def callable_schema(self, typehint, action) -> dict:
+    def callable_schema(self, typehint, action, key: str) -> dict:
         schemas = [{"type": "string"}]
         return_type = get_callable_return_type(typehint)
         if return_type and is_single_subclass_type(return_type, get_typehint_origin(return_type)):
-            schemas.append(self.class_ref(return_type, action, subclass=True))
+            schemas.append(self.class_ref(return_type, action, key, subclass=True))
         return anyof_schema(schemas)
 
-    def typed_dict_schema(self, typehint, action) -> dict:
+    def typed_dict_schema(self, typehint, action, key: str) -> dict:
         annotations = get_typed_dict_annotations(typehint)
         required_keys = get_typed_dict_required_keys(typehint, annotations)
         schema = new_object(get_doc_short_description(typehint))
-        for key, annotation in annotations.items():
-            schema["properties"][key] = self.typehint_schema(annotation, action)
-            if key in required_keys:
-                add_required(schema, key)
+        for name, annotation in annotations.items():
+            schema["properties"][name] = self.typehint_schema(annotation, action, key)
+            if name in required_keys:
+                add_required(schema, name)
         return schema
 
-    def namedtuple_schema(self, typehint, action) -> dict:
+    def namedtuple_schema(self, typehint, action, key: str) -> dict:
         """Describes both forms accepted for a NamedTuple: an object of fields or an array of values."""
         annotations = get_namedtuple_annotations(typehint)
         defaults = typehint._field_defaults
         obj_schema = new_object(get_doc_short_description(typehint))
         for field, annotation in annotations.items():
-            obj_schema["properties"][field] = self.typehint_schema(annotation, action)
+            obj_schema["properties"][field] = self.typehint_schema(annotation, action, key)
             if field not in defaults:
                 add_required(obj_schema, field)
         array_schema = {
@@ -564,30 +563,32 @@ class ParserJsonschema:
 
     # classes
 
-    def class_ref(self, class_type, action, subclass: bool) -> dict:
+    def class_ref(self, class_type, action, key: str, subclass: bool) -> dict:
         class_type = get_generic_origin(class_type)
         build = self.subclass_def if subclass else self.class_parser_schema
 
         def build_def(kwargs: dict) -> dict:
-            return build(class_type, action, kwargs)
+            return build(class_type, action, key, kwargs)
 
-        return self.def_ref((subclass, class_type), self.def_name(class_type), class_parser_kwargs(action), build_def)
+        return self.def_ref(
+            (subclass, class_type), self.def_name(class_type), key, class_parser_kwargs(action), build_def
+        )
 
-    def def_ref(self, base_key: tuple, base_name: str, kwargs: dict, build: Callable[[dict], dict]) -> dict:
+    def def_ref(self, base_key: tuple, base_name: str, key: str, kwargs: dict, build: Callable[[dict], dict]) -> dict:
         """References the definition of a class for the kwargs of its parser, building it the first time.
 
         With the default kwargs the definition has the plain name. Others are variants, which are named
-        by the key where they are first used, e.g. ``Model@model``, and at the end are merged with the
-        definitions that ended up being the same.
+        by the ``key`` where they are first used, e.g. ``Model@model``, and at the end are merged with
+        the definitions that ended up being the same.
         """
-        key = (base_key, freeze(kwargs))
-        if key not in self.variants:
-            name = f"{base_name}@{self.dest}" if kwargs else base_name
-            self.variants[key] = name
+        variant = (base_key, freeze(kwargs))
+        if variant not in self.variants:
+            name = f"{base_name}@{key}" if kwargs else base_name
+            self.variants[variant] = name
             self.bases[base_key] = (base_name, build)
             self.defs[name] = {}  # placeholder, so that recursive types resolve to the same $ref
             self.defs[name].update(build(kwargs))
-        return {"$ref": f"#/$defs/{self.variants[key]}"}
+        return {"$ref": f"#/$defs/{self.variants[variant]}"}
 
     def merge_variants(self, schema: dict) -> dict:
         """Replaces each variant by the plain definition, or else an earlier variant, that is the same."""
@@ -598,7 +599,7 @@ class ParserJsonschema:
                 base_name, build = self.bases[base_key]
                 if name == base_name or name not in self.defs:
                     continue
-                self.def_ref(base_key, base_name, {}, build)  # the plain one might not have been needed until now
+                self.def_ref(base_key, base_name, "", {}, build)  # the plain one might not have been needed until now
                 for candidate in self.merge_candidates(base_key, name):
                     pairs: set = set()
                     if self.equivalent_defs(name, candidate, pairs):
@@ -668,32 +669,32 @@ class ParserJsonschema:
         self.def_types.setdefault(name, class_type)
         return name
 
-    def subclass_def(self, class_type, action, kwargs: dict) -> dict:
+    def subclass_def(self, class_type, action, key: str, kwargs: dict) -> dict:
         """Describes all forms accepted for a subclass: a class path string or a subclass spec."""
         class_paths = get_all_subclass_paths(class_type)
         schemas: list = [{"type": "string"}]  # a class path or a path to a sub-config file
         if class_paths:
             # an object that accepts any class_path would keep tools from suggesting and validating the known ones
-            schemas += [self.class_path_ref(path, action, kwargs) for path in class_paths]
+            schemas += [self.class_path_ref(path, action, key, kwargs) for path in class_paths]
         else:  # no known subclass, so any class path is accepted without describing its init args
             schemas.append(self.unknown_class_path_schema())
         return anyof_schema(schemas)
 
-    def class_path_ref(self, class_path: str, action, kwargs: dict) -> dict:
+    def class_path_ref(self, class_path: str, action, key: str, kwargs: dict) -> dict:
         """References the definition of one class path, named by it so that it can be linked to from outside."""
 
         def build_def(kwargs: dict) -> dict:
-            return self.class_path_schema(class_path, action, kwargs)
+            return self.class_path_schema(class_path, action, key, kwargs)
 
-        return self.def_ref((None, class_path), class_path, kwargs, build_def)
+        return self.def_ref((None, class_path), class_path, key, kwargs, build_def)
 
-    def class_path_schema(self, class_path: str, action, kwargs: dict) -> dict:
+    def class_path_schema(self, class_path: str, action, key: str, kwargs: dict) -> dict:
         schema = self.config_object(get_doc_short_description(import_object(class_path)))
         class_parser = self.get_class_parser(class_path, action, kwargs)
         if class_parser is None:
             init_args_schema = {"type": "object"}
         else:
-            init_args_schema = self.parser_schema(class_parser, prefix=f"{self.dest}.init_args.")
+            init_args_schema = self.parser_schema(class_parser, prefix=f"{key}.init_args.")
         schema["properties"].update({"class_path": {"const": class_path}, "init_args": init_args_schema})
         # resolved parameters are only described in init_args, even though parsing also takes them from dict_kwargs
         if class_parser is None or class_parser._accepted_kwargs[None] is True:
@@ -725,14 +726,12 @@ class ParserJsonschema:
             return None
 
     def parser_schema(self, parser, description: Optional[str] = None, prefix: str = "") -> dict:
-        dest = self.dest
         schema = self.config_object(description)
         self.add_properties(parser, schema, prefix)
-        self.dest = dest
         return schema
 
-    def class_parser_schema(self, class_type, action, kwargs: dict) -> dict:
+    def class_parser_schema(self, class_type, action, key: str, kwargs: dict) -> dict:
         class_parser = self.get_class_parser(class_type, action, kwargs)
         if class_parser is None:
             return {"type": "object"}
-        return self.parser_schema(class_parser, get_doc_short_description(class_type), prefix=f"{self.dest}.")
+        return self.parser_schema(class_parser, get_doc_short_description(class_type), prefix=f"{key}.")

@@ -108,6 +108,7 @@ from ._util import (
     Path,
     argument_error,
     check_no_composed_config,
+    config_file_context,
     get_argument_group_class,
     get_private_kwargs,
     identity,
@@ -1529,8 +1530,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         prev_cfg = prev_cfg if prev_cfg is not None else Namespace()
         included = Namespace()  # from the parser's root, like the configs it is merged with
         for layer, path in composed.includes:
-            source = ValueSource("config file", path, self.parser_mode)
-            with load_config_path_context(path), path_dir_context(path), value_source_context(source):
+            with config_file_context(path, self.parser_mode):
                 applied = self._apply_actions(layer, parent_key=key, prev_cfg=merge_config(self, included, prev_cfg))
             included = merge_config(self, Namespace({key: applied}) if key else applied, included)
         included_configs.append(included)
