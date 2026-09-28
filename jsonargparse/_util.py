@@ -316,6 +316,8 @@ def import_object(name: str, check_path: bool = True):
     annotation, instead of from a parsed value.
     """
     if isinstance(name, str) and name in code_given_classes:
+        if check_path:
+            check_import_path(name)
         return code_given_classes[name]
     if not isinstance(name, str) or "." not in name:
         raise ValueError(f"Expected a dot import path string: {name}")
