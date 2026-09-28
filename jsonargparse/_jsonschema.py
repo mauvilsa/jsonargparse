@@ -11,7 +11,7 @@ from ._optionals import (
     import_jsonschema,
     pyyaml_available,
 )
-from ._util import parse_value_or_config
+from ._util import check_no_composed_config, parse_value_or_config
 
 __all__ = ["ActionJsonSchema"]
 
@@ -81,6 +81,7 @@ class ActionJsonSchema(Action):
         for num, val in enumerate(value):
             try:
                 val, fpath = parse_value_or_config(val, enable_path=self._sub_config)
+                check_no_composed_config(val, self.dest)
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 self._validator.validate(val)
                 if path_meta is not None:

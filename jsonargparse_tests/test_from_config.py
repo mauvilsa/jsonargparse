@@ -2,10 +2,10 @@ import inspect
 
 import pytest
 
-from jsonargparse import FromConfigMixin, set_parsing_settings
+from jsonargparse import ArgumentError, FromConfigMixin, set_parsing_settings
 from jsonargparse._optionals import fsspec_support
 from jsonargparse._paths import PathError
-from jsonargparse.typing import path_type
+from jsonargparse.typing import final, path_type
 from jsonargparse_tests.conftest import (
     json_or_yaml_dump,
     skip_if_fsspec_unavailable,
@@ -245,7 +245,7 @@ def test_from_config_method_path_invalid_yaml(tmp_cwd):
     config_path = tmp_cwd / "config.yaml"
     config_path.write_text("::: invalid content :::")
 
-    with pytest.raises(TypeError, match="Problems parsing config"):
+    with pytest.raises(ArgumentError, match="Invalid content in sub-config file"):
         FromConfigMethodParent.from_config(config_path)
 
 
@@ -253,7 +253,7 @@ def test_from_config_method_path_not_dict(tmp_cwd):
     config_path = tmp_cwd / "config.yaml"
     config_path.write_text("[1, 2]")
 
-    with pytest.raises(TypeError, match="Expected config to be a dict or parse into a dict"):
+    with pytest.raises(ArgumentError, match=r"Not a valid subclass of FromConfigMethodParent. Got value: \[1, 2\]"):
         FromConfigMethodParent.from_config(config_path)
 
 
@@ -321,12 +321,26 @@ def test_from_config_method_class_path_subclass():
     assert instance.child_param == "overridden_child"
 
 
+def test_from_config_method_subclasses_disabled(tmp_cwd):
+    @final
+    class FromConfigMethodFinal(FromConfigMixin):
+        def __init__(self, param: int = 1):
+            self.param = param
+
+    config_path = tmp_cwd / "config.yaml"
+    config_path.write_text(json_or_yaml_dump({"param": 2}))
+    instance = FromConfigMethodFinal.from_config(config_path)
+    assert instance.param == 2
+    with pytest.raises(ArgumentError, match="Subclasses are disabled for FromConfigMethodFinal"):
+        FromConfigMethodFinal.from_config({"class_path": "Other"})
+
+
 class SomeOtherClass:
     pass
 
 
 def test_from_config_method_class_path_not_subclass():
-    with pytest.raises(TypeError, match="SomeOtherClass' is not a subclass of 'FromConfigMethodParent'"):
+    with pytest.raises(ArgumentError, match="SomeOtherClass does not correspond to a subclass of"):
         FromConfigMethodParent.from_config({"class_path": f"{__name__}.SomeOtherClass"})
 
 
@@ -350,5 +364,5 @@ def test_from_config_method_partial_config_with_required_parameter():
             self.required_param = required_param
             self.optional_param = optional_param
 
-    with pytest.raises(TypeError, match="missing 1 required positional argument: 'required_param'"):
+    with pytest.raises(ArgumentError, match="the following arguments are required: required_param"):
         FromConfigMethodPartial.from_config({"optional_param": "from_config"})

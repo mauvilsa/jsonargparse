@@ -4,15 +4,10 @@ from os import PathLike
 from pathlib import Path
 from typing import TypeVar
 
-from ._common import parser_context
 from ._core import ArgumentParser
-from ._instantiation import CallLayout, bind_call
-from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._optionals import _get_config_read_mode
-from ._paths import path_dir_context
+from ._paths import Path as ConfigPath
 from ._required import clear_required, iter_required_keys
-from ._typehints import is_subclass_spec, resolve_class_path_by_name
-from ._util import import_object, load_config_path_context
 
 __all__ = ["FromConfigMixin"]
 
@@ -58,48 +53,17 @@ class FromConfigMixin:
         Args:
             config: Path to a config file or a dict with config values.
         """
-        kwargs, cls, call_layout = _parse_class_kwargs_from_config(cls, config, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
-        return bind_call(cls, call_layout, kwargs)()
+        parser = ArgumentParser(exit_on_error=False, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
+        parser.add_argument("--from_config", type=cls, required=True, sub_configs=True)
+        return _parse_and_instantiate(parser, config)
 
 
-def _parse_class_kwargs_from_config(
-    cls: type[T], config: str | PathLike | dict, **kwargs
-) -> tuple[dict, type[T], CallLayout]:
-    """Parse the init kwargs for ``cls`` from a config file or dict, and how they are given in the call."""
-    parser = ArgumentParser(exit_on_error=False, **kwargs)
-    cfg_path = None
+def _parse_and_instantiate(parser: ArgumentParser, config: str | PathLike | dict):
+    """Parses a config as the value of the ``from_config`` key of ``parser``, and instantiates it."""
     if not isinstance(config, dict):
-        from .typing import Path
-
-        cfg_path = Path(config, mode=_get_config_read_mode())
-        with (
-            load_config_path_context(cfg_path),
-            path_dir_context(cfg_path),
-            parser_context(load_value_mode=parser.parser_mode),
-        ):
-            cfg_str = cfg_path.read_text()
-            try:
-                config = load_value(cfg_str, path=str(config))
-            except get_loader_exceptions() as ex:
-                raise TypeError(f"Problems parsing config '{config}': {ex}") from ex
-
-    if not isinstance(config, dict):
-        raise TypeError(f"Expected config to be a dict or parse into a dict: {config}")
-
-    if is_subclass_spec(config):
-        class_path = resolve_class_path_by_name(cls, config["class_path"])
-        obj = import_object(class_path)
-        if not issubclass(obj, cls):
-            raise TypeError(f"Class '{class_path}' is not a subclass of '{cls.__name__}'")
-        cls = obj
-        config = {**config.get("init_args", {}), **config.get("dict_kwargs", {})}
-
-    parser.add_class_arguments(cls)
-    for required in iter_required_keys(parser):
-        clear_required(parser, required)
-    with load_config_path_context(cfg_path), path_dir_context(cfg_path):
-        cfg = parser.parse_object(config, defaults=False)
-    return parser.instantiate(cfg).as_dict(), cls, parser._call_layouts[None]
+        config = str(ConfigPath(config, mode=_get_config_read_mode()))  # else a subclass type takes it as a class path
+    cfg = parser.parse_object({"from_config": config}, defaults=False)
+    return parser.instantiate(cfg).from_config
 
 
 def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:
@@ -110,7 +74,11 @@ def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:
     if not (isinstance(config, (str, PathLike)) and Path(config).is_file()):
         return
 
-    defaults, cls, _ = _parse_class_kwargs_from_config(cls, config, **parser_kwargs)
+    parser = ArgumentParser(exit_on_error=False, **parser_kwargs)
+    parser.add_class_arguments(cls, "from_config", instantiate=False)
+    for required in iter_required_keys(parser):
+        clear_required(parser, required)
+    defaults = _parse_and_instantiate(parser, config).as_dict()
     _override_init_defaults_this_class(cls, defaults)
     _override_init_defaults_parent_classes(cls, defaults)
 

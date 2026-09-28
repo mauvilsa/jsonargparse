@@ -356,6 +356,19 @@ def test_subclass_class_path_denied_by_default(parser):
         parser.parse_args(["--handler=logging.FileHandler"])
 
 
+def test_subclass_class_path_of_local_class_denied(parser):
+    class LocalCalendar(Calendar):
+        pass
+
+    parser.add_argument("--local", type=LocalCalendar)
+    parser.add_argument("--cal", type=Calendar)
+    cfg = parser.parse_args(["--local={}"])
+    assert cfg.local.class_path.endswith("<locals>.LocalCalendar")
+    set_parsing_settings(import_path_denylist=[__name__])
+    with pytest.raises(ArgumentError, match="not allowed"):
+        parser.parse_args([f"--cal={cfg.local.class_path}"])
+
+
 def test_star_callable_bound_to_denied_callable_denied(parser):
     set_parsing_settings(import_path_denylist=["*"], import_path_allowlist=["jsonargparse_tests"])
     parser.add_argument("--fn", type=Callable)
@@ -445,7 +458,7 @@ def test_from_config_class_path_denied(tmp_cwd):
     set_parsing_settings(import_path_denylist=["calendar"])
     config = json_or_yaml_dump({"class_path": "calendar.TextCalendar"})
     (tmp_cwd / "config.yaml").write_text(config)
-    with pytest.raises(ImportDenied):
+    with pytest.raises(ArgumentError, match="'calendar.TextCalendar' is not allowed"):
         Base.from_config("config.yaml")
 
 
