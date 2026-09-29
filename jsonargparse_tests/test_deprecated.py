@@ -1534,3 +1534,47 @@ def test_denied_import_path_enforced_when_setting_given(settings):
     set_parsing_settings(**settings)
     with pytest.raises(ImportDenied):
         import_object("subprocess.Popen")
+
+
+def test_allow_abbrev_deprecation(parser, subparser, monkeypatch):
+    monkeypatch.delenv("JSONARGPARSE_DEPRECATION_WARNINGS", raising=False)
+    parser.add_argument("--max_epochs", type=int)
+    parser.add_argument("-x", type=int)
+    subparser.add_argument("--learning_rate", type=float)
+    parser.add_subcommands(required=False).add_subcommand("fit", subparser)
+
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(["--max_epochs=1", "-x2", "fit", "--learning_rate", "0.1"])
+    assert w == []
+    assert (cfg.max_epochs, cfg.x, cfg.fit.learning_rate) == (1, 2, 0.1)
+
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(["--max=3"])
+    assert cfg.max_epochs == 3
+    assert "Option '--max' was expanded to '--max_epochs'" in str(w[-1].message)
+    assert_deprecation_warn(
+        w,
+        message="give allow_abbrev=True",
+        code='cfg = parser.parse_args(["--max=3"])',
+    )
+
+    monkeypatch.setenv("JSONARGPARSE_DEPRECATION_WARNINGS", "all")
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(["fit", "--learning", "0.2"])
+    assert cfg.fit.learning_rate == 0.2
+    assert_deprecation_warn(
+        w,
+        message="Option '--learning' was expanded to '--learning_rate'",
+        code='cfg = parser.parse_args(["fit", "--learning", "0.2"])',
+    )
+
+
+def test_allow_abbrev_explicit_no_deprecation(subparser):
+    parser = ArgumentParser(exit_on_error=False, allow_abbrev=True)
+    parser.add_argument("--max_epochs", type=int)
+    subparser.add_argument("--learning_rate", type=float)
+    parser.add_subcommands().add_subcommand("fit", subparser)
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(["--max", "3", "fit", "--learning", "0.2"])
+    assert w == []
+    assert (cfg.max_epochs, cfg.fit.learning_rate) == (3, 0.2)

@@ -23,6 +23,10 @@ Deprecated
   ``operator.methodcaller`` for a method that is called with an instance. Warns
   only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#985
   <https://github.com/mauvilsa/jsonargparse/pull/985>`__).
+- Abbreviated command line options, e.g. ``--max`` for ``--max_epochs``. From
+  v5.0.0 ``allow_abbrev`` defaults to ``False``. Warns when an abbreviation is
+  used and the parser was not given ``allow_abbrev=True`` (`#992
+  <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
 
 
 v4.52.0 (2026-09-01)
