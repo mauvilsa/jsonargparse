@@ -207,10 +207,10 @@ not_supported = pytest.mark.not_supported(reason="Intentional deviation from arg
 implementation_specific = pytest.mark.implementation_specific(reason="Tests argparse internals")
 investigate = pytest.mark.investigate(reason="Potential compatibility issue")
 
-# Custom ArgumentParser class that uses argparse.HelpFormatter by default
+# Custom ArgumentParser class that uses argparse.HelpFormatter and allows abbreviations by default
 class ArgumentParser(argparse.ArgumentParser):
-    def __init__(self, *args, formatter_class=_argparse.HelpFormatter, **kwargs):
-        super().__init__(*args, formatter_class=formatter_class, **kwargs)
+    def __init__(self, *args, formatter_class=_argparse.HelpFormatter, allow_abbrev=True, **kwargs):
+        super().__init__(*args, formatter_class=formatter_class, allow_abbrev=allow_abbrev, **kwargs)
 
 argparse.ArgumentParser = ArgumentParser
 """

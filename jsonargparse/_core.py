@@ -42,6 +42,7 @@ from ._deprecated import (
     deprecated_skip_check,
     deprecated_skip_none,
     deprecated_yaml_comments,
+    deprecation_warning_allow_abbrev,
     renamed_parameter_warning,
 )
 from ._formatters import DefaultHelpFormatter, get_env_var
@@ -360,6 +361,12 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
         if arg_string == self._print_config:
             arg_string += "="
         return super()._parse_optional(arg_string)
+
+    def _get_option_tuples(self, option_string):
+        option_tuples = super()._get_option_tuples(option_string)
+        if len(option_tuples) == 1:
+            deprecation_warning_allow_abbrev(self, option_string, option_tuples[0][1])
+        return option_tuples
 
     def _parse_common(
         self,

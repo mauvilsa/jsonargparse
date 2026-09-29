@@ -134,6 +134,11 @@ class ActionSubCommands(_SubParsersAction):
         parser.exit_on_error = self.parent_parser.exit_on_error
         parser.formatter_class = self.parent_parser.formatter_class
         parser.logger = self.parent_parser.logger
+        parser.allow_abbrev = self.parent_parser.allow_abbrev
+        parser._allow_abbrev_given = self.parent_parser._allow_abbrev_given
+        for attr in ("suggest_on_error", "color"):  # added in python 3.14
+            if hasattr(self.parent_parser, attr):
+                setattr(parser, attr, getattr(self.parent_parser, attr))
         parser.subcommand = name  # type: ignore[attr-defined]
 
         # create a pseudo-action to hold the choice help

@@ -1,5 +1,6 @@
 """Deprecated code."""
 
+import argparse
 import functools
 import inspect
 import os
@@ -653,6 +654,30 @@ def deprecation_warning_function_groups_instantiate(parser, stacklevel):
             )
 
 
+def deprecation_warning_allow_abbrev(parser, arg_string: str, option_string: str) -> None:
+    """Warns when a command line option is given abbreviated and the parser doesn't explicitly allow it."""
+    given = arg_string.split("=", 1)[0]
+    if parser._allow_abbrev_given or option_string == given or not option_string.startswith(given):
+        return
+    deprecation_warning(
+        "ArgumentParser.allow_abbrev",
+        f"Option '{given}' was expanded to '{option_string}'. Abbreviated options are deprecated, "
+        "v5.0.0 disables abbreviations by default. Use the full option name, or to keep abbreviations "
+        "give allow_abbrev=True to the parser.",
+        stacklevel=stacklevel_outside_parsing(),
+    )
+
+
+def stacklevel_outside_parsing() -> int:
+    """Returns the stacklevel, relative to the caller, of the first frame outside jsonargparse and argparse."""
+    internal = (os.path.dirname(__file__) + os.sep, argparse.__file__)
+    frame: Any = sys._getframe(2)
+    stacklevel = 1
+    while frame.f_code.co_filename.startswith(internal):
+        frame, stacklevel = frame.f_back, stacklevel + 1
+    return stacklevel
+
+
 default_meta_message = """
     ``default_meta`` property was deprecated in v4.44.0 and will be removed in
     v5.0.0. After removal, config objects will always include metadata. To
@@ -666,6 +691,7 @@ class ParserDeprecations:
     _instantiators: Optional[InstantiatorsDictType] = None
 
     def __init__(self, *args, error_handler=False, default_meta=None, **kwargs):
+        self._allow_abbrev_given = "allow_abbrev" in kwargs
         super().__init__(*args, **kwargs)
         self.error_handler = error_handler
         if default_meta is None:

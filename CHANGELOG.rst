@@ -15,6 +15,13 @@ paths are considered internals and can change in minor and patch releases.
 v4.53.0 (unreleased)
 --------------------
 
+Fixed
+^^^^^
+- Subcommand parsers ignoring the ``allow_abbrev``, ``suggest_on_error`` and
+  ``color`` given to the parent parser or to ``auto_cli``, e.g. abbreviations
+  still accepted after a subcommand with ``allow_abbrev=False`` (`#992
+  <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
+
 Deprecated
 ^^^^^^^^^^
 - Groups added by ``add_function_arguments`` or ``add_method_arguments`` with a
@@ -23,6 +30,10 @@ Deprecated
   ``operator.methodcaller`` for a method that is called with an instance. Warns
   only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#985
   <https://github.com/mauvilsa/jsonargparse/pull/985>`__).
+- Abbreviated command line options, e.g. ``--max`` for ``--max_epochs``. From
+  v5.0.0 ``allow_abbrev`` defaults to ``False``. Warns when an abbreviation is
+  used and the parser was not given ``allow_abbrev=True`` (`#992
+  <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
 
 
 v4.52.0 (2026-09-01)
