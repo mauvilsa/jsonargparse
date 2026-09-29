@@ -149,6 +149,13 @@ def test_multiple_functions_set_defaults():
     assert "Z" == parser.parse_args(["cmd2"]).cmd2.a2
 
 
+def test_multiple_functions_allow_abbrev():
+    assert "Y" == auto_cli([cmd1, cmd2], args=["cmd2", "--a=Y"], allow_abbrev=True)
+    with redirect_stderr(StringIO()) as err, pytest.raises(SystemExit):
+        auto_cli([cmd1, cmd2], args=["cmd2", "--a=Y"], allow_abbrev=False)
+    assert "--a=Y" in err.getvalue()
+
+
 def test_multiple_functions_main_help():
     out = get_cli_stdout([cmd1, cmd2], args=["--help"])
     assert "{cmd1,cmd2}" in out
