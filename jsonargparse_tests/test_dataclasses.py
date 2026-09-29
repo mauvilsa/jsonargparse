@@ -782,6 +782,17 @@ if type_alias_type:
     ListOfVar = type_alias_type("ListOfVar", List[AliasVar], type_params=(AliasVar,))  # type: ignore[valid-type]
     DictOfVar = type_alias_type("DictOfVar", Dict[str, ListOfVar[AliasVar]], type_params=(AliasVar,))  # type: ignore[valid-type]
     ListOfBoundVar = type_alias_type("ListOfBoundVar", List[BoundAliasVar], type_params=(BoundAliasVar,))  # type: ignore[valid-type]
+    StringValueAlias = type_alias_type("StringValueAlias", "Union[int, List[int]]")
+    RecursiveAlias = type_alias_type(
+        "RecursiveAlias", "Union[int, List[Optional[RecursiveAlias]], Dict[str, RecursiveAlias]]"
+    )
+    GrowingAlias = type_alias_type(
+        "GrowingAlias", "Union[AliasVar, List[GrowingAlias[List[AliasVar]]]]", type_params=(AliasVar,)
+    )
+    LateNameAlias = type_alias_type("LateNameAlias", "List[LateName]")
+
+    def function_late_name_alias(data: Optional[LateNameAlias] = None):  # type: ignore[valid-type]
+        pass  # pragma: no cover
 
     @dataclasses.dataclass
     class DataClassWithAliasType:
@@ -873,6 +884,52 @@ class TestTypeAliasType:
         assert cfg.data.p1 == [1, 2]
         with pytest.raises(ArgumentError) as ctx:
             parser.parse_args(['--data.p1=["x"]'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_string_value_alias_type(self, parser):
+        parser.add_argument("--data", type=StringValueAlias)
+        assert "type: StringValueAlias" in get_parser_help(parser)
+        assert parser.parse_args(["--data=[1, 2]"]).data == [1, 2]
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data=["x"]'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_recursive_alias_type(self, parser):
+        parser.add_argument("--data", type=RecursiveAlias)
+        assert "type: RecursiveAlias" in get_parser_help(parser)
+        cfg = parser.parse_args(['--data={"a": [1, null, {"b": [2]}]}'])
+        assert cfg.data == {"a": [1, None, {"b": [2]}]}
+        assert json_or_yaml_load(parser.dump(cfg)) == {"data": {"a": [1, None, {"b": [2]}]}}
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data={"a": [1, {"b": ["x"]}]}'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_recursive_alias_type_with_growing_type_args(self, parser):
+        parser.add_argument("--data", type=GrowingAlias[int])
+        assert "type: GrowingAlias[int]" in get_parser_help(parser)
+        assert parser.parse_args(["--data=[[1, 2], [[[3]]]]"]).data == [[1, 2], [[[3]]]]
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data=[["x"]]'])
+        ctx.match("Expected a <class 'int'>")
+
+    def test_string_value_alias_type_resolved_once_name_defined(self, parser, monkeypatch):
+        parser.add_function_arguments(function_late_name_alias)
+        assert parser.parse_args(['--data=["x"]']).data == ["x"]  # unvalidated
+        monkeypatch.setattr(sys.modules[__name__], "LateName", int, raising=False)
+        parser = ArgumentParser(exit_on_error=False)
+        parser.add_function_arguments(function_late_name_alias)
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data=["x"]'])
+        ctx.match("Expected a <class 'int'>")
+
+    @pytest.mark.skipif(sys.version_info < (3, 12), reason="type statement requires python>=3.12")
+    def test_recursive_type_statement(self, parser):
+        namespace: dict = {}
+        exec("type Recursive = int | list[Recursive]", namespace)  # syntax invalid in python<3.12
+        parser.add_argument("--data", type=namespace["Recursive"])
+        assert parser.parse_args(["--data=[1, [2, [3]]]"]).data == [1, [2, [3]]]
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(['--data=[1, ["x"]]'])
         ctx.match("Expected a <class 'int'>")
 
     @pytest.mark.skipif(not annotated, reason="Annotated is required")

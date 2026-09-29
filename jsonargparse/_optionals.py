@@ -1,5 +1,6 @@
 """Code related to optional dependencies."""
 
+import builtins
 import inspect
 import os
 import re
@@ -443,6 +444,34 @@ def is_alias_type(typehint: Any) -> bool:
     return _is_alias_type(typehint) or _is_alias_type(getattr(typehint, "__origin__", None))
 
 
+def get_alias_origin(typehint: Any) -> Any:
+    """Returns the TypeAliasType of an alias, i.e. without what a generic one is subscripted with."""
+    origin = getattr(typehint, "__origin__", None)
+    # the origin is checked first, since in python<3.11 a subscripted alias is also an instance of TypeAliasType
+    return origin if _is_alias_type(origin) else typehint
+
+
+resolved_string_alias_values: dict = {}
+
+
+def resolve_string_alias_value(alias: Any) -> Any:
+    """Resolves the value of an alias given as a string, e.g. ``TypeAliasType("A", "int | list[A]")``.
+
+    The string is evaluated in the namespace of the module where the alias is defined, like type checkers and
+    pydantic do. When it fails to resolve, the string is returned, making the type unvalidated. Only successful
+    resolutions are cached, since a name that is missing could be defined later.
+    """
+    if alias in resolved_string_alias_values:
+        return resolved_string_alias_values[alias]
+    from ._typehints import resolve_module_annotations
+
+    type_params = {p.__name__: p for p in getattr(alias, "__type_params__", None) or ()}
+    value = resolve_module_annotations(alias.__module__, {"value": alias.__value__}, type_params)["value"]
+    if not isinstance(value, str):
+        resolved_string_alias_values[alias] = value
+    return value
+
+
 def get_alias_target(typehint: Any) -> Any:
     """Returns what an alias stands for, with the type parameters of a generic alias resolved.
 
@@ -450,8 +479,10 @@ def get_alias_target(typehint: Any) -> Any:
     it is subscripted with. An unsubscripted one replaces them by what they stand
     for, i.e. their default, constraints or bound, the same as any other TypeVar.
     """
-    alias = typehint if _is_alias_type(typehint) else typehint.__origin__
+    alias = get_alias_origin(typehint)
     target = alias.__value__
+    if isinstance(target, str):
+        target = resolve_string_alias_value(alias)
     type_params = getattr(alias, "__type_params__", None)
     if not type_params:
         return target
@@ -459,6 +490,14 @@ def get_alias_target(typehint: Any) -> Any:
 
     args = getattr(typehint, "__args__", None) or ()
     return replace_type_vars(substitute_type_vars(target, dict(zip(type_params, args))))
+
+
+sentinel_types = tuple(t for t in (typing_extensions_import("Sentinel"), getattr(builtins, "sentinel", None)) if t)
+
+
+def is_sentinel(value: Any) -> bool:
+    """Whether a value is a PEP 661 sentinel, which can be used as a type that only accepts itself."""
+    return isinstance(value, sentinel_types)
 
 
 def is_new_type(typehint: Any) -> bool:

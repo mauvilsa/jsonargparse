@@ -38,6 +38,7 @@ from jsonargparse import (
     lazy_instance,
     set_parsing_settings,
 )
+from jsonargparse._optionals import type_alias_type, typing_extensions_import
 from jsonargparse._typehints import NotRequired, ReadOnly
 from jsonargparse.typing import (
     ClosedUnitInterval,
@@ -350,6 +351,56 @@ def test_container_types(parser):
     }
     assert properties["tuple_ellipsis"] == {"type": "array", "items": {"type": "integer"}}
     assert properties["set"] == {"type": "array", "uniqueItems": True}
+
+
+GrowingVar = TypeVar("GrowingVar")
+
+if type_alias_type:
+    IntList = type_alias_type("IntList", List[int])
+    RecursiveList = type_alias_type("RecursiveList", "Union[int, List[RecursiveList]]")
+    GrowingList = type_alias_type(
+        "GrowingList", "Union[GrowingVar, List[GrowingList[List[GrowingVar]]]]", type_params=(GrowingVar,)
+    )
+
+
+@pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
+def test_alias_type(parser):
+    parser.add_argument("--alias", type=IntList)
+    schema = get_schema(parser)
+    assert schema["properties"]["alias"] == {"type": "array", "items": {"type": "integer"}}
+    assert list(schema["$defs"]) == ["$schema"]
+
+
+@pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
+def test_recursive_alias_type(parser):
+    parser.add_argument("--alias", type=RecursiveList)
+    schema = get_schema(parser)
+    assert schema["properties"]["alias"] == {"$ref": "#/$defs/RecursiveList"}
+    ref = {"$ref": "#/$defs/RecursiveList"}
+    assert schema["$defs"]["RecursiveList"] == {"anyOf": [{"type": "integer"}, {"type": "array", "items": ref}]}
+
+
+@pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
+def test_recursive_alias_type_with_growing_type_args(parser):
+    parser.add_argument("--alias", type=GrowingList[int])
+    schema = get_schema(parser)
+    assert schema["properties"]["alias"] == {"type": ["integer", "array"]}
+
+
+Sentinel = typing_extensions_import("Sentinel")
+if Sentinel:
+    MISSING = Sentinel("MISSING")
+
+
+@pytest.mark.skipif(not Sentinel, reason="typing_extensions.Sentinel is required")
+def test_sentinel_type(parser):
+    parser.add_argument("--val", type=int | MISSING, default=MISSING)
+    schema = get_schema(parser)
+    import_path = f"{__name__}.MISSING"
+    assert schema["properties"]["val"] == {
+        "anyOf": [{"type": "integer"}, {"const": import_path}],
+        "default": import_path,
+    }
 
 
 def test_union_simple_types_merged(parser):
@@ -810,6 +861,44 @@ def test_variant_of_recursive_type_shared(parser):
     parser.add_subclass_arguments(Recursive, "rec")
     schema = get_schema(parser)
     assert ref_name(schema["properties"]["rec"]) == "Recursive"
+    assert not [name for name in schema["$defs"] if "@" in name]
+
+
+if type_alias_type:
+    RecursiveBase = type_alias_type("RecursiveBase", "Union[Base, List[RecursiveBase]]")
+
+
+class AliasHolder:
+    def __init__(self, inner: "RecursiveBase"):  # type: ignore[valid-type]
+        pass  # pragma: no cover
+
+
+@pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
+def test_variant_of_recursive_alias_for_skipped_parameter(parser):
+    parser.add_argument("--plain", type=RecursiveBase)
+    parser.add_subclass_arguments(AliasHolder, "holder", skip={"inner.init_args.base"})
+    schema = get_schema(parser)
+    defs = schema["$defs"]
+    assert schema["properties"]["plain"] == {"$ref": "#/$defs/RecursiveBase"}
+    assert defs["RecursiveBase"]["anyOf"][0] == {"$ref": "#/$defs/Base"}
+    holder = defs[f"{__name__}.AliasHolder@holder"]
+    variant = "RecursiveBase@holder.init_args.inner"
+    assert holder["properties"]["init_args"]["properties"]["inner"] == {"$ref": f"#/$defs/{variant}"}
+    assert defs[variant] == {
+        "anyOf": [
+            {"$ref": "#/$defs/Base@holder.init_args.inner"},
+            {"type": "array", "items": {"$ref": f"#/$defs/{variant}"}},
+        ]
+    }
+
+
+@pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
+def test_variant_of_recursive_alias_with_same_content_shared(parser):
+    parser.add_argument("--plain", type=RecursiveBase)
+    parser.add_subclass_arguments(AliasHolder, "holder")
+    schema = get_schema(parser)
+    holder = schema["$defs"][f"{__name__}.AliasHolder"]
+    assert holder["properties"]["init_args"]["properties"]["inner"] == {"$ref": "#/$defs/RecursiveBase"}
     assert not [name for name in schema["$defs"] if "@" in name]
 
 

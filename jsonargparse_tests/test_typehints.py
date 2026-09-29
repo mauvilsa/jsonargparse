@@ -57,7 +57,12 @@ from warnings import catch_warnings, simplefilter
 import pytest
 
 from jsonargparse import ArgumentError, Namespace, lazy_instance
-from jsonargparse._optionals import LiteralString, pyyaml_available, typing_extensions_support
+from jsonargparse._optionals import (
+    LiteralString,
+    pyyaml_available,
+    typing_extensions_import,
+    typing_extensions_support,
+)
 from jsonargparse._typehints import (
     ActionTypeHint,
     NotRequired,
@@ -3643,6 +3648,45 @@ def test_list_callable_return_class(parser):
     cfg = parser.parse_args([f"--cfg={json.dumps(config)}", "--model.schedulers.monitor=val/mAP50"])
     assert cfg.model.init_args.schedulers[1].class_path == f"{__name__}.ReduceLROnPlateau"
     assert cfg.model.init_args.schedulers[1].init_args == Namespace(monitor="val/mAP50", factor=0.5)
+
+
+# sentinel tests
+
+Sentinel = typing_extensions_import("Sentinel")
+if Sentinel:
+    MISSING = Sentinel("MISSING")
+
+    def function_sentinel_default(a: int | MISSING = MISSING):  # type: ignore[valid-type]
+        pass  # pragma: no cover
+
+
+@pytest.mark.skipif(not Sentinel, reason="typing_extensions.Sentinel is required")
+class TestSentinel:
+    import_path = f"{__name__}.MISSING"
+
+    def test_help(self, parser):
+        parser.add_function_arguments(function_sentinel_default, "f")
+        help_str = get_parser_help(parser, strip=True)
+        type_str = "int | MISSING" if sys.version_info >= (3, 14) else "Union[int, MISSING]"  # typing.Union
+        assert f"type: {type_str}, default: {self.import_path})" in help_str
+
+    def test_default_and_dump(self, parser):
+        parser.add_function_arguments(function_sentinel_default, "f")
+        cfg = parser.parse_args([])
+        assert cfg.f.a is MISSING
+        assert json_or_yaml_load(parser.dump(cfg)) == {"f": {"a": self.import_path}}
+
+    def test_parse(self, parser):
+        parser.add_function_arguments(function_sentinel_default, "f")
+        assert parser.parse_args(["--f.a=3"]).f.a == 3
+        assert parser.parse_args([f"--f.a={self.import_path}"]).f.a is MISSING
+
+    @pytest.mark.parametrize("value", ["x", f"{__name__}.Sentinel"])
+    def test_invalid(self, parser, value):
+        parser.add_function_arguments(function_sentinel_default, "f")
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args([f"--f.a={value}"])
+        ctx.match(f"Expected the sentinel {self.import_path}")
 
 
 # lazy_instance tests
