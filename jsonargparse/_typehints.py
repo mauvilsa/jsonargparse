@@ -93,6 +93,7 @@ from ._namespace import (
 )
 from ._optionals import (
     capture_typing_extension_shadows,
+    get_alias_origin,
     get_alias_target,
     get_new_type_supertype,
     is_alias_type,
@@ -436,13 +437,15 @@ class ActionTypeHint(Action):
         """Whether the given type hint is supported.
 
         A recursive alias is considered supported where it references itself, since it is supported if the rest is.
+        Aliases are compared without what they are subscripted with, since this can change in each reference.
         """
         if get_registered_type(typehint) is not None:
             return True
         if is_alias_type(typehint):
-            if typehint in expanding_aliases:
+            alias = get_alias_origin(typehint)
+            if alias in expanding_aliases:
                 return True
-            expanding_aliases = expanding_aliases | {typehint}
+            expanding_aliases = expanding_aliases | {alias}
         typehint = get_unaliased_type(typehint)
 
         if is_subclass(typehint, Namespace):
@@ -2299,7 +2302,7 @@ def yield_class_types(
     if typehint is None:
         return
     optional_arg = get_optional_arg(get_unaliased_type(typehint))
-    aliases = {t for t in (typehint, optional_arg) if is_alias_type(t)}
+    aliases = {get_alias_origin(t) for t in (typehint, optional_arg) if is_alias_type(t)}
     if aliases & expanding_aliases:
         return
     expanding_aliases = expanding_aliases | aliases

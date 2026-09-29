@@ -7,7 +7,6 @@ import re
 import sys
 from contextlib import contextmanager
 from copy import deepcopy
-from functools import lru_cache
 from importlib.metadata import version
 from importlib.util import find_spec
 from typing import Any, Union
@@ -445,17 +444,32 @@ def is_alias_type(typehint: Any) -> bool:
     return _is_alias_type(typehint) or _is_alias_type(getattr(typehint, "__origin__", None))
 
 
-@lru_cache(maxsize=None)
+def get_alias_origin(typehint: Any) -> Any:
+    """Returns the TypeAliasType of an alias, i.e. without what a generic one is subscripted with."""
+    origin = getattr(typehint, "__origin__", None)
+    # the origin is checked first, since in python<3.11 a subscripted alias is also an instance of TypeAliasType
+    return origin if _is_alias_type(origin) else typehint
+
+
+resolved_string_alias_values: dict = {}
+
+
 def resolve_string_alias_value(alias: Any) -> Any:
     """Resolves the value of an alias given as a string, e.g. ``TypeAliasType("A", "int | list[A]")``.
 
     The string is evaluated in the namespace of the module where the alias is defined, like type checkers and
-    pydantic do. When it fails to resolve, the string is returned, making the type unvalidated.
+    pydantic do. When it fails to resolve, the string is returned, making the type unvalidated. Only successful
+    resolutions are cached, since a name that is missing could be defined later.
     """
+    if alias in resolved_string_alias_values:
+        return resolved_string_alias_values[alias]
     from ._typehints import resolve_module_annotations
 
     type_params = {p.__name__: p for p in getattr(alias, "__type_params__", None) or ()}
-    return resolve_module_annotations(alias.__module__, {"value": alias.__value__}, type_params)["value"]
+    value = resolve_module_annotations(alias.__module__, {"value": alias.__value__}, type_params)["value"]
+    if not isinstance(value, str):
+        resolved_string_alias_values[alias] = value
+    return value
 
 
 def get_alias_target(typehint: Any) -> Any:
@@ -465,7 +479,7 @@ def get_alias_target(typehint: Any) -> Any:
     it is subscripted with. An unsubscripted one replaces them by what they stand
     for, i.e. their default, constraints or bound, the same as any other TypeVar.
     """
-    alias = typehint if _is_alias_type(typehint) else typehint.__origin__
+    alias = get_alias_origin(typehint)
     target = alias.__value__
     if isinstance(target, str):
         target = resolve_string_alias_value(alias)

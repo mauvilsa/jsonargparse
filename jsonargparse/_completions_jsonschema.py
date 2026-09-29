@@ -21,6 +21,7 @@ from ._common import (
 from ._jsonschema import ActionJsonSchema
 from ._namespace import Namespace
 from ._optionals import (
+    get_alias_origin,
     get_alias_target,
     get_doc_short_description,
     is_alias_type,
@@ -526,7 +527,11 @@ class ParserJsonschema:
         return {}
 
     def alias_schema(self, alias, action, key: str) -> dict:
-        """Describes a type alias, which when recursive is a definition that has variants like the ones of classes."""
+        """Describes a type alias, which when recursive is a definition that has variants like the ones of classes.
+
+        A recursive generic alias that references itself subscripted differently, e.g.
+        ``type T[X] = X | list[T[list[X]]]``, would expand without end, thus there it is not constrained.
+        """
         if alias in self.recursive_aliases:
 
             def build_def(kwargs: dict) -> dict:
@@ -536,6 +541,8 @@ class ParserJsonschema:
         if alias in self.expanding_aliases:
             self.recursive_aliases.add(alias)
             return {}  # discarded, the alias is described again as a definition
+        if any(get_alias_origin(a) is get_alias_origin(alias) for a in self.expanding_aliases):
+            return {}
         self.expanding_aliases.add(alias)
         schema = self.typehint_schema(get_alias_target(alias), action, key)
         self.expanding_aliases.remove(alias)

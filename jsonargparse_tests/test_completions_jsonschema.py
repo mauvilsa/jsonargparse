@@ -353,9 +353,14 @@ def test_container_types(parser):
     assert properties["set"] == {"type": "array", "uniqueItems": True}
 
 
+GrowingVar = TypeVar("GrowingVar")
+
 if type_alias_type:
     IntList = type_alias_type("IntList", List[int])
     RecursiveList = type_alias_type("RecursiveList", "Union[int, List[RecursiveList]]")
+    GrowingList = type_alias_type(
+        "GrowingList", "Union[GrowingVar, List[GrowingList[List[GrowingVar]]]]", type_params=(GrowingVar,)
+    )
 
 
 @pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
@@ -373,6 +378,13 @@ def test_recursive_alias_type(parser):
     assert schema["properties"]["alias"] == {"$ref": "#/$defs/RecursiveList"}
     ref = {"$ref": "#/$defs/RecursiveList"}
     assert schema["$defs"]["RecursiveList"] == {"anyOf": [{"type": "integer"}, {"type": "array", "items": ref}]}
+
+
+@pytest.mark.skipif(not type_alias_type, reason="TypeAliasType is required")
+def test_recursive_alias_type_with_growing_type_args(parser):
+    parser.add_argument("--alias", type=GrowingList[int])
+    schema = get_schema(parser)
+    assert schema["properties"]["alias"] == {"type": ["integer", "array"]}
 
 
 Sentinel = typing_extensions_import("Sentinel")
