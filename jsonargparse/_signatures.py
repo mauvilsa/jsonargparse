@@ -57,7 +57,16 @@ from ._typehints import (
     strip_required_typehint,
     type_to_str,
 )
-from ._util import NoneType, get_import_path, get_private_kwargs, get_typehint_origin, iter_to_set_str
+from ._util import (
+    NoneType,
+    get_import_path,
+    get_module_var_path,
+    get_private_kwargs,
+    get_typehint_origin,
+    iter_to_set_str,
+    object_path_serializer,
+    resolved_import_paths,
+)
 from .typing import _LazyInitBaseClass, register_pydantic_types
 
 kinds = inspect._ParameterKind
@@ -448,6 +457,7 @@ class SignatureArguments(LoggerProperty):
             annotation = unvalidatable_replaced
         if default == inspect_empty:
             default = param.default
+            remember_sentinel_import_path(default, annotation, param.component)
             if default == inspect_empty and get_typehint_origin(annotation) in not_required_types:
                 default = SUPPRESS
                 self.logger.debug(
@@ -731,6 +741,24 @@ class SignatureArguments(LoggerProperty):
                     group.instantiate_class = group_bind_callable
                 group.call_layout = call_layout
         return group
+
+
+def remember_sentinel_import_path(default, annotation, component) -> None:
+    """Remembers the import path of a default that is a sentinel, e.g. ``UNSET`` for ``x: int | UnsetType = UNSET``.
+
+    A sentinel is an instance whose class is part of the type, and that is a variable of a module: either the one
+    of its class, or the one where the default is given. Remembering the import path makes it serializable, and
+    parsing the import path gives back the same instance.
+    """
+    types = annotation.__args__ if get_typehint_origin(annotation) == Union else (annotation,)
+    if type(default) not in types or not ActionTypeHint.is_subclass_typehint(type(default)):
+        return
+    try:
+        import_path = object_path_serializer(default)
+    except ValueError:
+        import_path = get_module_var_path(component.__module__, default)
+    if import_path:
+        resolved_import_paths.add(default, import_path)
 
 
 def set_group_extra_defaults(parser, nested_key, extras: dict) -> None:

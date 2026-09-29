@@ -43,7 +43,7 @@ from ._typehints import (
     is_subclass_spec,
     type_to_str,
 )
-from ._util import object_path_serializer
+from ._util import get_sentinel_import_path, object_path_serializer
 
 __all__ = ["DefaultHelpFormatter"]
 
@@ -540,6 +540,8 @@ class DefaultHelpFormatter(HelpFormatter):
                 params["default"] = params["default"].as_dict()
             elif isinstance(params["default"], Enum):
                 params["default"] = params["default"].name
+            elif get_sentinel_import_path(params["default"]):
+                params["default"] = get_sentinel_import_path(params["default"])
             elif (
                 isinstance(action, ActionTypeHint)
                 and is_callable_type(action._typehint)

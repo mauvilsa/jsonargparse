@@ -1,6 +1,7 @@
 """Generation of a JSON Schema that describes the configs accepted by a parser."""
 
 import argparse
+import copy
 import operator
 import re
 import uuid
@@ -19,7 +20,13 @@ from ._common import (
 )
 from ._jsonschema import ActionJsonSchema
 from ._namespace import Namespace
-from ._optionals import get_doc_short_description, pydantic_model_accepts_extra
+from ._optionals import (
+    get_alias_target,
+    get_doc_short_description,
+    is_alias_type,
+    is_sentinel,
+    pydantic_model_accepts_extra,
+)
 from ._required import iter_required_keys, restore_suppressed_required
 from ._subcommands import ActionSubCommands
 from ._typehints import (
@@ -42,7 +49,7 @@ from ._typehints import (
     typed_dict_key_qualifiers,
     typed_dict_meta_types,
 )
-from ._util import NoneType, config_include_key, get_import_path, import_object
+from ._util import NoneType, config_include_key, get_import_path, get_sentinel_import_path, import_object
 from .typing import get_registered_type
 
 schema_uri = "https://json-schema.org/draft/2020-12/schema"
@@ -120,6 +127,13 @@ def class_parser_kwargs(action) -> dict:
     return {k: v for k, v in kwargs.items() if k not in class_parser_defaults or class_parser_defaults[k] != v}
 
 
+def action_with_kwargs(action, kwargs: dict):
+    """A copy of an action that gives other kwargs for the parsers of classes."""
+    action = copy.copy(action)
+    action.sub_add_kwargs = kwargs
+    return action
+
+
 def accepts_extra_keys(parser_or_group) -> bool:
     """Whether a parser or group corresponds to a pydantic model that accepts unknown keys."""
     return pydantic_model_accepts_extra(getattr(parser_or_group, "group_class", None))
@@ -148,7 +162,7 @@ def json_value(value):
     registered = get_registered_type(type(value))
     if registered:  # the same serialization that dump gives, e.g. a path as its string
         return json_value(registered.serializer(value))
-    return str(value)
+    return get_sentinel_import_path(value) or str(value)
 
 
 def is_type_only(schema: dict) -> bool:
@@ -316,6 +330,8 @@ class ParserJsonschema:
         self.def_types: dict = dict.fromkeys(self.defs)  # reserved, so that classes with these names are renamed
         self.variants: dict = {}  # (base key, frozen kwargs) -> name of the definition
         self.bases: dict = {}  # base key -> (plain name, function that builds the definition for some kwargs)
+        self.expanding_aliases: set = set()
+        self.recursive_aliases: set = set()
 
     def generate(self, parser) -> dict:
         schema = self.config_object(parser.description)
@@ -457,6 +473,8 @@ class ParserJsonschema:
 
     def typehint_schema(self, typehint, action, key: str) -> dict:
         """Describes a type, where ``key`` is the full key of the argument, which names variant definitions."""
+        if is_alias_type(typehint):
+            return self.alias_schema(typehint, action, key)
         typehint = get_unaliased_type(typehint)
         origin = get_typehint_origin(typehint)
         root = origin if origin is not None else typehint  # unsubscripted generics, e.g. list instead of list[int]
@@ -467,6 +485,8 @@ class ParserJsonschema:
             return self.typehint_schema(typehint.__args__[0], action, key)
         if typehint is uuid.UUID:
             return dict(uuid_schema)
+        if is_sentinel(typehint):
+            return {"const": get_import_path(typehint)}
         if typehint in basic_type_schemas:
             return dict(basic_type_schemas[typehint])
         registered = get_registered_type(typehint)
@@ -504,6 +524,24 @@ class ParserJsonschema:
         if is_single_subclass_or_closed_type(typehint, origin):
             return self.class_ref(typehint, action, key, subclass=False)
         return {}
+
+    def alias_schema(self, alias, action, key: str) -> dict:
+        """Describes a type alias, which when recursive is a definition that has variants like the ones of classes."""
+        if alias in self.recursive_aliases:
+
+            def build_def(kwargs: dict) -> dict:
+                return self.typehint_schema(get_alias_target(alias), action_with_kwargs(action, kwargs), key)
+
+            return self.def_ref(("alias", alias), self.def_name(alias), key, class_parser_kwargs(action), build_def)
+        if alias in self.expanding_aliases:
+            self.recursive_aliases.add(alias)
+            return {}  # discarded, the alias is described again as a definition
+        self.expanding_aliases.add(alias)
+        schema = self.typehint_schema(get_alias_target(alias), action, key)
+        self.expanding_aliases.remove(alias)
+        if alias in self.recursive_aliases:
+            return self.alias_schema(alias, action, key)
+        return schema
 
     def items_schema(self, typehint, action, key: str, schema: dict) -> dict:
         args = getattr(typehint, "__args__", ())

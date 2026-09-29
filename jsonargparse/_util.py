@@ -30,7 +30,7 @@ from ._common import (
 )
 from ._loaders_dumpers import json_compact_dump, load_value
 from ._namespace import Namespace, ValueSource, value_source_context
-from ._optionals import _get_config_read_mode
+from ._optionals import _get_config_read_mode, is_sentinel
 from ._paths import Path, path_dir_context
 from ._type_checking import ArgumentParser
 
@@ -431,18 +431,25 @@ class ResolvedImportPaths:
     without this a value given as an import path to an instance would not be
     serializable, even though it came from an import path. Entries are keyed by
     id, weak references being used to discard an entry when its instance is
-    garbage collected, thus avoiding that an id is reused for another object.
+    garbage collected, thus avoiding that an id is reused for another object. An
+    instance that doesn't support weak references is kept alive by a strong
+    reference instead, which is fine since these are normally module level
+    singletons, e.g. sentinels implemented in C. Builtin values are excluded,
+    since equal ones can be the same object, e.g. small ints and strings.
     """
 
     def __init__(self) -> None:
-        self._paths: dict[int, tuple[Any, str]] = {}
+        self._paths: dict[int, tuple[Callable[[], Any], str]] = {}
 
     def add(self, instance: Any, import_path: str) -> None:
         key = id(instance)
+        ref: Callable[[], Any]
         try:
             ref = weakref.ref(instance, lambda _: self._paths.pop(key, None))
         except TypeError:
-            return  # instance doesn't support weak references
+            if type(instance).__module__ == "builtins":
+                return
+            ref = lambda: instance
         self._paths[key] = (ref, import_path)
 
     def get(self, instance: Any) -> str | None:
@@ -504,6 +511,11 @@ def get_import_path(value: Any) -> str:
                 path = module_path + "." + qualname
                 break
     return path
+
+
+def get_sentinel_import_path(value: Any) -> str | None:
+    """Import path of a value that is a sentinel, i.e. PEP 661 or remembered as such, otherwise None."""
+    return get_import_path(value) if is_sentinel(value) else resolved_import_paths.get(value)
 
 
 def object_path_serializer(value):

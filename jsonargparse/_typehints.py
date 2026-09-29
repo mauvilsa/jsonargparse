@@ -100,6 +100,7 @@ from ._optionals import (
     is_annotated_validator,
     is_literal_string,
     is_new_type,
+    is_sentinel,
     typing_extensions_import,
     validate_annotated,
 )
@@ -431,10 +432,17 @@ class ActionTypeHint(Action):
         return args
 
     @staticmethod
-    def is_supported_typehint(typehint, full=False):
-        """Whether the given type hint is supported."""
+    def is_supported_typehint(typehint, full=False, expanding_aliases=frozenset()):
+        """Whether the given type hint is supported.
+
+        A recursive alias is considered supported where it references itself, since it is supported if the rest is.
+        """
         if get_registered_type(typehint) is not None:
             return True
+        if is_alias_type(typehint):
+            if typehint in expanding_aliases:
+                return True
+            expanding_aliases = expanding_aliases | {typehint}
         typehint = get_unaliased_type(typehint)
 
         if is_subclass(typehint, Namespace):
@@ -449,6 +457,7 @@ class ActionTypeHint(Action):
             or is_subclasses_disabled(typehint)
             or is_typed_dict(typehint)
             or is_namedtuple(typehint)
+            or is_sentinel(typehint)
             or ActionTypeHint.is_subclass_typehint(typehint)
         )
         if full and supported:
@@ -462,7 +471,7 @@ class ActionTypeHint(Action):
                         subtype == Ellipsis
                         or (typehint_origin == type and isinstance(subtype, TypeVar))
                         or subtype in leaf_types
-                        or ActionTypeHint.is_supported_typehint(subtype, full=True)
+                        or ActionTypeHint.is_supported_typehint(subtype, True, expanding_aliases)
                     ):
                         num_supported_args += 1
                     elif typehint_origin != Union:
@@ -1445,6 +1454,16 @@ def adapt_typehints(
         if val not in subtypehints:
             raise_unexpected_value(f"Expected a {typehint}", val)
 
+    # PEP 661 sentinel, which only accepts itself, given as its import path
+    elif is_sentinel(typehint):
+        import_path = get_import_path(typehint)
+        if isinstance(val, str) and val == import_path:
+            val = typehint
+        if val is not typehint:
+            raise_unexpected_value(f"Expected the sentinel {import_path}", val)
+        if serialize:
+            val = import_path
+
     # Basic types
     elif typehint in leaf_types:
         if isinstance(val, str) and typehint is not str:
@@ -2273,17 +2292,25 @@ is_single_subclass_type = partial(is_single_class_type, closed_class=False)
 is_single_subclass_or_closed_type = partial(is_single_class_type, closed_class=True)
 
 
-def yield_class_types(typehint, is_single, also_lists=False, also_containers=False, callable_return=False):
+def yield_class_types(
+    typehint, is_single, also_lists=False, also_containers=False, callable_return=False, expanding_aliases=frozenset()
+):
     typehint = typehint_from_action(typehint)
     if typehint is None:
         return
-    typehint = get_unaliased_type(get_optional_arg(get_unaliased_type(typehint)))
+    optional_arg = get_optional_arg(get_unaliased_type(typehint))
+    aliases = {t for t in (typehint, optional_arg) if is_alias_type(t)}
+    if aliases & expanding_aliases:
+        return
+    expanding_aliases = expanding_aliases | aliases
+    typehint = get_unaliased_type(optional_arg)
     typehint_origin = get_typehint_origin(typehint)
     kwargs = {
         "is_single": is_single,
         "also_lists": also_lists,
         "also_containers": also_containers,
         "callable_return": callable_return,
+        "expanding_aliases": expanding_aliases,
     }
     if callable_return and (typehint_origin in callable_origin_types or is_instance_factory_protocol(typehint)):
         return_type = get_callable_return_type(typehint)

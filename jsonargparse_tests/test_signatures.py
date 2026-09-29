@@ -6,7 +6,7 @@ import operator
 import pickle
 import sys
 from pathlib import Path
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypedDict, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, Tuple, TypedDict, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -30,6 +30,7 @@ from jsonargparse_tests.conftest import (
     json_or_yaml_load,
     skip_if_docstring_parser_unavailable,
 )
+from jsonargparse_tests.test_postponed_annotations import UnsetType as OtherModuleUnsetType
 
 # add_class_arguments tests
 
@@ -1273,3 +1274,67 @@ def test_add_method_instantiate_skip_positionals(parser):
     parser.add_method_arguments(WithMethodKinds, "normal_method", "m", skip={1}, instantiate=False)
     cfg = parser.parse_args(["--m.k=x"])
     assert parser.instantiate(cfg) == cfg
+
+
+# sentinel defaults tests
+
+
+class UnsetType:
+    pass
+
+
+UNSET = UnsetType()
+
+
+class WithSentinelDefault:
+    def __init__(self, a: int | UnsetType = UNSET):
+        pass
+
+
+def test_sentinel_default_help_shows_import_path(parser):
+    parser.add_class_arguments(WithSentinelDefault, "c")
+    assert f"default: {__name__}.UNSET," in get_parser_help(parser)
+
+
+class SlotsUnsetType:
+    __slots__ = ()  # no support for weak references
+
+
+SLOTS_UNSET = SlotsUnsetType()
+
+
+def function_sentinel_without_weakref(a: int | SlotsUnsetType = SLOTS_UNSET):
+    pass  # pragma: no cover
+
+
+def test_sentinel_default_without_weakref_support(parser):
+    parser.add_function_arguments(function_sentinel_without_weakref, "f")
+    assert f"default: {__name__}.SLOTS_UNSET," in get_parser_help(parser)
+
+
+FIVE = 5
+
+
+def test_builtin_value_import_path_not_remembered(parser):
+    parser.add_argument("--c", type=Callable)
+    parser.add_argument("--n", type=int, default=5)
+    with pytest.raises(ArgumentError):
+        parser.parse_args([f"--c={__name__}.FIVE"])  # the imported 5 is the same object as the default
+    assert "default: 5)" in get_parser_help(parser)
+
+
+OTHER_MODULE_UNSET = OtherModuleUnsetType()
+
+
+def function_sentinel_from_other_module(a: int | OtherModuleUnsetType = OTHER_MODULE_UNSET):
+    pass  # pragma: no cover
+
+
+def test_sentinel_default_of_class_from_other_module(parser):
+    parser.add_function_arguments(function_sentinel_from_other_module, "f")
+    import_path = f"{__name__}.OTHER_MODULE_UNSET"
+    assert f"default: {import_path}," in get_parser_help(parser)
+    cfg = parser.parse_args([])
+    assert json_or_yaml_load(parser.dump(cfg)) == {"f": {"a": import_path}}
+    cfg = parser.parse_args([f"--f.a={import_path}"])
+    assert cfg.f.a is OTHER_MODULE_UNSET

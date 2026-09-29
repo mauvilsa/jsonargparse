@@ -1,11 +1,13 @@
 """Code related to optional dependencies."""
 
+import builtins
 import inspect
 import os
 import re
 import sys
 from contextlib import contextmanager
 from copy import deepcopy
+from functools import lru_cache
 from importlib.metadata import version
 from importlib.util import find_spec
 from typing import Any, Union
@@ -443,6 +445,19 @@ def is_alias_type(typehint: Any) -> bool:
     return _is_alias_type(typehint) or _is_alias_type(getattr(typehint, "__origin__", None))
 
 
+@lru_cache(maxsize=None)
+def resolve_string_alias_value(alias: Any) -> Any:
+    """Resolves the value of an alias given as a string, e.g. ``TypeAliasType("A", "int | list[A]")``.
+
+    The string is evaluated in the namespace of the module where the alias is defined, like type checkers and
+    pydantic do. When it fails to resolve, the string is returned, making the type unvalidated.
+    """
+    from ._typehints import resolve_module_annotations
+
+    type_params = {p.__name__: p for p in getattr(alias, "__type_params__", None) or ()}
+    return resolve_module_annotations(alias.__module__, {"value": alias.__value__}, type_params)["value"]
+
+
 def get_alias_target(typehint: Any) -> Any:
     """Returns what an alias stands for, with the type parameters of a generic alias resolved.
 
@@ -452,6 +467,8 @@ def get_alias_target(typehint: Any) -> Any:
     """
     alias = typehint if _is_alias_type(typehint) else typehint.__origin__
     target = alias.__value__
+    if isinstance(target, str):
+        target = resolve_string_alias_value(alias)
     type_params = getattr(alias, "__type_params__", None)
     if not type_params:
         return target
@@ -459,6 +476,14 @@ def get_alias_target(typehint: Any) -> Any:
 
     args = getattr(typehint, "__args__", None) or ()
     return replace_type_vars(substitute_type_vars(target, dict(zip(type_params, args))))
+
+
+sentinel_types = tuple(t for t in (typing_extensions_import("Sentinel"), getattr(builtins, "sentinel", None)) if t)
+
+
+def is_sentinel(value: Any) -> bool:
+    """Whether a value is a PEP 661 sentinel, which can be used as a type that only accepts itself."""
+    return isinstance(value, sentinel_types)
 
 
 def is_new_type(typehint: Any) -> bool:

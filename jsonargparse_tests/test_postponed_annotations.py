@@ -838,6 +838,28 @@ def test_add_dataclass_with_init_pep585(parser, tmp_cwd):
     assert cfg.data == Namespace(a=[1, 2], b=Path_drw("."))
 
 
+class UnsetType:
+    pass
+
+
+UNSET = UnsetType()
+
+
+@dataclasses.dataclass(init=False)
+class DataNoInitWithCustomInit:
+    a: float | None
+
+    def __init__(self, x: int | UnsetType = UNSET, *, a: None | float | UnsetType = UNSET):
+        self.a = None if isinstance(a, UnsetType) else a  # pragma: no cover
+
+
+def test_get_params_dataclass_init_false_custom_init():
+    params = get_params(DataNoInitWithCustomInit)
+    assert [p.name for p in params] == ["x", "a"]
+    assert params[0].annotation == int | UnsetType
+    assert params[1].annotation == None | float | UnsetType
+
+
 @dataclasses.dataclass
 class InheritDifferentModule(DifferentModuleBaseData):
     """

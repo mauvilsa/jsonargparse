@@ -577,15 +577,20 @@ Types can be nested with any complexity. Notes about the support:
 - ``TypeAliasType`` is supported. Values are parsed as the aliased type and the
   help shows the alias as the argument type. This includes aliases defined with
   the `PEP 695 <https://peps.python.org/pep-0695/>`__ ``type X = ...`` statement
-  (Python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``. A
-  generic alias, e.g. ``type X[T] = list[T]``, is parsed as its target with the
-  type parameters substituted by what it is subscripted with, e.g. ``X[int]``
-  behaves as ``list[int]``. Unsubscripted, its type parameters stand for their
-  default, constraints or bound, the same as any other ``TypeVar``.
+  (Python 3.12+) and aliases created with ``typing_extensions.TypeAliasType``,
+  also recursive ones or with a string value. A generic alias, e.g. ``type
+  X[T] = list[T]``, is parsed as its target with the type parameters substituted
+  by what it is subscripted with, e.g. ``X[int]`` behaves as ``list[int]``.
+  Unsubscripted, its type parameters stand for their default, constraints or
+  bound, the same as any other ``TypeVar``.
 
 - ``NewType`` is supported. Values are parsed as the supertype it stands for,
   including a ``NewType`` of a ``NewType``, and the help shows the name given in
   the source code.
+
+- `PEP 661 <https://peps.python.org/pep-0661/>`__ sentinels, e.g. ``MISSING =
+  Sentinel("MISSING")`` from ``typing_extensions``, are supported as types, e.g.
+  ``int | MISSING``. The sentinel only accepts itself, given as its import path.
 
 
 .. _union-types:
@@ -2214,6 +2219,11 @@ that it is a subclass of the type, and that the ``init_args`` values are valid
 arguments to instantiate it. The parsed config keeps the ``class_path`` and
 ``init_args`` entries. :meth:`instantiate <.ArgumentParser.instantiate>` gives a
 config object with all nested subclasses instantiated.
+
+The value can also be the import path of an instance of the class, which is
+kept as that same instance. A signature default that is such an instance, e.g. a
+sentinel ``UNSET`` for ``x: int | UnsetType = UNSET``, is shown and dumped as
+its import path.
 
 Besides using a class as type hint in a signature, parsers can be built with
 :meth:`add_class_arguments <.ArgumentParser.add_class_arguments>` and

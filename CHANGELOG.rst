@@ -44,6 +44,13 @@ Added
   the configs that it gives, so that a config can be composed from others.
   Enabled with the new ``config_include_enabled`` of ``set_parsing_settings``
   (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
+- Support for ``TypeAliasType`` aliases whose value is a string, e.g.
+  ``TypeAliasType("Json", "str | list[Json]")``, evaluated in the module that
+  defines the alias (`#991
+  <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
+- Support for PEP 661 sentinels as types, e.g. ``x: int | MISSING = MISSING``,
+  which only accept the sentinel given as its import path (`#991
+  <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
 
 Fixed
 ^^^^^
@@ -119,6 +126,17 @@ Fixed
 - A config file given as value of a subclass type failing with ``Config file
   loop detected`` instead of the actual error, e.g. an invalid ``class_path``
   (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
+- Dataclasses with ``init=False`` and a hand-written ``__init__`` getting the
+  parameter types from the fields instead of from ``__init__``, so parameters
+  that are not fields stayed unresolved and valid defaults were rejected (`#991
+  <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
+- Recursive type aliases, e.g. ``type Json = int | list[Json]``, failing with
+  ``RecursionError`` (`#991
+  <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
+- Sentinel defaults, e.g. ``UNSET`` for ``x: int | UnsetType = UNSET``, shown
+  in the help as ``<UnsetType object at 0x...>``, and failing to serialize when
+  the sentinel is not defined in the module of its class (`#991
+  <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
 
 Changed
 ^^^^^^^
