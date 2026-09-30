@@ -3726,6 +3726,28 @@ config files. Ignoring unrecognized arguments would make errors, such as a typo
 in a config file, harder to notice. For this reason ``parse_known_args`` is
 intentionally not supported.
 
+Abbreviated options
+-------------------
+
+Unlike argparse, abbreviated options, e.g. ``--max`` for ``--max_epochs``, are
+not accepted by default, since a new parameter can make an abbreviation
+ambiguous or change its meaning. :ref:`tab-completion` is a robust alternative.
+For argparse behavior give ``allow_abbrev=True`` to the parser, or enable it
+globally, which also applies to parsers created by other code:
+
+.. testcode::
+
+    from jsonargparse import set_parsing_settings
+
+    set_parsing_settings(allow_abbrev=True)
+
+.. testcleanup::
+
+    set_parsing_settings(allow_abbrev=False)
+
+Without changing Python code, the same is achieved by setting the environment
+variable ``JSONARGPARSE_ALLOW_ABBREV=true``.
+
 User defined types
 ------------------
 

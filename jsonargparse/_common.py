@@ -278,6 +278,7 @@ config_schema_key = "$schema"
 
 
 parsing_settings: dict = {
+    "allow_abbrev": False,
     "validate_defaults": False,
     "validate_subclass_spec_in_any": False,
     "instantiate_subclass_spec_in_any": False,
@@ -356,6 +357,7 @@ def get_env_var_bool(name: str) -> bool:
 
 def set_parsing_settings(
     *,
+    allow_abbrev: bool | None = None,
     validate_defaults: bool | None = None,
     validate_subclass_spec_in_any: bool | None = None,
     instantiate_subclass_spec_in_any: bool | None = None,
@@ -378,6 +380,10 @@ def set_parsing_settings(
     Modify global parser settings that affect parser creation and parsing behavior.
 
     Args:
+        allow_abbrev: Whether parsers accept abbreviated long options, e.g.
+            ``--max`` for ``--max_epochs``. Default is ``False``, unlike
+            argparse. Parsers given ``allow_abbrev`` take precedence, and the
+            ``JSONARGPARSE_ALLOW_ABBREV`` environment variable over this.
         validate_defaults: Whether default values must be valid according to the
             argument type. Defaults are always validated to normalize them, but
             with the default ``False`` an invalid default is kept as is, like
@@ -456,6 +462,7 @@ def set_parsing_settings(
     """
     # boolean settings
     bool_settings = {
+        "allow_abbrev": allow_abbrev,
         "validate_defaults": validate_defaults,
         "validate_subclass_spec_in_any": validate_subclass_spec_in_any,
         "instantiate_subclass_spec_in_any": instantiate_subclass_spec_in_any,
@@ -496,13 +503,18 @@ def set_parsing_settings(
         )
 
 
+parsing_settings_env_vars = {
+    "allow_abbrev": "JSONARGPARSE_ALLOW_ABBREV",
+    "add_print_completion_argument": "JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT",
+}
+
+
 def get_parsing_setting(name: str):
     if name not in parsing_settings:
         raise ValueError(f"Unknown parsing setting {name}.")
-    if name == "add_print_completion_argument":
-        var_name = "JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT"
-        if var_name in os.environ:
-            return get_env_var_bool(var_name)
+    var_name = parsing_settings_env_vars.get(name, "")
+    if var_name in os.environ:
+        return get_env_var_bool(var_name)
     return parsing_settings[name]
 
 

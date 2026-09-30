@@ -51,6 +51,10 @@ Added
 - Support for PEP 661 sentinels as types, e.g. ``x: int | MISSING = MISSING``,
   which only accept the sentinel given as its import path (`#991
   <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
+- New ``allow_abbrev`` setting in ``set_parsing_settings`` and
+  ``JSONARGPARSE_ALLOW_ABBREV`` environment variable, to accept abbreviated
+  options in parsers not given ``allow_abbrev`` (`#993
+  <https://github.com/mauvilsa/jsonargparse/pull/993>`__).
 
 Fixed
 ^^^^^
@@ -212,6 +216,9 @@ Changed
 - ``from_config`` now fails with ``ArgumentError`` for an invalid config,
   including a missing required parameter, instead of ``TypeError`` or
   ``ImportDenied`` (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
+- ``allow_abbrev`` now defaults to ``False``, so abbreviated options, e.g.
+  ``--max`` for ``--max_epochs``, fail instead of being expanded (`#993
+  <https://github.com/mauvilsa/jsonargparse/pull/993>`__).
 
 Removed
 ^^^^^^^
@@ -228,6 +235,13 @@ Removed
 v4.53.0 (unreleased)
 --------------------
 
+Fixed
+^^^^^
+- Subcommand parsers ignoring the ``allow_abbrev``, ``suggest_on_error`` and
+  ``color`` given to the parent parser or to ``auto_cli``, e.g. abbreviations
+  still accepted after a subcommand with ``allow_abbrev=False`` (`#992
+  <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
+
 Deprecated
 ^^^^^^^^^^
 - Groups added by ``add_function_arguments`` or ``add_method_arguments`` with a
@@ -236,6 +250,10 @@ Deprecated
   ``operator.methodcaller`` for a method that is called with an instance. Warns
   only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all`` (`#985
   <https://github.com/mauvilsa/jsonargparse/pull/985>`__).
+- Abbreviated command line options, e.g. ``--max`` for ``--max_epochs``. From
+  v5.0.0 ``allow_abbrev`` defaults to ``False``. Warns when an abbreviation is
+  used and the parser was not given ``allow_abbrev=True`` (`#992
+  <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
 
 
 v4.52.0 (2026-09-01)

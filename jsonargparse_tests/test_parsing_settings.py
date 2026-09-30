@@ -7,7 +7,7 @@ from warnings import catch_warnings
 
 import pytest
 
-from jsonargparse import SUPPRESS, ActionYesNo, ArgumentError, Namespace, Unset, set_parsing_settings
+from jsonargparse import SUPPRESS, ActionYesNo, ArgumentError, ArgumentParser, Namespace, Unset, set_parsing_settings
 from jsonargparse._common import _UnsetType, get_parsing_setting
 from jsonargparse._typehints import UnvalidatedType
 from jsonargparse_tests.conftest import capture_logs, get_parse_args_stdout, get_parser_help, json_or_yaml_load
@@ -23,6 +23,52 @@ def auto_patch_parsing_settings():
 def test_get_parsing_setting_failure():
     with pytest.raises(ValueError, match="Unknown parsing setting"):
         get_parsing_setting("unknown_setting")
+
+
+# allow_abbrev
+
+
+def test_set_allow_abbrev_failure():
+    with pytest.raises(ValueError, match="allow_abbrev must be a boolean"):
+        set_parsing_settings(allow_abbrev="invalid")
+
+
+def test_allow_abbrev_disabled_by_default(parser):
+    parser.add_argument("--max_epochs", type=int)
+    assert parser.allow_abbrev is False
+    with pytest.raises(ArgumentError, match="--max"):
+        parser.parse_args(["--max", "3"])
+
+
+def test_allow_abbrev_setting(parser):
+    parser.add_argument("--max_epochs", type=int)
+    set_parsing_settings(allow_abbrev=True)
+    assert parser.parse_args(["--max", "3"]).max_epochs == 3
+
+
+def test_allow_abbrev_env_var(parser, monkeypatch):
+    parser.add_argument("--max_epochs", type=int)
+    monkeypatch.setenv("JSONARGPARSE_ALLOW_ABBREV", "true")
+    assert parser.parse_args(["--max", "3"]).max_epochs == 3
+    set_parsing_settings(allow_abbrev=True)
+    monkeypatch.setenv("JSONARGPARSE_ALLOW_ABBREV", "false")
+    assert parser.allow_abbrev is False
+
+
+def test_allow_abbrev_parser_takes_precedence(monkeypatch):
+    set_parsing_settings(allow_abbrev=True)
+    monkeypatch.setenv("JSONARGPARSE_ALLOW_ABBREV", "true")
+    parser = ArgumentParser(exit_on_error=False, allow_abbrev=False)
+    parser.add_argument("--max_epochs", type=int)
+    with pytest.raises(ArgumentError, match="--max"):
+        parser.parse_args(["--max", "3"])
+    parser.allow_abbrev = None
+    assert parser.parse_args(["--max", "3"]).max_epochs == 3
+
+
+def test_allow_abbrev_invalid(parser):
+    with pytest.raises(ValueError, match="allow_abbrev expects a boolean or None"):
+        parser.allow_abbrev = "invalid"
 
 
 # validate_defaults
