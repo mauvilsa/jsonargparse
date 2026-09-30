@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
@@ -330,6 +331,22 @@ def test_subcommand_without_options(parser, subparser):
     subcommands.add_subcommand("foo", subparser)
     cfg = parser.parse_args(["foo"])
     assert cfg.subcommand == "foo"
+
+
+def test_subcommand_inherits_allow_abbrev(subparser):
+    subparser.add_argument("--learning_rate", type=float)
+    parser = ArgumentParser(exit_on_error=False, allow_abbrev=True)
+    parser.add_subcommands().add_subcommand("fit", subparser)
+    cfg = parser.parse_args(["fit", "--learning", "0.1"])
+    assert cfg.fit.learning_rate == 0.1
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="suggest_on_error and color added in python 3.14")
+def test_subcommand_inherits_suggest_on_error_and_color(subparser):
+    parser = ArgumentParser(exit_on_error=False, suggest_on_error=True, color=False)
+    parser.add_subcommands().add_subcommand("fit", subparser)
+    assert subparser.suggest_on_error is True
+    assert subparser.color is False
 
 
 def test_subcommand_print_config_default_env(subparser):

@@ -201,6 +201,9 @@ for attr in [
     if hasattr(_argparse, attr):
         setattr(argparse, attr, getattr(_argparse, attr))
 
+# Abbreviated options are accepted by argparse, but by default not by jsonargparse
+argparse.set_parsing_settings(allow_abbrev=True)
+
 # Shorthand pytest markers for categorizing compatibility differences
 not_supported = pytest.mark.not_supported(reason="Intentional deviation from argparse")
 implementation_specific = pytest.mark.implementation_specific(reason="Tests argparse internals")

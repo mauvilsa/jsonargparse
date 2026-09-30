@@ -289,6 +289,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         dump_header: list[str] | None = None,
         default_config_files: list[str | os.PathLike] | None = None,
         default_env: bool = False,
+        allow_abbrev: bool | None = None,
         **kwargs,
     ) -> None:
         """Initializer for ArgumentParser instance.
@@ -307,8 +308,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             dump_header: Header to include as comment when dumping a config object.
             default_config_files: Default config file locations, e.g. ``['~/.config/myapp/*.yaml']``.
             default_env: Set the default value on whether to parse environment variables.
+            allow_abbrev: Whether to accept abbreviated long options, ``None`` to use the global setting.
         """
-        super().__init__(*args, formatter_class=formatter_class, logger=logger, **kwargs)
+        super().__init__(*args, formatter_class=formatter_class, logger=logger, allow_abbrev=allow_abbrev, **kwargs)
         self._group_class = get_argument_group_class(self)
         if self.groups is None:
             self.groups = {}
@@ -1617,6 +1619,28 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         elif hasattr(self, "_default_config_files_group"):
             self._action_groups = [g for g in self._action_groups if g != self._default_config_files_group]
             delattr(self, "_default_config_files_group")
+
+    @property
+    def allow_abbrev(self) -> bool:
+        """Whether abbreviated long options are accepted, e.g. ``--max`` for ``--max_epochs``.
+
+        When set to ``None``, the ``allow_abbrev`` setting of :func:`.set_parsing_settings` is used.
+
+        :getter: Returns whether abbreviations are accepted.
+        :setter: Sets ``True``, ``False`` or ``None``.
+
+        Raises:
+            ValueError: If an invalid value is given.
+        """
+        if self._allow_abbrev is None:
+            return get_parsing_setting("allow_abbrev")
+        return self._allow_abbrev
+
+    @allow_abbrev.setter
+    def allow_abbrev(self, allow_abbrev: bool | None):
+        if allow_abbrev is not None and not isinstance(allow_abbrev, bool):
+            raise ValueError("allow_abbrev expects a boolean or None.")
+        self._allow_abbrev = allow_abbrev
 
     @property
     def default_env(self) -> bool:

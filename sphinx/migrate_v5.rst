@@ -72,6 +72,11 @@ changes:
   instead of the parsed namespace. Call it, e.g. ``init.fn()`` instead of
   ``fn(**init.fn)``, or give ``instantiate=False`` to keep the namespace. Warns
   only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
+- **Abbreviated options are disabled.** ``allow_abbrev`` defaults to ``False``,
+  so e.g. ``--max`` no longer matches ``--max_epochs``. Use full option names,
+  or keep abbreviations with ``allow_abbrev=True`` in the parser, or globally
+  with ``set_parsing_settings(allow_abbrev=True)`` or the
+  ``JSONARGPARSE_ALLOW_ABBREV=true`` environment variable.
 
 
 CLI / auto_cli
