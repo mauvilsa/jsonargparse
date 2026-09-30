@@ -341,12 +341,24 @@ def test_subcommand_inherits_allow_abbrev(subparser):
     assert cfg.fit.learning_rate == 0.1
 
 
+def test_subcommand_allow_abbrev_set_after_adding(parser, subparser):
+    subparser.add_argument("--learning_rate", type=float)
+    parser.add_subcommands().add_subcommand("fit", subparser)
+    parser.allow_abbrev = True
+    cfg = parser.parse_args(["fit", "--learning", "0.1"])
+    assert cfg.fit.learning_rate == 0.1
+
+
 @pytest.mark.skipif(sys.version_info < (3, 14), reason="suggest_on_error and color added in python 3.14")
 def test_subcommand_inherits_suggest_on_error_and_color(subparser):
     parser = ArgumentParser(exit_on_error=False, suggest_on_error=True, color=False)
     parser.add_subcommands().add_subcommand("fit", subparser)
     assert subparser.suggest_on_error is True
     assert subparser.color is False
+    parser.suggest_on_error = False
+    parser.color = True
+    assert subparser.suggest_on_error is False
+    assert subparser.color is True
 
 
 def test_subcommand_print_config_default_env(subparser):

@@ -269,6 +269,21 @@ class ArgumentGroup(ActionsContainer, argparse._ArgumentGroup):
     parser: "ArgumentParser | ActionsContainer | None" = None
 
 
+def subcommands_propagated_property(name: str) -> property:
+    """Property for an argparse attribute that when set also applies to the subcommand parsers."""
+
+    def fget(self):
+        return getattr(self, f"_{name}")
+
+    def fset(self, value):
+        setattr(self, f"_{name}", value)
+        if self._subcommands_action:
+            for subparser in self._subcommands_action._name_parser_map.values():
+                setattr(subparser, name, value)
+
+    return property(fget, fset)
+
+
 class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
     """Parser for command line, configuration files and environment variables."""
 
@@ -1641,6 +1656,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         if allow_abbrev is not None and not isinstance(allow_abbrev, bool):
             raise ValueError("allow_abbrev expects a boolean or None.")
         self._allow_abbrev = allow_abbrev
+        if self._subcommands_action:
+            for subparser in self._subcommands_action._name_parser_map.values():
+                subparser.allow_abbrev = allow_abbrev
+
+    # added in python 3.14
+    suggest_on_error = subcommands_propagated_property("suggest_on_error")
+    color = subcommands_propagated_property("color")
 
     @property
     def default_env(self) -> bool:
