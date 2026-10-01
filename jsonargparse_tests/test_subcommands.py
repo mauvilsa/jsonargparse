@@ -586,6 +586,32 @@ def test_subcommands_custom_instantiator(parser, subparser, subtests, clear_inst
         assert init.cmd.cls.call == "subparser"
 
 
+def test_subcommands_call_scoped_instantiators(parser, subparser):
+    subparser.add_argument("--cls", type=CustomInstantiationBase)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("cmd", subparser)
+    cfg = parser.parse_args(["cmd", "--cls", "CustomInstantiationBase"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationBase, True)])
+    assert isinstance(init.cmd.cls, CustomInstantiationBase)
+    assert init.cmd.cls.call == "scoped"
+
+
+def test_subcommands_call_scoped_instantiators_instantiate_override(parser):
+    class InstantiateOverride(ArgumentParser):
+        def instantiate(self, cfg, instantiate_groups=True):
+            return super().instantiate(cfg, instantiate_groups=instantiate_groups)
+
+    subparser = InstantiateOverride(exit_on_error=False)
+    subparser.add_argument("--cls", type=CustomInstantiationBase)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("cmd", subparser)
+    cfg = parser.parse_args(["cmd", "--cls", "CustomInstantiationBase"])
+    init = parser.instantiate(cfg)
+    assert not hasattr(init.cmd.cls, "call")
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationBase, True)])
+    assert init.cmd.cls.call == "scoped"
+
+
 def test_subsubcommand_default_env_true(parser, subparser, subsubparser):
     parser.default_env = True
     parser.env_prefix = "APP"

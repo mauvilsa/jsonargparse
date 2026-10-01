@@ -5,7 +5,6 @@ import inspect
 import re
 from argparse import SUPPRESS, ArgumentParser
 from collections.abc import Callable
-from functools import partial
 from operator import methodcaller
 from typing import Any, Literal, Optional, Union
 
@@ -21,9 +20,9 @@ from ._common import (
 from ._instantiation import (
     CallLayout,
     bind_call,
-    dynamic_class_instantiator,
     get_call_arguments,
     get_call_layout,
+    get_class_instantiator,
 )
 from ._namespace import Namespace, get_value_and_parent
 from ._optionals import (
@@ -779,7 +778,7 @@ def get_group_values(group, cfg) -> tuple[dict, Namespace, str]:
 
 def group_instantiate_class(group, cfg):
     values, parent, key = get_group_values(group, cfg)
-    instantiator = partial(dynamic_class_instantiator, group.group_class)
+    instantiator = get_class_instantiator(group.group_class)
     parent[key] = bind_call(instantiator, group.call_layout, values, component=group.group_class)()
 
 

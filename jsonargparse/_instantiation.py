@@ -2,11 +2,19 @@ import dataclasses
 import functools
 import inspect
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
+from itertools import chain
 from typing import Any, Protocol
 
-from ._common import ClassType, applied_instantiation_links, get_parsing_setting, is_subclass, parser_context
+from ._common import (
+    ClassType,
+    applied_instantiation_links,
+    get_parsing_setting,
+    is_subclass,
+    parser_context,
+    scoped_class_instantiators,
+)
 from ._namespace import Namespace, get_value_and_parent, split_key
 
 __all__ = ["add_instantiator"]
@@ -88,6 +96,7 @@ class InstantiatorCallable(Protocol):
 
 
 InstantiatorsDictType = dict[tuple[type, bool], InstantiatorCallable]
+InstantiatorsType = Sequence[tuple[InstantiatorCallable, type, bool]]
 
 _class_instantiators: InstantiatorsDictType = {}
 
@@ -97,6 +106,7 @@ class InstantiateMethod:
         self,
         namespace: Namespace,
         instantiate_groups: bool = True,
+        instantiators: InstantiatorsType | None = None,
     ) -> Namespace:
         """Instantiates all signature components in a configuration namespace.
 
@@ -134,6 +144,9 @@ class InstantiateMethod:
                 by one of the ``parse_*`` methods and not modified in a way that
                 breaks the structure expected by the parser.
             instantiate_groups: Whether class, function and method groups should be instantiated.
+            instantiators: Custom instantiators for this call, a list of ``(instantiator, class_type,
+                subclasses)`` tuples, see :func:`.add_instantiator`. The first match is used, before any
+                global ones.
 
         Returns:
             A new configuration object where every registered signature
@@ -144,6 +157,11 @@ class InstantiateMethod:
         from ._link_arguments import ActionLink
         from ._subcommands import get_subcommand
         from ._typehints import ActionTypeHint
+
+        if instantiators is None:  # a nested instantiate keeps the ones of the enclosing call
+            scoped = scoped_class_instantiators.get()
+        else:
+            scoped = validate_instantiators(instantiators)
 
         components: list[ActionTypeHint | _ActionConfigLoad | ArgumentGroup] = []
         for action in filter_non_parsing_actions(self._actions):  # type: ignore[attr-defined]
@@ -179,13 +197,15 @@ class InstantiateMethod:
                         with parser_context(
                             parent_parser=self,
                             nested_links=ActionLink.get_nested_links(self, component),
-                            applied_instantiation_links=cfg.get("__applied_instantiation_links__"),
+                            scoped_class_instantiators=scoped,
+                            applied_instantiation_links=get_applied_instantiation_links(cfg),
                         ):
                             parent[key] = component.instantiate_classes(value)
             elif hasattr(component, "instantiate_class"):
                 with parser_context(
                     load_value_mode=self.parser_mode,  # type: ignore[attr-defined]
-                    applied_instantiation_links=cfg.get("__applied_instantiation_links__"),
+                    scoped_class_instantiators=scoped,
+                    applied_instantiation_links=get_applied_instantiation_links(cfg),
                 ):
                     component.instantiate_class(component, cfg)
 
@@ -193,7 +213,9 @@ class InstantiateMethod:
 
         subcommand, subparser = get_subcommand(self, cfg, fail_no_subcommand=False)  # type: ignore[arg-type]
         if subcommand is not None and subparser is not None:
-            cfg[subcommand] = subparser.instantiate(cfg[subcommand], instantiate_groups=instantiate_groups)
+            # given by context, since a subparser could override instantiate without the instantiators parameter
+            with parser_context(scoped_class_instantiators=scoped):
+                cfg[subcommand] = subparser.instantiate(cfg[subcommand], instantiate_groups=instantiate_groups)
 
         return cfg
 
@@ -204,7 +226,9 @@ def add_instantiator(
     subclasses: bool = True,
     prepend: bool = False,
 ) -> None:
-    """Adds a custom instantiator for a class type. Used by ``ArgumentParser.instantiate``.
+    """Adds a custom instantiator for a class type, globally for all ``ArgumentParser.instantiate`` calls.
+
+    Prefer the ``instantiators`` parameter of ``instantiate``, which is limited to that call.
 
     Instantiator functions are expected to have as signature ``(class_type:
     Type[ClassType], *args, **kwargs) -> ClassType``.
@@ -236,14 +260,53 @@ def add_instantiator(
         _class_instantiators[key] = instantiator
 
 
-def dynamic_class_instantiator(class_type: type[ClassType], *args, **kwargs) -> ClassType:
-    for (cls, subclasses), instantiator in _class_instantiators.items():
+def get_applied_instantiation_links(cfg: Namespace) -> set:
+    """Gets the links applied so far, for a nested ``instantiate`` including the ones of the enclosing call."""
+    return (cfg.get("__applied_instantiation_links__") or set()) | (applied_instantiation_links.get() or set())
+
+
+def validate_instantiators(instantiators: InstantiatorsType) -> tuple:
+    if (
+        not isinstance(instantiators, Sequence)
+        or isinstance(instantiators, str)
+        or not all(
+            isinstance(item, tuple)
+            and len(item) == 3
+            and callable(item[0])
+            and inspect.isclass(item[1])
+            and isinstance(item[2], bool)
+            for item in instantiators
+        )
+    ):
+        raise ValueError(
+            "Expected instantiators to be a list of tuples (instantiator, class_type, subclasses), "
+            f"got {instantiators!r}"
+        )
+    return tuple(instantiators)
+
+
+def get_class_instantiator(class_type: type[ClassType]) -> Callable[..., ClassType]:
+    """Gets the callable that instantiates class_type.
+
+    It is resolved at this point, so that a deferred call, e.g. a partial given by ``instantiate``, uses the same
+    instantiators and applied instantiation links, even though it happens outside of the ``instantiate`` call.
+    """
+    instantiator: Callable[..., ClassType] = class_type
+    scoped = ((cls, subclasses, fn) for fn, cls, subclasses in scoped_class_instantiators.get() or ())
+    registered = ((cls, subclasses, fn) for (cls, subclasses), fn in _class_instantiators.items())
+    for cls, subclasses, fn in chain(scoped, registered):
         if class_type is cls or (subclasses and is_subclass(class_type, cls)):
-            param_names = set(inspect.signature(instantiator).parameters)
-            if "applied_instantiation_links" in param_names:
+            if "applied_instantiation_links" in inspect.signature(fn).parameters:
                 applied_links = applied_instantiation_links.get() or set()
-                kwargs["applied_instantiation_links"] = {
-                    action.target[0]: action.applied_value for action in applied_links
-                }
-            return instantiator(class_type, *args, **kwargs)
-    return class_type(*args, **kwargs)
+                links = {action.target[0]: action.applied_value for action in applied_links}
+                instantiator = partial(fn, class_type, applied_instantiation_links=links)
+            else:
+                instantiator = partial(fn, class_type)
+            break
+    return partial(call_without_instantiate_context, instantiator)
+
+
+def call_without_instantiate_context(func: Callable[..., ClassType], /, *args, **kwargs) -> ClassType:
+    """Calls func without the context of the enclosing ``instantiate``, so that it doesn't affect other parsers."""
+    with parser_context(scoped_class_instantiators=None, applied_instantiation_links=None):
+        return func(*args, **kwargs)
