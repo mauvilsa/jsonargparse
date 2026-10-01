@@ -1035,6 +1035,25 @@ def test_on_instantiate_nested_targets_passed_to_instantiator(parser):
     assert optimizer.applied_instantiation_links == {"model.init_args.optimizer.init_args.num_classes": 7}
 
 
+def test_on_instantiate_targets_passed_to_instantiator_of_earlier_deferred_call(parser):
+    parser.add_argument("--data", type=Dataloader)
+    parser.add_argument("--model", type=ScopedModel)
+    parser.link_arguments(
+        "data.batch_size",
+        "model.init_args.optimizer.init_args.num_classes",
+        apply_on="instantiate",
+    )
+    instantiators = [(custom_instantiator, ScopedOptimizer, True)]
+    args = ["--data=Dataloader", "--model=ScopedModel", f"--model.optimizer={__name__}.ScopedOptimizer"]
+
+    init1 = parser.instantiate(parser.parse_args(args + ["--data.batch_size=1"]), instantiators=instantiators)
+    init2 = parser.instantiate(parser.parse_args(args + ["--data.batch_size=2"]), instantiators=instantiators)
+
+    key = "model.init_args.optimizer.init_args.num_classes"
+    assert init1.model.optimizer([1]).applied_instantiation_links == {key: 1}
+    assert init2.model.optimizer([1]).applied_instantiation_links == {key: 2}
+
+
 @dataclass
 class DataDep:
     param: int = 1

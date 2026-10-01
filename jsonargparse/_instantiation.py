@@ -131,9 +131,9 @@ class InstantiateMethod:
 
         subcommand, subparser = get_subcommand(self, cfg, fail_no_subcommand=False)  # type: ignore[arg-type]
         if subcommand is not None and subparser is not None:
-            cfg[subcommand] = subparser.instantiate(
-                cfg[subcommand], instantiate_groups=instantiate_groups, instantiators=scoped
-            )
+            # given by context, since a subparser could override instantiate without the instantiators parameter
+            with parser_context(scoped_class_instantiators=scoped):
+                cfg[subcommand] = subparser.instantiate(cfg[subcommand], instantiate_groups=instantiate_groups)
 
         return cfg
 
@@ -203,16 +203,15 @@ def default_class_instantiator(class_type: type[ClassType], *args, **kwargs) -> 
 class ClassInstantiator:
     def __init__(self, instantiators: InstantiatorsDictType, applied_links: set | None = None) -> None:
         self.instantiators = instantiators
-        self.applied_links = applied_links or set()
+        # the values are taken now, since applied_value changes when the parser instantiates again
+        self.applied_links = {action.target[0]: action.applied_value for action in applied_links or ()}
 
     def __call__(self, class_type: type[ClassType], *args, **kwargs) -> ClassType:
         for (cls, subclasses), instantiator in self.instantiators.items():
             if class_type is cls or (subclasses and is_subclass(class_type, cls)):
                 param_names = set(inspect.signature(instantiator).parameters)
                 if "applied_instantiation_links" in param_names:
-                    kwargs["applied_instantiation_links"] = {
-                        action.target[0]: action.applied_value for action in self.applied_links
-                    }
+                    kwargs["applied_instantiation_links"] = dict(self.applied_links)
                 return instantiator(class_type, *args, **kwargs)
         return default_class_instantiator(class_type, *args, **kwargs)
 
