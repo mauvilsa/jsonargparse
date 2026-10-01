@@ -26,6 +26,7 @@ class InstantiateMethod:
         self,
         namespace: Namespace,
         instantiate_groups: bool = True,
+        *,
         instantiators: InstantiatorsType | None = None,
     ) -> Namespace:
         """Instantiates all signature components in a configuration namespace.
