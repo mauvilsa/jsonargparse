@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import CLI, ArgumentParser, auto_cli, auto_parser, capture_parser, lazy_instance
+from jsonargparse import CLI, ArgumentParser, add_instantiator, auto_cli, auto_parser, capture_parser, lazy_instance
 from jsonargparse._namespace import Namespace
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse.typing import final
@@ -548,12 +548,73 @@ def test_call_scoped_instantiators_multiple_components():
     assert injected.instantiator == "scoped"
 
 
-def test_call_scoped_instantiators_parser_class_without_instantiators():
+def test_call_scoped_instantiators_parser_class_instantiate_override():
     class InstantiateOverride(ArgumentParser):
         def instantiate(self, cfg, instantiate_groups=True):
             return super().instantiate(cfg, instantiate_groups=instantiate_groups)
 
     assert 1.5 == auto_cli(single_function, args=["1.5"], parser_class=InstantiateOverride)
+    injected = auto_cli(
+        use_injected,
+        args=[f"--injected={__name__}.ScopedInjected"],
+        as_positional=False,
+        parser_class=InstantiateOverride,
+        instantiators=[(scoped_instantiator, ScopedInjected, True)],
+    )
+    assert injected.instantiator == "scoped"
+
+
+class ScopedComponent:
+    def __init__(self, value: int = 1):
+        self.value = value
+
+    def method(self):
+        return self
+
+
+def test_call_scoped_instantiators_class_component_return_instance():
+    instance = auto_cli(
+        ScopedComponent,
+        args=["--value=2"],
+        return_instance=True,
+        instantiators=[(scoped_instantiator, ScopedComponent, True)],
+    )
+    assert isinstance(instance, ScopedComponent)
+    assert instance.value == 2
+    assert instance.instantiator == "scoped"
+
+
+def test_call_scoped_instantiators_class_component_method():
+    instance = auto_cli(
+        ScopedComponent,
+        args=["--value=2", "method"],
+        instantiators=[(scoped_instantiator, ScopedComponent, True)],
+    )
+    assert isinstance(instance, ScopedComponent)
+    assert instance.value == 2
+    assert instance.instantiator == "scoped"
+
+
+def instantiate_in_own_parser(value: int = 1):
+    parser = ArgumentParser(exit_on_error=False)
+    parser.add_argument("--injected", type=ScopedInjected)
+    return parser.instantiate(parser.parse_args([f"--injected={__name__}.ScopedInjected"])).injected
+
+
+def test_call_scoped_instantiators_not_used_by_other_parsers_in_component():
+    injected = auto_cli(
+        instantiate_in_own_parser,
+        args=[],
+        instantiators=[(scoped_instantiator, ScopedInjected, True)],
+    )
+    assert isinstance(injected, ScopedInjected)
+    assert not hasattr(injected, "instantiator")
+
+
+def test_global_instantiator_class_component(clear_instantiators):
+    add_instantiator(scoped_instantiator, ScopedComponent)
+    instance = auto_cli(ScopedComponent, args=["method"])
+    assert instance.instantiator == "scoped"
 
 
 # named components tests

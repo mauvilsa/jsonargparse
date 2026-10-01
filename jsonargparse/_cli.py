@@ -5,8 +5,15 @@ from collections.abc import Callable
 from typing import Any
 
 from ._actions import ActionConfigFile, _ActionPrintConfig, remove_actions
+from ._common import parser_context
 from ._core import ArgumentParser
-from ._instantiation import InstantiatorsType, bind_call, get_call_arguments
+from ._instantiation import (
+    InstantiatorsType,
+    bind_call,
+    get_call_arguments,
+    get_class_instantiator,
+    validate_instantiators,
+)
 from ._namespace import Namespace, dict_to_namespace
 from ._optionals import get_doc_short_description
 from ._signatures import FailUntyped
@@ -34,6 +41,7 @@ def auto_cli(
     return_instance: bool = False,
     fail_untyped: FailUntyped = True,
     parser_class: type[ArgumentParser] = ArgumentParser,
+    *,
     instantiators: InstantiatorsType | None = None,
     **kwargs,
 ):
@@ -83,6 +91,8 @@ def auto_cli(
     if unexpected:
         raise ValueError(f"Unexpected components, not class or function: {unexpected}")
 
+    # given by context, since a parser_class could override instantiate without the instantiators parameter
+    scoped = None if instantiators is None else validate_instantiators(instantiators)
     parser = parser_class(**kwargs)
     if isinstance(components, (list, dict)) or not has_parameter(components, "config"):
         parser.add_argument("--config", action=ActionConfigFile, help=config_help)
@@ -92,8 +102,9 @@ def auto_cli(
         if set_defaults is not None:
             parser.set_defaults(set_defaults)
         cfg = parser.parse_args(args)
-        init = _instantiate(parser, cfg, instantiators)
-        return _run_component(components, init, parser)
+        with parser_context(scoped_class_instantiators=scoped):
+            init = parser.instantiate(cfg)
+        return _run_component(components, init, parser, scoped)
 
     elif isinstance(components, list):
         components = {c.__name__: c for c in components}
@@ -103,7 +114,8 @@ def auto_cli(
     if set_defaults is not None:
         parser.set_defaults(set_defaults)
     cfg = parser.parse_args(args)
-    init = _instantiate(parser, cfg, instantiators)
+    with parser_context(scoped_class_instantiators=scoped):
+        init = parser.instantiate(cfg)
     components_ns = dict_to_namespace(components)
     subcommand = init.get("subcommand")
     while isinstance(init.get(subcommand), Namespace) and isinstance(init[subcommand].get("subcommand"), str):
@@ -115,7 +127,7 @@ def auto_cli(
     component = components_ns[subcommand]
     for name in subcommand.split("."):
         parser = parser._subcommands_action._name_parser_map[name]  # type: ignore[union-attr]
-    return _run_component(component, init.get(subcommand), parser)
+    return _run_component(component, init.get(subcommand), parser, scoped)
 
 
 def auto_parser(*args, **kwargs) -> ArgumentParser:
@@ -205,23 +217,23 @@ def _add_component_to_parser(
     return added_args
 
 
-def _instantiate(parser: ArgumentParser, cfg: Namespace, instantiators: InstantiatorsType | None) -> Namespace:
-    if instantiators is None:  # not given, since a parser_class could override instantiate without it
-        return parser.instantiate(cfg)
-    return parser.instantiate(cfg, instantiators=instantiators)
-
-
 def _get_call_values(cfg: Namespace) -> dict:
     return dict(cfg.items(branches=True, nested=False))
 
 
-def _run_component(component, cfg, parser):
+def _class_instantiator(component, scoped: tuple | None):
+    with parser_context(scoped_class_instantiators=scoped):
+        return get_class_instantiator(component)
+
+
+def _run_component(component, cfg, parser, scoped: tuple | None):
     cfg.pop("config", None)
     subcommand = cfg.pop("subcommand")
     if inspect.isclass(component) and subcommand:
         subcommand_cfg = cfg.pop(subcommand, {})
         subcommand_cfg.pop("config", None)
-        component_obj = bind_call(component, parser._call_layouts[None], _get_call_values(cfg))()
+        instantiator = _class_instantiator(component, scoped)
+        component_obj = bind_call(instantiator, parser._call_layouts[None], _get_call_values(cfg))()
         if isinstance(getattr(component, subcommand), property):
             return getattr(component_obj, subcommand)
         component = getattr(component_obj, subcommand)
@@ -230,4 +242,6 @@ def _run_component(component, cfg, parser):
     args, kwargs = get_call_arguments(parser._call_layouts[None], _get_call_values(cfg), component)
     if inspect.iscoroutinefunction(component):
         return __import__("asyncio").run(component(*args, **kwargs))
+    if inspect.isclass(component):
+        return _class_instantiator(component, scoped)(*args, **kwargs)
     return component(*args, **kwargs)
