@@ -55,6 +55,7 @@ class FromConfigMixin:
     def from_config(
         cls: type[T],
         config: str | PathLike | dict,
+        *,
         instantiators: InstantiatorsType | None = None,
     ) -> T:
         """Instantiate current class based on a config file or dict.
