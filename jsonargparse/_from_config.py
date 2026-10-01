@@ -4,8 +4,9 @@ from os import PathLike
 from pathlib import Path
 from typing import TypeVar
 
-from ._common import parser_context
+from ._common import InstantiatorsType, parser_context
 from ._core import ArgumentParser
+from ._instantiation import ClassInstantiator, get_scoped_instantiators_dict, validate_instantiators
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._optionals import _get_config_read_mode
 from ._paths import change_to_path_dir
@@ -51,17 +52,35 @@ class FromConfigMixin:
         _override_init_defaults(cls, cls.__from_config_parser_kwargs__)
 
     @classmethod
-    def from_config(cls: type[T], config: str | PathLike | dict) -> T:
+    def from_config(
+        cls: type[T],
+        config: str | PathLike | dict,
+        instantiators: InstantiatorsType | None = None,
+    ) -> T:
         """Instantiate current class based on a config file or dict.
 
         Args:
             config: Path to a config file or a dict with config values.
+            instantiators: Custom instantiators, see :meth:`.ArgumentParser.instantiate`.
         """
-        kwargs, cls = _parse_class_kwargs_from_config(cls, config, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
-        return cls(**kwargs)
+        scoped = None if instantiators is None else validate_instantiators(instantiators)
+        kwargs, cls = _parse_class_kwargs_from_config(
+            cls,
+            config,
+            instantiators=scoped,
+            **cls.__from_config_parser_kwargs__,  # type: ignore[attr-defined]
+        )
+        if scoped is None:
+            return cls(**kwargs)
+        return ClassInstantiator(get_scoped_instantiators_dict(scoped))(cls, **kwargs)
 
 
-def _parse_class_kwargs_from_config(cls: type[T], config: str | PathLike | dict, **kwargs) -> tuple[dict, type[T]]:
+def _parse_class_kwargs_from_config(
+    cls: type[T],
+    config: str | PathLike | dict,
+    instantiators: InstantiatorsType | None = None,
+    **kwargs,
+) -> tuple[dict, type[T]]:
     """Parse the init kwargs for ``cls`` from a config file or dict."""
     parser = ArgumentParser(exit_on_error=False, **kwargs)
     cfg_path = None
@@ -96,7 +115,7 @@ def _parse_class_kwargs_from_config(cls: type[T], config: str | PathLike | dict,
         clear_required(parser, required)
     with load_config_path_context(cfg_path), change_to_path_dir(cfg_path):
         cfg = parser.parse_object(config, defaults=False)
-    return parser.instantiate(cfg).as_dict(), cls
+    return parser.instantiate(cfg, instantiators=instantiators).as_dict(), cls
 
 
 def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:

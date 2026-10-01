@@ -2204,6 +2204,35 @@ would also accept subclasses of ``MyClass``, and the config would be:
     they are not among the known subclasses shown in the help.
 
 
+.. _custom-instantiators:
+
+Custom instantiators
+--------------------
+
+By default a class is instantiated as ``class_type(*args, **kwargs)``. A
+different way to instantiate, e.g. within some context, can be given with the
+``instantiators`` parameter of :meth:`instantiate <.ArgumentParser.instantiate>`,
+:func:`.auto_cli` and ``from_config``. It is a list of ``(instantiator,
+class_type, subclasses)`` tuples that apply only to that call, including nested
+classes and a callable that returns a class, even if called afterwards. The
+first entry whose ``class_type`` matches is used:
+
+.. code-block:: python
+
+    def instantiator(class_type, *args, **kwargs):
+        with some_context():
+            return class_type(*args, **kwargs)
+
+
+    init = parser.instantiate(cfg, instantiators=[(instantiator, MyModel, True)])
+
+With ``subclasses=True`` the instantiator also applies to subclasses of
+``class_type``. The details of instantiator functions, e.g. getting values
+applied by links, are in :func:`.add_instantiator`, which registers an
+instantiator globally, for all calls. Prefer the ``instantiators`` parameter,
+since a global one affects code of other libraries that use jsonargparse.
+
+
 .. _untrusted-configs:
 
 Untrusted configs

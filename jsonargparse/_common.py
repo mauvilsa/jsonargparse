@@ -4,7 +4,7 @@ import dataclasses
 import inspect
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import (  # type: ignore[attr-defined]
@@ -74,6 +74,7 @@ class InstantiatorCallable(Protocol):
 
 
 InstantiatorsDictType = dict[tuple[type, bool], InstantiatorCallable]
+InstantiatorsType = Sequence[tuple[InstantiatorCallable, type, bool]]
 
 
 parent_parser: ContextVar[ArgumentParser | None] = ContextVar("parent_parser", default=None)
@@ -85,6 +86,7 @@ single_subcommand: ContextVar[bool] = ContextVar("single_subcommand", default=Tr
 validating_defaults: ContextVar[bool] = ContextVar("validating_defaults", default=False)
 load_value_mode: ContextVar[str | None] = ContextVar("load_value_mode", default=None)
 class_instantiators: ContextVar[InstantiatorsDictType | None] = ContextVar("class_instantiators", default=None)
+scoped_class_instantiators: ContextVar[tuple | None] = ContextVar("scoped_class_instantiators", default=None)
 nested_links: ContextVar[list[dict]] = ContextVar("nested_links", default=[])
 applied_instantiation_links: ContextVar[set | None] = ContextVar("applied_instantiation_links", default=None)
 path_dump_preserve_relative: ContextVar[bool] = ContextVar("path_dump_preserve_relative", default=False)
@@ -100,6 +102,7 @@ parser_context_vars = {
     "validating_defaults": validating_defaults,
     "load_value_mode": load_value_mode,
     "class_instantiators": class_instantiators,
+    "scoped_class_instantiators": scoped_class_instantiators,
     "nested_links": nested_links,
     "applied_instantiation_links": applied_instantiation_links,
     "path_dump_preserve_relative": path_dump_preserve_relative,

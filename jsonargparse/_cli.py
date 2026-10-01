@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ._actions import ActionConfigFile, _ActionPrintConfig, remove_actions
+from ._common import InstantiatorsType
 from ._core import ArgumentParser
 from ._deprecated import deprecation_warning_cli_return_parser, get_implicit_auto_cli_components
 from ._namespace import Namespace, dict_to_namespace
@@ -34,6 +35,7 @@ def auto_cli(
     return_instance: bool = False,
     fail_untyped: FailUntyped = True,
     parser_class: type[ArgumentParser] = ArgumentParser,
+    instantiators: InstantiatorsType | None = None,
     **kwargs,
 ):
     """Simple creation of command line interfaces.
@@ -60,6 +62,7 @@ def auto_cli(
         fail_untyped: Whether to raise an exception for parameters that don't have a type:
             True for the required ones, "all" for all of them, False for none.
         parser_class: The :class:`ArgumentParser` subclass to use.
+        instantiators: Custom instantiators, see :meth:`.ArgumentParser.instantiate`.
         **kwargs: Used to instantiate :class:`.ArgumentParser`.
 
     Returns:
@@ -99,7 +102,7 @@ def auto_cli(
             deprecation_warning_cli_return_parser(stacklevel)
             return parser
         cfg = parser.parse_args(args)
-        init = parser.instantiate(cfg)
+        init = _instantiate(parser, cfg, instantiators)
         return _run_component(components, init)
 
     elif isinstance(components, list):
@@ -113,7 +116,7 @@ def auto_cli(
         deprecation_warning_cli_return_parser(stacklevel)
         return parser
     cfg = parser.parse_args(args)
-    init = parser.instantiate(cfg)
+    init = _instantiate(parser, cfg, instantiators)
     components_ns = dict_to_namespace(components)
     subcommand = init.get("subcommand")
     while isinstance(init.get(subcommand), Namespace) and isinstance(init[subcommand].get("subcommand"), str):
@@ -211,6 +214,12 @@ def _add_component_to_parser(
         if not parser.description:
             parser.description = get_help_str(component, parser.logger)
     return added_args
+
+
+def _instantiate(parser: ArgumentParser, cfg: Namespace, instantiators: InstantiatorsType | None) -> Namespace:
+    if instantiators is None:  # not given, since a parser_class could override instantiate without it
+        return parser.instantiate(cfg)
+    return parser.instantiate(cfg, instantiators=instantiators)
 
 
 def _run_component(component, cfg):
