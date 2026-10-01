@@ -684,8 +684,8 @@ class CustomInstantiationSub(CustomInstantiationBase):
 
 
 def instantiator(value):
-    def instantiate(cls, **kwargs):
-        instance = cls(**kwargs)
+    def instantiate(cls, *args, **kwargs):
+        instance = cls(*args, **kwargs)
         instance.call = value
         return instance
 
@@ -753,6 +753,103 @@ def test_custom_instantiation_nested(parser, clear_instantiators):
     assert isinstance(init.cls, CustomInstantiationNested)
     assert isinstance(init.cls.sub, CustomInstantiationSub)
     assert init.cls.sub.call == "nested"
+
+
+def test_call_scoped_instantiators(parser):
+    parser.add_argument("--cls", type=CustomInstantiationBase)
+    cfg = parser.parse_args(["--cls=CustomInstantiationSub"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationBase, True)])
+    assert isinstance(init.cls, CustomInstantiationSub)
+    assert init.cls.call == "scoped"
+    init = parser.instantiate(cfg)
+    assert not hasattr(init.cls, "call")
+
+
+def test_call_scoped_instantiators_subclasses_false(parser):
+    parser.add_argument("--cls", type=CustomInstantiationBase)
+    cfg = parser.parse_args(["--cls=CustomInstantiationSub"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("base"), CustomInstantiationBase, False)])
+    assert isinstance(init.cls, CustomInstantiationSub)
+    assert not hasattr(init.cls, "call")
+
+
+def test_call_scoped_instantiators_first_match(parser):
+    parser.add_argument("--cls", type=CustomInstantiationBase)
+    cfg = parser.parse_args(["--cls=CustomInstantiationSub"])
+    instantiators = [
+        (instantiator("base"), CustomInstantiationBase, True),
+        (instantiator("sub"), CustomInstantiationSub, True),
+    ]
+    init = parser.instantiate(cfg, instantiators=instantiators)
+    assert init.cls.call == "base"
+    init = parser.instantiate(cfg, instantiators=instantiators[::-1])
+    assert init.cls.call == "sub"
+
+
+def test_call_scoped_instantiators_before_global(parser, clear_instantiators):
+    parser.add_argument("--cls", type=CustomInstantiationBase)
+    add_instantiator(instantiator("global"), CustomInstantiationSub)
+    cfg = parser.parse_args(["--cls=CustomInstantiationSub"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationBase, True)])
+    assert init.cls.call == "scoped"
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationNested, True)])
+    assert init.cls.call == "global"
+
+
+def test_call_scoped_instantiators_nested(parser):
+    parser.add_argument("--cls", type=CustomInstantiationNested)
+    cfg = parser.parse_args(["--cls=CustomInstantiationNested", "--cls.sub=CustomInstantiationSub"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("nested"), CustomInstantiationBase, True)])
+    assert isinstance(init.cls.sub, CustomInstantiationSub)
+    assert init.cls.sub.call == "nested"
+
+
+class CustomInstantiationFactory(CustomInstantiationBase):
+    def __init__(self, num: int, name: str = ""):
+        self.num = num
+        self.name = name
+
+
+def test_call_scoped_instantiators_deferred_call(parser):
+    parser.add_argument("--factory", type=Callable[[int], CustomInstantiationBase])
+    cfg = parser.parse_args(["--factory=CustomInstantiationFactory", "--factory.name=x"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("deferred"), CustomInstantiationBase, True)])
+    instance = init.factory(3)
+    assert isinstance(instance, CustomInstantiationFactory)
+    assert (instance.num, instance.name) == (3, "x")
+    assert instance.call == "deferred"
+
+
+class CustomInstantiationOwnParser:
+    def __init__(self):
+        parser = ArgumentParser(exit_on_error=False)
+        parser.add_argument("--cls", type=CustomInstantiationBase)
+        self.init = parser.instantiate(parser.parse_args(["--cls=CustomInstantiationBase"]))
+
+
+def test_call_scoped_instantiators_not_used_by_other_parsers(parser):
+    parser.add_argument("--own", type=CustomInstantiationOwnParser)
+    cfg = parser.parse_args(["--own=CustomInstantiationOwnParser"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationBase, True)])
+    assert isinstance(init.own.init.cls, CustomInstantiationBase)
+    assert not hasattr(init.own.init.cls, "call")
+
+
+@pytest.mark.parametrize(
+    "instantiators",
+    [
+        [(instantiator("x"), CustomInstantiationBase)],
+        [("not callable", CustomInstantiationBase, True)],
+        [(instantiator("x"), "not a class", True)],
+        [(instantiator("x"), CustomInstantiationBase, "not a bool")],
+        (instantiator("x"), CustomInstantiationBase, True),
+    ],
+)
+def test_call_scoped_instantiators_invalid(parser, instantiators):
+    parser.add_argument("--cls", type=CustomInstantiationBase)
+    cfg = parser.parse_args(["--cls=CustomInstantiationBase"])
+    with pytest.raises(ValueError, match="Expected instantiators to be a list of tuples"):
+        parser.instantiate(cfg, instantiators=instantiators)
 
 
 # environment tests

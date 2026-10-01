@@ -78,6 +78,7 @@ validating_defaults: ContextVar[bool] = ContextVar("validating_defaults", defaul
 load_value_mode: ContextVar[str | None] = ContextVar("load_value_mode", default=None)
 nested_links: ContextVar[list[dict]] = ContextVar("nested_links", default=[])
 applied_instantiation_links: ContextVar[set | None] = ContextVar("applied_instantiation_links", default=None)
+scoped_class_instantiators: ContextVar[tuple | None] = ContextVar("scoped_class_instantiators", default=None)
 path_dump_preserve_relative: ContextVar[bool] = ContextVar("path_dump_preserve_relative", default=False)
 command_line_option: ContextVar[str | None] = ContextVar("command_line_option", default=None)
 
@@ -93,6 +94,7 @@ parser_context_vars = {
     "load_value_mode": load_value_mode,
     "nested_links": nested_links,
     "applied_instantiation_links": applied_instantiation_links,
+    "scoped_class_instantiators": scoped_class_instantiators,
     "path_dump_preserve_relative": path_dump_preserve_relative,
     "command_line_option": command_line_option,
 }

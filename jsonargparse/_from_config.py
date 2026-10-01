@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from ._core import ArgumentParser
+from ._instantiation import InstantiatorsType
 from ._optionals import _get_config_read_mode
 from ._paths import Path as ConfigPath
 from ._required import clear_required, iter_required_keys
@@ -47,23 +48,33 @@ class FromConfigMixin:
         _override_init_defaults(cls, cls.__from_config_parser_kwargs__)
 
     @classmethod
-    def from_config(cls: type[T], config: str | PathLike | dict) -> T:
+    def from_config(
+        cls: type[T],
+        config: str | PathLike | dict,
+        *,
+        instantiators: InstantiatorsType | None = None,
+    ) -> T:
         """Instantiate current class based on a config file or dict.
 
         Args:
             config: Path to a config file or a dict with config values.
+            instantiators: Custom instantiators, see :meth:`.ArgumentParser.instantiate`.
         """
         parser = ArgumentParser(exit_on_error=False, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
         parser.add_argument("--from_config", type=cls, required=True, sub_configs=True)
-        return _parse_and_instantiate(parser, config)
+        return _parse_and_instantiate(parser, config, instantiators)
 
 
-def _parse_and_instantiate(parser: ArgumentParser, config: str | PathLike | dict):
+def _parse_and_instantiate(
+    parser: ArgumentParser,
+    config: str | PathLike | dict,
+    instantiators: InstantiatorsType | None = None,
+):
     """Parses a config as the value of the ``from_config`` key of ``parser``, and instantiates it."""
     if not isinstance(config, dict):
         config = str(ConfigPath(config, mode=_get_config_read_mode()))  # else a subclass type takes it as a class path
     cfg = parser.parse_object({"from_config": config}, defaults=False)
-    return parser.instantiate(cfg).from_config
+    return parser.instantiate(cfg, instantiators=instantiators).from_config
 
 
 def _override_init_defaults(cls: type[T], parser_kwargs: dict) -> None:

@@ -286,7 +286,7 @@ def test_from_config_method_default():
 
     class FromConfigMethodDefault(FromConfigMixin):
         @classmethod
-        def from_config(cls: Type[T], config: Union[str, PathLike, dict, Literal["default"]] = "default") -> T:
+        def from_config(cls: Type[T], config: Union[str, PathLike, dict, Literal["default"]] = "default") -> T:  # type: ignore[override]
             if config == "default":
                 config = default_config
             return super().from_config(config)
@@ -333,6 +333,21 @@ def test_from_config_method_subclasses_disabled(tmp_cwd):
     assert instance.param == 2
     with pytest.raises(ArgumentError, match="Subclasses are disabled for FromConfigMethodFinal"):
         FromConfigMethodFinal.from_config({"class_path": "Other"})
+
+
+def test_from_config_method_call_scoped_instantiators():
+    def instantiator(cls, *args, **kwargs):
+        instance = cls(*args, **kwargs)
+        instance.instantiator = "scoped"
+        return instance
+
+    instance = FromConfigMethodChild.from_config(
+        {"child_param": "overridden_child"},
+        instantiators=[(instantiator, FromConfigMethodParent, True)],
+    )
+    assert isinstance(instance, FromConfigMethodChild)
+    assert instance.child_param == "overridden_child"
+    assert instance.instantiator == "scoped"
 
 
 class SomeOtherClass:

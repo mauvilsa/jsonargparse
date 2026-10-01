@@ -75,7 +75,7 @@ from ._common import (
     parser_context,
     validating_defaults,
 )
-from ._instantiation import bind_call, dynamic_class_instantiator
+from ._instantiation import bind_call, get_class_instantiator
 from ._loaders_dumpers import (
     basic_json_or_yaml_load,
     get_load_value_mode,
@@ -2593,7 +2593,7 @@ def adapt_class_type(
         # kept as is for an Any typed parameter, which must not be expanded into kwargs
         init_kwargs = dict(init_args.items(branches=True, nested=False))
         instantiator = bind_call(
-            partial(dynamic_class_instantiator, val_class),
+            get_class_instantiator(val_class),
             parser._call_layouts[None],
             {**init_kwargs, **dict_kwargs},
             component=val_class,

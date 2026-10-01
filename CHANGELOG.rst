@@ -235,12 +235,27 @@ Removed
 v4.53.0 (unreleased)
 --------------------
 
+Added
+^^^^^
+- New keyword-only ``instantiators`` parameter of
+  ``ArgumentParser.instantiate``, ``auto_cli`` and
+  ``FromConfigMixin.from_config``, to use custom instantiators only in that
+  call. Recommended over the global ``add_instantiator`` (`#994
+  <https://github.com/mauvilsa/jsonargparse/pull/994>`__).
+
 Fixed
 ^^^^^
 - Subcommand parsers ignoring the ``allow_abbrev``, ``suggest_on_error`` and
   ``color`` given to the parent parser or to ``auto_cli``, e.g. abbreviations
   still accepted after a subcommand with ``allow_abbrev=False`` (`#992
   <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
+- Custom instantiators with an ``applied_instantiation_links`` parameter
+  missing links for classes nested in the ``init_args`` of another class, and
+  for the partials that ``instantiate`` gives for callables that return a class
+  (`#994 <https://github.com/mauvilsa/jsonargparse/pull/994>`__).
+- Custom instantiators not applied to a class given as component to
+  ``auto_cli``, which was instantiated directly (`#996
+  <https://github.com/mauvilsa/jsonargparse/pull/996>`__).
 
 Deprecated
 ^^^^^^^^^^

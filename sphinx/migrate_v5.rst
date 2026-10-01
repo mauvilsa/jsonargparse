@@ -160,7 +160,7 @@ Parser methods
    * - ``parser.instantiate_subclasses(cfg)``
      - ``parser.instantiate(cfg)``
    * - ``parser.add_instantiator(fn, cls)``
-     - ``jsonargparse.add_instantiator(fn, cls)``
+     - ``parser.instantiate(cfg, instantiators=[(fn, cls, True)])``
    * - ``parser.merge_config(a, b)``
      - No replacement (was internal API).
 
