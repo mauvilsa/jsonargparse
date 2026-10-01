@@ -781,8 +781,8 @@ class ParserDeprecations:
 
     @deprecated("""
         ``ArgumentParser.add_instantiator`` was deprecated in v4.49.0 and will be
-        removed in v5.0.0. Use the global function ``jsonargparse.add_instantiator``
-        instead.
+        removed in v5.0.0. Instead use the ``instantiators`` parameter of
+        ``instantiate``, ``auto_cli`` or ``from_config``.
     """)
     def add_instantiator(
         self,

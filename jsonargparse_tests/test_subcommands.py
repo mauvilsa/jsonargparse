@@ -493,6 +493,16 @@ def test_subcommands_custom_instantiator(parser, subparser, subtests, clear_inst
         assert init.cmd.cls.call == "subparser"
 
 
+def test_subcommands_call_scoped_instantiators(parser, subparser):
+    subparser.add_argument("--cls", type=CustomInstantiationBase)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("cmd", subparser)
+    cfg = parser.parse_args(["cmd", "--cls", "CustomInstantiationBase"])
+    init = parser.instantiate(cfg, instantiators=[(instantiator("scoped"), CustomInstantiationBase, True)])
+    assert isinstance(init.cmd.cls, CustomInstantiationBase)
+    assert init.cmd.cls.call == "scoped"
+
+
 def test_subsubcommand_default_env_true(parser, subparser, subsubparser):
     parser.default_env = True
     parser.env_prefix = "APP"

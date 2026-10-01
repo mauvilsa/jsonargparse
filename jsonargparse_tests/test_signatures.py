@@ -494,6 +494,19 @@ def test_add_class_custom_instantiator(parser, clear_instantiators):
     assert init.a.call == "custom"
 
 
+def test_add_class_call_scoped_instantiators(parser):
+    def instantiate(cls, **kwargs):
+        instance = cls(**kwargs)
+        instance.call = "scoped"
+        return instance
+
+    parser.add_class_arguments(Class0, "a")
+    cfg = parser.parse_args([])
+    init = parser.instantiate(cfg, instantiators=[(instantiate, Class0, True)])
+    assert isinstance(init.a, Class0)
+    assert init.a.call == "scoped"
+
+
 X = TypeVar("X")
 Y = TypeVar("Y")
 

@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import CLI, auto_cli, auto_parser, capture_parser, lazy_instance
+from jsonargparse import CLI, ArgumentParser, auto_cli, auto_parser, capture_parser, lazy_instance
 from jsonargparse._namespace import Namespace
 from jsonargparse._optionals import docstring_parser_support
 from jsonargparse.typing import final
@@ -446,6 +446,55 @@ def test_dataclass_without_methods_response():
 def test_dataclass_without_methods_parser_groups():
     parser = capture_parser(lambda: auto_cli(SettingsClass, args=[], as_positional=False))
     assert parser.groups == {}
+
+
+# call-scoped instantiators tests
+
+
+class ScopedInjected:
+    def __init__(self, value: int = 1):
+        self.value = value
+
+
+def scoped_instantiator(cls, *args, **kwargs):
+    instance = cls(*args, **kwargs)
+    instance.instantiator = "scoped"
+    return instance
+
+
+def use_injected(injected: ScopedInjected):
+    return injected
+
+
+def test_call_scoped_instantiators_single_component():
+    injected = auto_cli(
+        use_injected,
+        args=[f"--injected={__name__}.ScopedInjected", "--injected.value=2"],
+        as_positional=False,
+        instantiators=[(scoped_instantiator, ScopedInjected, True)],
+    )
+    assert isinstance(injected, ScopedInjected)
+    assert injected.value == 2
+    assert injected.instantiator == "scoped"
+
+
+def test_call_scoped_instantiators_multiple_components():
+    injected = auto_cli(
+        [use_injected, single_function],
+        args=["use_injected", f"--injected={__name__}.ScopedInjected"],
+        as_positional=False,
+        instantiators=[(scoped_instantiator, ScopedInjected, True)],
+    )
+    assert isinstance(injected, ScopedInjected)
+    assert injected.instantiator == "scoped"
+
+
+def test_call_scoped_instantiators_parser_class_without_instantiators():
+    class InstantiateOverride(ArgumentParser):
+        def instantiate(self, cfg, instantiate_groups=True):
+            return super().instantiate(cfg, instantiate_groups=instantiate_groups)
+
+    assert 1.5 == auto_cli(single_function, args=["1.5"], parser_class=InstantiateOverride)
 
 
 # named components tests
