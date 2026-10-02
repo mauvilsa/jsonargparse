@@ -38,9 +38,11 @@ from ._typehints import (
     get_callable_return_type,
     get_namedtuple_annotations,
     get_typed_dict_annotations,
+    get_typed_dict_extra_items,
     get_typed_dict_required_keys,
     get_typehint_origin,
     is_namedtuple,
+    is_no_extra_items,
     is_single_subclass_or_closed_type,
     is_single_subclass_type,
     literal_types,
@@ -587,6 +589,9 @@ class ParserJsonschema:
             schema["properties"][name] = self.typehint_schema(annotation, action, key)
             if name in required_keys:
                 add_required(schema, name)
+        extra_items = get_typed_dict_extra_items(typehint)
+        if not is_no_extra_items(extra_items):
+            schema["additionalProperties"] = self.typehint_schema(extra_items, action, key) or True
         return schema
 
     def namedtuple_schema(self, typehint, action, key: str) -> dict:

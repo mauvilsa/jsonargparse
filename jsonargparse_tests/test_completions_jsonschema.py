@@ -39,7 +39,7 @@ from jsonargparse import (
     set_parsing_settings,
 )
 from jsonargparse._optionals import type_alias_type, typing_extensions_import
-from jsonargparse._typehints import NotRequired, ReadOnly
+from jsonargparse._typehints import NoExtraItems, NotRequired, ReadOnly
 from jsonargparse.typing import (
     ClosedUnitInterval,
     Email,
@@ -1115,6 +1115,23 @@ def test_typed_dict_read_only(parser):
     schema = get_schema(parser)["properties"]["movie"]
     assert schema["properties"] == {"title": {"type": "string"}, "year": {"type": "integer"}}
     assert schema["required"] == ["title"]
+
+
+@pytest.mark.skipif(not NoExtraItems, reason="extra_items introduced in python 3.15 or backported in typing_extensions")
+def test_typed_dict_extra_items(parser):
+    ExtraItemsTypedDict = typing_extensions_import("TypedDict")
+    parser.add_argument("--movie", type=ExtraItemsTypedDict("Movie", {"title": str}, extra_items=int))
+    schema = get_schema(parser)["properties"]["movie"]
+    assert schema["properties"] == {"title": {"type": "string"}}
+    assert schema["additionalProperties"] == {"type": "integer"}
+
+
+@pytest.mark.skipif(not NoExtraItems, reason="extra_items introduced in python 3.15 or backported in typing_extensions")
+def test_typed_dict_extra_items_any(parser):
+    ExtraItemsTypedDict = typing_extensions_import("TypedDict")
+    parser.add_argument("--movie", type=ExtraItemsTypedDict("Movie", {"title": str}, extra_items=Any))
+    schema = get_schema(parser)["properties"]["movie"]
+    assert schema["additionalProperties"] is True
 
 
 class Coordinate(NamedTuple):

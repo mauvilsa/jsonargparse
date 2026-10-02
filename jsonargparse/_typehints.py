@@ -127,6 +127,7 @@ from ._util import (
 )
 from .typing import _LazyInitBaseClass, get_registered_type, is_pydantic_type, is_secret_type
 
+NoExtraItems = typing_extensions_import("NoExtraItems")
 NotRequired = typing_extensions_import("NotRequired")
 ReadOnly = typing_extensions_import("ReadOnly")
 Required = typing_extensions_import("Required")
@@ -261,6 +262,9 @@ _capture_typing_extension_shadows("TypedDict", typed_dict_types)
 
 typed_dict_meta_types = {_TypedDictMeta}
 _capture_typing_extension_shadows("_TypedDictMeta", typed_dict_meta_types)
+
+no_extra_items_types = {NoExtraItems}
+_capture_typing_extension_shadows("NoExtraItems", no_extra_items_types)
 
 unpack_types = {Unpack}
 _capture_typing_extension_shadows("Unpack", unpack_types)
@@ -1252,6 +1256,40 @@ def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
     return required_keys
 
 
+def get_typed_dict_extra_items(typehint):
+    """Returns the type of the values of keys a TypedDict doesn't declare (PEP 728), or NoExtraItems if none.
+
+    The TypeVars in it are resolved the same as for the keys, see get_typed_dict_annotations.
+    """
+    extra_items = get_typed_dict_extra_items_unresolved(typehint)
+    return extra_items if is_no_extra_items(extra_items) else replace_type_vars(extra_items)
+
+
+def get_typed_dict_extra_items_unresolved(typehint):
+    """Returns the extra_items of a TypedDict with only the TypeVars that the subscripts bind substituted.
+
+    Since extra_items is inherited, the bases are checked when it is not given to
+    the TypedDict itself, unless it is closed.
+    """
+    typed_dict = get_typed_dict_type(typehint)
+    extra_items = getattr(typed_dict, "__extra_items__", NoExtraItems)
+    if is_no_extra_items(extra_items) and not getattr(typed_dict, "__closed__", None):
+        for base in getattr(typed_dict, "__orig_bases__", ()):
+            if is_typed_dict(base) and not is_no_extra_items(
+                base_extra_items := get_typed_dict_extra_items_unresolved(base)
+            ):
+                extra_items = base_extra_items
+                break
+    if is_no_extra_items(extra_items):
+        return extra_items
+    return substitute_type_vars(extra_items, get_type_var_map(typehint, typed_dict))
+
+
+def is_no_extra_items(extra_items) -> bool:
+    # compared by identity since an extra_items type hint might not be hashable
+    return any(extra_items is t for t in no_extra_items_types)
+
+
 def get_typed_dict_key_type(annotation):
     # Required and NotRequired only change the requiredness of a key and ReadOnly only marks it as
     # not mutable, so none of them change its type. ReadOnly can wrap or be wrapped by the others.
@@ -1687,12 +1725,14 @@ def adapt_typehints(
             missing_keys = required_keys - val.keys()
             if missing_keys:
                 raise_unexpected_value(f"Missing required keys: {missing_keys}", val)
+            extra_items = get_typed_dict_extra_items(typehint)
             extra_keys = val.keys() - dict_annotations.keys()
-            if extra_keys:
+            if extra_keys and is_no_extra_items(extra_items):
                 raise_unexpected_value(f"Unexpected keys: {extra_keys}", val)
             for k, v in val.items():
                 # what can't be validated accepts any value, as the help shows it
-                val[k] = adapt_typehints(v, replace_unvalidatable_typehints(dict_annotations[k]), **adapt_kwargs)
+                key_type = dict_annotations[k] if k in dict_annotations else extra_items
+                val[k] = adapt_typehints(v, replace_unvalidatable_typehints(key_type), **adapt_kwargs)
         if typehint_origin is MappingProxyType and not serialize:
             val = MappingProxyType(val)
         elif typehint_origin is OrderedDict:
