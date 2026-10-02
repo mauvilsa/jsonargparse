@@ -77,10 +77,9 @@ from ._common import (
 )
 from ._instantiation import bind_call, get_class_instantiator
 from ._loaders_dumpers import (
-    basic_json_or_yaml_load,
     get_load_value_mode,
     get_loader_exceptions,
-    json_or_yaml_loader_exceptions,
+    load_basic_type_value,
     load_value,
 )
 from ._namespace import (
@@ -1470,8 +1469,7 @@ def adapt_typehints(
     # Basic types
     elif typehint in leaf_types:
         if isinstance(val, str) and typehint is not str:
-            with suppress(*json_or_yaml_loader_exceptions):
-                val = basic_json_or_yaml_load(val)
+            val = load_basic_type_value(val)
         if typehint is float and isinstance(val, int) and not isinstance(val, bool):
             val = float(val)
         if not isinstance(val, typehint) or (typehint in (int, float) and isinstance(val, bool)):

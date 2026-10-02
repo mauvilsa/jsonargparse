@@ -206,6 +206,22 @@ def test_float_implicit_leading_zero(parser):
     assert -0.5 == parser.parse_args(["--num=-.5"]).num
 
 
+@pytest.mark.parametrize("parser", ["json"], indirect=True)
+@pytest.mark.parametrize(["typehint", "value"], [(bool, "yes"), (int, "0x10"), (int, "1_000")])
+def test_basic_types_json_mode_rejects_yaml_values(parser, typehint, value):
+    parser.add_argument("--val", type=typehint)
+    with pytest.raises(ArgumentError, match=f"Expected a {typehint}"):
+        parser.parse_args([f"--val={value}"])
+
+
+@skip_if_no_pyyaml
+@pytest.mark.parametrize(["typehint", "value", "expected"], [(bool, "yes", True), (int, "0x10", 16)])
+def test_basic_types_yaml_mode_values(parser, typehint, value, expected):
+    parser.parser_mode = "yaml"
+    parser.add_argument("--val", type=typehint)
+    assert parser.parse_args([f"--val={value}"]).val == expected
+
+
 def test_complex_number(parser):
     parser.add_argument("--complex", type=complex)
     cfg = parser.parse_args(["--complex=(2+3j)"])
