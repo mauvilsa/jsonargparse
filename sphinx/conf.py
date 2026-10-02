@@ -89,6 +89,8 @@ from jsonargparse import _common
 from jsonargparse.typing import *
 from jsonargparse._util import unresolvable_import_paths
 
+set_parsing_settings(parser_mode="yaml")  # documentation examples use yaml
+
 def doctest_mock_class_in_main(cls):
     cls.__module__ = None
     setattr(sys.modules["__main__"], cls.__name__, cls)

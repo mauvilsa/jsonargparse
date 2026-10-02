@@ -281,6 +281,7 @@ config_schema_key = "$schema"
 
 parsing_settings: dict = {
     "allow_abbrev": False,
+    "parser_mode": "json",
     "validate_defaults": False,
     "validate_subclass_spec_in_any": False,
     "instantiate_subclass_spec_in_any": False,
@@ -360,6 +361,7 @@ def get_env_var_bool(name: str) -> bool:
 def set_parsing_settings(
     *,
     allow_abbrev: bool | None = None,
+    parser_mode: str | None = None,
     validate_defaults: bool | None = None,
     validate_subclass_spec_in_any: bool | None = None,
     instantiate_subclass_spec_in_any: bool | None = None,
@@ -386,6 +388,9 @@ def set_parsing_settings(
             ``--max`` for ``--max_epochs``. Default is ``False``, unlike
             argparse. Parsers given ``allow_abbrev`` take precedence, and the
             ``JSONARGPARSE_ALLOW_ABBREV`` environment variable over this.
+        parser_mode: Mode for parsing values and config files of parsers not
+            given ``parser_mode``. Default is ``json``. The
+            ``JSONARGPARSE_PARSER_MODE`` environment variable takes precedence.
         validate_defaults: Whether default values must be valid according to the
             argument type. Defaults are always validated to normalize them, but
             with the default ``False`` an invalid default is kept as is, like
@@ -479,6 +484,12 @@ def set_parsing_settings(
             parsing_settings[name] = value
         elif value is not None:
             raise ValueError(f"{name} must be a boolean, but got {value}.")
+    # parser_mode
+    if parser_mode is not None:
+        from ._loaders_dumpers import check_parser_mode
+
+        check_parser_mode(parser_mode)
+        parsing_settings["parser_mode"] = parser_mode
     # unset_sentinel
     if isinstance(unset_sentinel, bool):
         parsing_settings["unset_sentinel"] = Unset if unset_sentinel else None
@@ -507,6 +518,7 @@ def set_parsing_settings(
 
 parsing_settings_env_vars = {
     "allow_abbrev": "JSONARGPARSE_ALLOW_ABBREV",
+    "parser_mode": "JSONARGPARSE_PARSER_MODE",
     "add_print_completion_argument": "JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT",
 }
 
@@ -516,8 +528,21 @@ def get_parsing_setting(name: str):
         raise ValueError(f"Unknown parsing setting {name}.")
     var_name = parsing_settings_env_vars.get(name, "")
     if var_name in os.environ:
+        if name == "parser_mode":
+            return get_env_var_parser_mode(var_name)
         return get_env_var_bool(var_name)
     return parsing_settings[name]
+
+
+def get_env_var_parser_mode(name: str) -> str:
+    from ._loaders_dumpers import check_parser_mode
+
+    value = os.environ[name]
+    try:
+        check_parser_mode(value)
+    except ValueError as ex:
+        raise ValueError(f"Invalid value for environment variable {name}: {ex}") from ex
+    return value
 
 
 def validate_default(container: ActionsContainer, action: argparse.Action, logger: logging.Logger) -> None:

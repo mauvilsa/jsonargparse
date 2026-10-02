@@ -33,9 +33,16 @@ In addition to the deprecation removals below, note these other breaking
 changes:
 
 - **``pyyaml`` is no longer a required dependency.** Gives no deprecation
-  warning. Without it the default ``parser_mode`` and dump format is ``json``.
-  If your code imports ``yaml``, or you want yaml configs, install with the
-  ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
+  warning. If your code imports ``yaml``, or you want YAML configs, install with
+  the ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
+- **``parser_mode`` defaults to ``json``.** Gives no deprecation warning. Config
+  files and command line values are loaded as JSON instead of YAML, so YAML
+  syntax, e.g. ``key: value`` configs, ``--list=[a, b]`` or ``--flag=yes``,
+  fails. To keep YAML, give ``parser_mode="yaml"`` to the parser, which also
+  works in v4, or set it globally with
+  ``set_parsing_settings(parser_mode="yaml")`` or the
+  ``JSONARGPARSE_PARSER_MODE=yaml`` environment variable. The ``jsonnet`` parser
+  mode no longer accepts YAML either.
 - **``json`` dumps are now indented.** Gives no deprecation warning.
   ``dump(format="json")``, ``save`` and the print config argument produce
   indented JSON instead of a single line. Use ``format="json_compact"`` for the

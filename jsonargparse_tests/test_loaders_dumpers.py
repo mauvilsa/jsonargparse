@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -12,7 +14,12 @@ from jsonargparse import ArgumentParser, get_loader, set_dumper, set_loader
 from jsonargparse._common import parser_context
 from jsonargparse._loaders_dumpers import load_value
 from jsonargparse._optionals import pyyaml_available, toml_dump_available, toml_load_available
-from jsonargparse_tests.conftest import get_parse_args_stdout, json_or_yaml_dump, json_or_yaml_load, skip_if_no_pyyaml
+from jsonargparse_tests.conftest import (
+    get_parse_args_stdout,
+    json_or_yaml_dump,
+    json_or_yaml_load,
+    skip_if_no_pyyaml,
+)
 
 if pyyaml_available:
     import yaml
@@ -53,14 +60,10 @@ def test_invalid_parser_mode():
     pytest.raises(ValueError, lambda: ArgumentParser(parser_mode="invalid"))
 
 
-@skip_if_no_pyyaml
-def test_default_parser_mode_yaml():
-    assert ArgumentParser().parser_mode == "yaml"
-
-
-@pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
-def test_without_pyyaml_default_parser_mode_json():
-    assert ArgumentParser().parser_mode == "json"
+def test_default_parser_mode_json(monkeypatch):
+    monkeypatch.delenv("JSONARGPARSE_PARSER_MODE", raising=False)
+    code = "from jsonargparse import ArgumentParser; print(ArgumentParser().parser_mode)"
+    assert subprocess.check_output([sys.executable, "-c", code], text=True) == "json\n"
 
 
 @pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
@@ -93,6 +96,14 @@ def test_set_loader_parser_mode_subparsers(parser, subparser):
         parser.parser_mode = "custom"
         assert "custom" == parser.parser_mode
         assert "custom" == subparser.parser_mode
+
+
+def test_dump_parser_mode_without_dumper(parser):
+    parser.add_argument("--val", type=int, default=1)
+    with patch.dict("jsonargparse._loaders_dumpers.loaders"):
+        set_loader("custom", json.loads)
+        parser.parser_mode = "custom"
+        assert parser.dump(parser.get_defaults()) == '{\n  "val": 1\n}\n'
 
 
 @skip_if_no_pyyaml

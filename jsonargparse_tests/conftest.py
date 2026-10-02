@@ -32,6 +32,10 @@ if docstring_parser_support:
 
     set_parsing_settings(docstring_parse_style=DocstringStyle.GOOGLE)
 
+# most tests write yaml configs when pyyaml is installed, while the default parser_mode is json
+if pyyaml_available:
+    set_parsing_settings(parser_mode="yaml")
+
 
 columns = "200"
 

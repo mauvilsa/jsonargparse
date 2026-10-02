@@ -863,8 +863,8 @@ and ``sub_configs=True``. The special string ``'-'`` means stdin:
     cfg = parser.parse_args(["--list", "-"])  # List of paths from stdin
 
 Without ``nargs``, the argument expects a single value. So giving several paths
-directly on the command line requires the YAML/JSON array syntax, i.e. ``--list
-"[file1,file2]"``, or the simpler append syntax of :ref:`list-append`, i.e.
+directly on the command line requires the JSON array syntax, i.e. ``--list
+'["file1","file2"]'``, or the simpler append syntax of :ref:`list-append`, i.e.
 ``--list+ file1 --list+ file2``. Not as short as ``nargs='+'``, but with tab
 completion the effort is minimal.
 
@@ -1351,10 +1351,13 @@ Configuration files
 
 jsonargparse can parse configuration files (config files). The dot notation
 hierarchy of the arguments (see :ref:`nested-namespaces`) defines the structure
-expected in these files. The default format is YAML, or JSON when the ``yaml``
-extra is not installed, see :ref:`installation`. To change it, use the
+expected in these files. The default format is JSON. To change it, use the
 ``parser_mode`` parameter of the parser, e.g.
-``ArgumentParser(parser_mode="toml")``.
+``ArgumentParser(parser_mode="yaml")``, or set it globally, which also applies
+to parsers created by other code, with ``set_parsing_settings(parser_mode=...)``
+or the environment variable ``JSONARGPARSE_PARSER_MODE``. The examples in this
+documentation use ``yaml``, which requires the ``yaml`` extra, see
+:ref:`installation`.
 
 The :py:attr:`.ArgumentParser.default_config_files` property holds patterns of
 config files to search for, e.g.
@@ -1505,7 +1508,8 @@ comma, e.g. ``--print_config=comments,skip_default``. The ``comments`` and
 - ``provenance``: add to each value a YAML comment saying where it came from,
   i.e. a default, a default config file, a config file, a config string, an
   environment variable or a command line argument. For config files parsed as
-  YAML, the comment includes the line number, e.g. ``# config file config.yaml:3``.
+  YAML, the comment includes the line number, e.g. ``# config file
+  config.yaml:3``.
 - ``skip_default``: skip entries whose value is the same as the default.
 - ``skip_unset``: skip entries that were not given a value, see
   :ref:`unset-values`.
@@ -1514,7 +1518,8 @@ From Python, a config object is serialized with the :meth:`dump
 <.ArgumentParser.dump>` and :meth:`save <.ArgumentParser.save>` methods. The
 supported formats are ``yaml``, ``toml``, ``json``/``json_indented``,
 ``json_compact`` and ``parser_mode``, the default, which uses the format of the
-parser. The ``yaml`` format dumps with a subclass of `yaml.SafeDumper
+parser, or ``json`` when the parser mode has no dumper. The ``yaml`` format
+dumps with a subclass of `yaml.SafeDumper
 <https://pyyaml.org/wiki/PyYAMLDocumentation#dumper>`__ that writes multi-line
 strings as literal blocks, i.e. ``|``, instead of escaping the line breaks. More
 formats are added with :func:`.set_dumper`, for example to dump with PyYAML's
@@ -3291,8 +3296,7 @@ Jsonnet support requires the `jsonschema
 minimal install. Install jsonargparse with the ``jsonnet`` extra, see
 :ref:`installation`.
 
-By default an :class:`.ArgumentParser` parses config files as YAML. With
-``parser_mode='jsonnet'``, :meth:`parse_args <.ArgumentParser.parse_args>`,
+With ``parser_mode='jsonnet'``, :meth:`parse_args <.ArgumentParser.parse_args>`,
 :meth:`parse_path <.ArgumentParser.parse_path>` and :meth:`parse_string
 <.ArgumentParser.parse_string>` expect Jsonnet instead:
 
@@ -3318,7 +3322,7 @@ By default an :class:`.ArgumentParser` parses config files as YAML. With
     cfg = parser.parse_args(["--config", "example.jsonnet"])
 
 Jsonnet files are often parametrized and need external variables. For these,
-instead of changing the parser mode away from ``yaml``, use the
+instead of changing the parser mode, use the
 :class:`.ActionJsonnet` class. It defines an argument that takes a Jsonnet
 string or a path to a Jsonnet file, plus another argument as the source of the
 external variables, given as a path to, or a string with, a JSON dictionary:

@@ -55,6 +55,10 @@ Added
   ``JSONARGPARSE_ALLOW_ABBREV`` environment variable, to accept abbreviated
   options in parsers not given ``allow_abbrev`` (`#993
   <https://github.com/mauvilsa/jsonargparse/pull/993>`__).
+- New ``parser_mode`` setting in ``set_parsing_settings`` and
+  ``JSONARGPARSE_PARSER_MODE`` environment variable, to change the mode of
+  parsers not given ``parser_mode`` (`#997
+  <https://github.com/mauvilsa/jsonargparse/pull/997>`__).
 
 Fixed
 ^^^^^
@@ -166,8 +170,7 @@ Changed
   the only way to strip it (`#969
   <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
 - ``pyyaml`` is no longer a required dependency, install the ``yaml`` extra to
-  have it. Without it the default ``parser_mode`` and dump format is ``json``,
-  and explicitly using ``yaml`` raises an informative ``ImportError`` (`#970
+  have it. Without it, using ``yaml`` raises an informative ``ImportError`` (`#970
   <https://github.com/mauvilsa/jsonargparse/pull/970>`__).
 - The ``json`` dump format is now indented, so that the print config argument
   gives a more readable output. Use the new ``json_compact`` format for the
@@ -219,6 +222,10 @@ Changed
 - ``allow_abbrev`` now defaults to ``False``, so abbreviated options, e.g.
   ``--max`` for ``--max_epochs``, fail instead of being expanded (`#993
   <https://github.com/mauvilsa/jsonargparse/pull/993>`__).
+- ``parser_mode`` now defaults to ``json`` instead of ``yaml``, so YAML configs
+  and values with YAML syntax, e.g. ``--list=[a, b]`` or ``--flag=yes``, fail
+  unless ``parser_mode="yaml"`` is given. The ``jsonnet`` parser mode no longer
+  accepts YAML (`#997 <https://github.com/mauvilsa/jsonargparse/pull/997>`__).
 
 Removed
 ^^^^^^^
