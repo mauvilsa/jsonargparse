@@ -1256,19 +1256,33 @@ def get_typed_dict_required_keys(typed_dict, annotations: dict) -> set:
     return required_keys
 
 
-def get_typed_dict_extra_items(typed_dict):
+def get_typed_dict_extra_items(typehint):
     """Returns the type of the values of keys a TypedDict doesn't declare (PEP 728), or NoExtraItems if none.
+
+    The TypeVars in it are resolved the same as for the keys, see get_typed_dict_annotations.
+    """
+    extra_items = get_typed_dict_extra_items_unresolved(typehint)
+    return extra_items if is_no_extra_items(extra_items) else replace_type_vars(extra_items)
+
+
+def get_typed_dict_extra_items_unresolved(typehint):
+    """Returns the extra_items of a TypedDict with only the TypeVars that the subscripts bind substituted.
 
     Since extra_items is inherited, the bases are checked when it is not given to
     the TypedDict itself, unless it is closed.
     """
-    typed_dict = get_typed_dict_type(typed_dict)
+    typed_dict = get_typed_dict_type(typehint)
     extra_items = getattr(typed_dict, "__extra_items__", NoExtraItems)
     if is_no_extra_items(extra_items) and not getattr(typed_dict, "__closed__", None):
         for base in getattr(typed_dict, "__orig_bases__", ()):
-            if is_typed_dict(base) and not is_no_extra_items(base_extra_items := get_typed_dict_extra_items(base)):
-                return base_extra_items
-    return extra_items
+            if is_typed_dict(base) and not is_no_extra_items(
+                base_extra_items := get_typed_dict_extra_items_unresolved(base)
+            ):
+                extra_items = base_extra_items
+                break
+    if is_no_extra_items(extra_items):
+        return extra_items
+    return substitute_type_vars(extra_items, get_type_var_map(typehint, typed_dict))
 
 
 def is_no_extra_items(extra_items) -> bool:

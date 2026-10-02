@@ -1320,6 +1320,27 @@ def test_typeddict_extra_items_inherited(parser):
 
 
 @skip_if_no_extra_items
+def test_typeddict_extra_items_generic(parser):
+    class Base(ExtraItemsTypedDict, Generic[GenericVar], extra_items=GenericVar):
+        a: int
+
+    class InheritsSubscripted(Base[int]):
+        pass
+
+    class InheritsGeneric(Base[GenericVar]):
+        pass
+
+    parser.add_argument("--subscripted", type=Base[int])
+    parser.add_argument("--inherits_subscripted", type=InheritsSubscripted)
+    parser.add_argument("--inherits_generic", type=InheritsGeneric[int])
+    for key in ["subscripted", "inherits_subscripted", "inherits_generic"]:
+        assert {"a": 1, "b": 2} == parser.parse_args([f'--{key}={{"a": 1, "b": 2}}'])[key]
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args([f'--{key}={{"a": 1, "b": "x"}}'])
+        ctx.match("Expected a <class 'int'>")
+
+
+@skip_if_no_extra_items
 def test_typeddict_closed(parser):
     parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, closed=True))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
