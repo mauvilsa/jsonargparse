@@ -15,7 +15,7 @@ approach is:
        JSONARGPARSE_DEPRECATION_WARNINGS=all python your_script.py
 
 3. **Fix all deprecation warnings** as described in the sections below.
-4. **Review the** `Breaking changes summary`_, since one change does not emit a
+4. **Review the** `Breaking changes summary`_, since some changes do not emit a
    deprecation warning.
 5. **Upgrade to v5** (``pip install "jsonargparse>=5"``).
 
@@ -32,10 +32,21 @@ Breaking changes summary
 In addition to the deprecation removals below, note these other breaking
 changes:
 
-- **``pyyaml`` is no longer a required dependency.** This is the only change
-  that gives no deprecation warning. If your code imports ``yaml``, or you want
-  yaml configs, install with the ``yaml`` extra (``pip install
-  "jsonargparse[yaml]"``).
+- **``pyyaml`` is no longer a required dependency.** Gives no deprecation
+  warning. If your code imports ``yaml``, or you want YAML configs, install with
+  the ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
+- **``parser_mode`` defaults to ``json``.** Gives no deprecation warning. Config
+  files and command line values are loaded as JSON instead of YAML, so YAML
+  syntax, e.g. ``key: value`` configs, ``--list=[a, b]`` or ``--flag=yes``,
+  fails. To keep YAML, give ``parser_mode="yaml"`` to the parser, which also
+  works in v4, or set it globally with
+  ``set_parsing_settings(parser_mode="yaml")`` or the
+  ``JSONARGPARSE_PARSER_MODE=yaml`` environment variable. The ``jsonnet`` parser
+  mode no longer accepts YAML either.
+- **``json`` dumps are now indented.** Gives no deprecation warning.
+  ``dump(format="json")``, ``save`` and the print config argument produce
+  indented JSON instead of a single line. Use ``format="json_compact"`` for the
+  previous output.
 - **``--print_config`` renamed.** The print-config argument in v5 defaults to
   ``--print_<config_arg_name>`` instead of always being ``--print_config``, so
   it only stays ``--print_config`` when the config argument is named ``config``.
@@ -53,16 +64,21 @@ changes:
   ``None``; they remain required. Give such parameters an explicit default if
   optional is intended. Warns only with
   ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
+- **The working directory is no longer changed while loading configs.** Gives no
+  deprecation warning. Relative paths in a config file are still resolved with
+  respect to its directory, but without calling ``os.chdir``. Code that relied
+  on the working directory, e.g. a custom type that opens a relative path, must
+  instead use a path type such as :class:`.Path_fr`, which gives the resolved
+  absolute path.
 - **Configs can no longer import and instantiate anything.** See `Subclass specs
   and import paths`_ below.
 - **Function and method groups are instantiated.** For a group added by
   ``add_function_arguments`` or ``add_method_arguments`` with a ``nested_key``,
-  ``instantiate`` gives in v5 a :func:`functools.partial` with the arguments
-  bound, or an :func:`operator.methodcaller` for a method that is called with an
-  instance, instead of the parsed namespace. Call it, e.g.
-  ``init.fn()`` instead of ``fn(**init.fn)``, or in v5 give
-  ``instantiate=False`` to keep the namespace. Warns only with
-  ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
+  ``instantiate`` gives a :func:`functools.partial` with the arguments bound, or
+  an :func:`operator.methodcaller` for a method that is called with an instance,
+  instead of the parsed namespace. Call it, e.g. ``init.fn()`` instead of
+  ``fn(**init.fn)``, or give ``instantiate=False`` to keep the namespace. Warns
+  only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
 - **Abbreviated options are disabled.** ``allow_abbrev`` defaults to ``False``,
   so e.g. ``--max`` no longer matches ``--max_epochs``. Use full option names,
   or keep abbreviations with ``allow_abbrev=True`` in the parser, or globally
@@ -108,6 +124,23 @@ argument and relying on the local scope) is removed. Pass components explicitly:
 
    # after
    auto_cli([ComponentA, ComponentB])
+
+
+ActionConfigFile / action="config"
+----------------------------------
+
+A config argument is now recommended to be added with the registered
+``"config"`` action, instead of importing ``ActionConfigFile``. The import keeps
+working, but the class is not part of the public API, so prefer the action name:
+
+.. code-block:: python
+
+   # before
+   from jsonargparse import ActionConfigFile
+   parser.add_argument("--config", action=ActionConfigFile)
+
+   # after
+   parser.add_argument("--config", action="config")
 
 
 Parser methods
