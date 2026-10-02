@@ -469,11 +469,12 @@ Types can be nested with any complexity. Notes about the support:
   <https://peps.python.org/pep-0705/>`__) which only marks a key as not mutable
   and thus changes neither its type nor its requiredness, and ``Unpack`` to
   type ``**kwargs`` precisely, see PEP `692
-  <https://peps.python.org/pep-0692/>`__. A ``--*.help`` option, e.g.
-  ``--data.help``, shows the accepted keys. It takes no value, unless the
-  ``TypedDict`` is in a union with other types that have their own help, in
-  which case the value is the name of the typed dict, e.g. ``--data.help
-  SomeTypedDict``. :meth:`add_class_arguments
+  <https://peps.python.org/pep-0692/>`__. Undeclared keys are rejected, unless
+  given ``extra_items`` (PEP `728 <https://peps.python.org/pep-0728/>`__). A
+  ``--*.help`` option, e.g. ``--data.help``, shows the accepted keys. It takes
+  no value, unless the ``TypedDict`` is in a union with other types that have
+  their own help, in which case the value is the name of the typed dict, e.g.
+  ``--data.help SomeTypedDict``. :meth:`add_class_arguments
   <.ArgumentParser.add_class_arguments>` also accepts a ``TypedDict``, adding
   one argument per key and giving the corresponding dict on :meth:`instantiate
   <.ArgumentParser.instantiate>`. As the argument of ``type``, e.g.

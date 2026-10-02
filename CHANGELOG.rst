@@ -145,6 +145,10 @@ Fixed
   in the help as ``<UnsetType object at 0x...>``, and failing to serialize when
   the sentinel is not defined in the module of its class (`#991
   <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
+- ``TypedDict`` with ``extra_items`` (PEP 728) rejecting the keys it doesn't
+  declare, failing with ``Unexpected keys`` instead of validating them against
+  the ``extra_items`` type (`#1000
+  <https://github.com/mauvilsa/jsonargparse/pull/1000>`__).
 
 Changed
 ^^^^^^^

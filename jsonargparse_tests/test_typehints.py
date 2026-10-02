@@ -65,6 +65,7 @@ from jsonargparse._optionals import (
 )
 from jsonargparse._typehints import (
     ActionTypeHint,
+    NoExtraItems,
     NotRequired,
     ReadOnly,
     Required,
@@ -1269,6 +1270,62 @@ def test_typeddict_read_only_subtype():
     assert is_typed_dict_subtype(read_write, read_only)
     assert is_typed_dict_subtype(read_only, read_write)
     assert not is_typed_dict_subtype(TypedDict("Other", {"a": ReadOnly[str]}), read_only)
+
+
+ExtraItemsTypedDict = typing_extensions_import("TypedDict")
+
+skip_if_no_extra_items = pytest.mark.skipif(
+    not NoExtraItems, reason="extra_items introduced in python 3.15 or backported in typing_extensions"
+)
+
+
+@skip_if_no_extra_items
+def test_typeddict_extra_items(parser):
+    parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, extra_items=int))
+    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    assert {"a": 1, "b": 2} == parser.parse_args(["--typeddict.a=1", "--typeddict.b=2"])["typeddict"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"a": 1, "b": "x"}'])
+    ctx.match("Expected a <class 'int'>")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"b": 2}'])
+    ctx.match("Missing required keys")
+
+
+@skip_if_no_extra_items
+def test_typeddict_extra_items_none_and_read_only(parser):
+    parser.add_argument("--none", type=ExtraItemsTypedDict("NoneDict", {}, extra_items=None))
+    parser.add_argument("--read_only", type=ExtraItemsTypedDict("ReadOnlyDict", {}, extra_items=ReadOnly[int]))
+    cfg = parser.parse_args(['--none={"a": null}', '--read_only={"a": 1}'])
+    assert {"a": None} == cfg.none
+    assert {"a": 1} == cfg.read_only
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--read_only={"a": "x"}'])
+    ctx.match("Expected a <class 'int'>")
+
+
+@skip_if_no_extra_items
+def test_typeddict_extra_items_inherited(parser):
+    class Base(ExtraItemsTypedDict, extra_items=int):
+        a: int
+
+    class Child(Base):
+        b: str
+
+    parser.add_argument("--typeddict", type=Child)
+    assert {"a": 1, "b": "x", "c": 3} == parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": 3}'])["typeddict"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": "y"}'])
+    ctx.match("Expected a <class 'int'>")
+
+
+@skip_if_no_extra_items
+def test_typeddict_closed(parser):
+    parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, closed=True))
+    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--typeddict={"a": 1, "b": 2}'])
+    ctx.match("Unexpected keys")
 
 
 # NamedTuple tests
