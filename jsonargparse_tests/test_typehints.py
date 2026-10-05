@@ -402,20 +402,13 @@ def test_type_any_dump_registered_type(parser):
     # registered types serialize the same as when they are the type of the argument
     parser.add_argument("--path", type=Any, default=Path_fr(__file__))
     parser.add_argument("--bytes", type=Any, default=b"ab")
-    cfg = parser.parse_args([])
-    with assert_dump_warnings(serialized_as("Path_fr", "str"), serialized_as("bytes", "str")):
-        dump = json_or_yaml_load(parser.dump(cfg))
-    assert dump == {"path": __file__, "bytes": "YWI="}
-
-
-def test_type_any_dump_date_not_serializable(parser):
-    # the loaders don't parse timestamps, so a date is not a type that the config
-    # formats represent, even though yaml is able to write one
     parser.add_argument("--date", type=Any, default=date(2020, 1, 2))
     cfg = parser.parse_args([])
-    with assert_dump_warnings("Unable to serialize instance 2020-01-02"):
+    with assert_dump_warnings(
+        serialized_as("Path_fr", "str"), serialized_as("bytes", "str"), serialized_as("date", "str")
+    ):
         dump = json_or_yaml_load(parser.dump(cfg))
-    assert dump == {"date": "Unable to serialize instance 2020-01-02"}
+    assert dump == {"path": __file__, "bytes": "YWI=", "date": "2020-01-02"}
 
 
 def test_type_any_dump_not_round_trippable_warns(parser):

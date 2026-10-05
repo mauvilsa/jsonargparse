@@ -60,6 +60,9 @@ Added
   ``JSONARGPARSE_PARSER_MODE`` environment variable, to change the mode of
   parsers not given ``parser_mode`` (`#997
   <https://github.com/mauvilsa/jsonargparse/pull/997>`__).
+- Support for ``datetime``, ``date`` and ``time`` (ISO 8601), ``re.Pattern``
+  and ``Fraction`` types (`#1002
+  <https://github.com/mauvilsa/jsonargparse/pull/1002>`__).
 
 Fixed
 ^^^^^

@@ -612,6 +612,35 @@ def timedelta_deserializer(value):
 register_type_on_first_use("datetime.timedelta", deserializer=timedelta_deserializer)
 
 
+def isoformat_serializer(value) -> str:
+    return value.isoformat()
+
+
+def fromisoformat_deserializer(class_name: str) -> Callable:
+    def deserializer(value):
+        import datetime
+
+        return getattr(datetime, class_name).fromisoformat(value)
+
+    return deserializer
+
+
+for _name in ["datetime", "date", "time"]:
+    register_type_on_first_use(
+        f"datetime.{_name}", serializer=isoformat_serializer, deserializer=fromisoformat_deserializer(_name)
+    )
+
+
+def pattern_serializer(value: re.Pattern) -> str:
+    return value.pattern
+
+
+register_type_on_first_use(
+    "re.Pattern", serializer=pattern_serializer, deserializer=re.compile, deserializer_exceptions=(re.error, TypeError)
+)
+register_type_on_first_use("fractions.Fraction")
+
+
 def bytes_serializer(value: bytes | bytearray) -> str:
     from base64 import b64encode
 
