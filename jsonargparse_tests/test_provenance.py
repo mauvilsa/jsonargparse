@@ -7,7 +7,7 @@ import os
 import pickle
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from unittest.mock import patch
 
 import pytest
@@ -331,6 +331,67 @@ def test_subclass_subconfig_file(parser, tmp_cwd):
     }
     assert get_sources(parser.parse_args(["--opt=sub.json"])) == expected
     assert get_sources(parser.parse_args(["--config=cfg.json"])) == expected
+
+
+def test_subclass_implicit_class_path(parser, tmp_cwd):
+    parser.add_argument("--opt", type=Optimizer)
+    Path("cfg.json").write_text('{"opt": {"lr": 0.5}}')
+    assert get_sources(parser.parse_args(["--config=cfg.json"])) == {
+        "opt.class_path": "implicit, from config file cfg.json",
+        "opt.init_args.lr": "config file cfg.json",
+    }
+    assert get_sources(parser.parse_args(["--opt.lr=0.5"])) == {
+        "opt.class_path": "implicit, from command line argument --opt.lr",
+        "opt.init_args.lr": "command line argument --opt.lr",
+    }
+    assert get_sources(parser.parse_args(['--opt={"init_args": {"lr": 0.5}}'])) == {
+        "opt.class_path": "implicit, from command line argument --opt",
+        "opt.init_args.lr": "command line argument --opt",
+    }
+
+
+def test_subclass_implicit_class_path_kept_by_later_init_arg(parser, tmp_cwd):
+    parser.add_argument("--opt", type=Optimizer)
+    Path("cfg.json").write_text('{"opt": {"lr": 0.5}}')
+    assert get_sources(parser.parse_args(["--config=cfg.json", "--opt.lr=0.7"])) == {
+        "opt.class_path": "implicit, from config file cfg.json",
+        "opt.init_args.lr": "command line argument --opt.lr",
+    }
+
+
+def test_subclass_class_path_from_default(parser, monkeypatch):
+    parser.add_argument("--opt", type=Optimizer, default={"class_path": sgd})
+    parser.add_argument("--implicit", type=Optimizer, default={"lr": 0.3})
+    monkeypatch.setenv("APP_OPT", '{"lr": 0.5}')
+    monkeypatch.setenv("APP_IMPLICIT", '{"lr": 0.5}')
+    parser.default_env = True
+    assert get_sources(parser.parse_args([])) == {
+        "opt.class_path": "default",
+        "opt.init_args.lr": "environment variable APP_OPT",
+        "opt.init_args.momentum": "default",
+        "implicit.class_path": "implicit, from default",
+        "implicit.init_args.lr": "environment variable APP_IMPLICIT",
+    }
+
+
+def test_list_of_subclasses_implicit_class_path(parser, tmp_cwd):
+    parser.add_argument("--opts", type=list[Optimizer])
+    Path("cfg.json").write_text(json.dumps({"opts": [{"lr": 0.5}, {"class_path": sgd}]}))
+    assert get_sources(parser.parse_args(["--config=cfg.json"])) == {
+        "opts[0].class_path": "implicit, from config file cfg.json",
+        "opts[0].init_args.lr": "config file cfg.json",
+        "opts[1].class_path": "config file cfg.json",
+        "opts[1].init_args.lr": "default",
+        "opts[1].init_args.momentum": "default",
+    }
+
+
+def test_callable_return_class_implicit_class_path(parser):
+    parser.add_argument("--opt", type=Callable[[], Optimizer])
+    assert get_sources(parser.parse_args(["--opt.lr=0.5"])) == {
+        "opt.class_path": "implicit, from command line argument --opt.lr",
+        "opt.init_args.lr": "command line argument --opt.lr",
+    }
 
 
 def test_subcommand(parser, subparser, tmp_cwd):
@@ -696,7 +757,7 @@ def test_subclass_implicit_init_args_line_numbers(yaml_parser, tmp_cwd):
     yaml_parser.add_argument("--opt", type=Optimizer)
     Path("cfg.yaml").write_text("opt:\n  lr: 0.5\n")
     assert get_sources(yaml_parser.parse_args(["--config=cfg.yaml"])) == {
-        "opt.class_path": "config file cfg.yaml:1",
+        "opt.class_path": "implicit, from config file cfg.yaml:1",
         "opt.init_args.lr": "config file cfg.yaml:2",
     }
 
@@ -712,7 +773,7 @@ def test_subclass_subconfig_file_line_numbers(yaml_parser, tmp_cwd):
         "opt.init_args.momentum": "config file sub.yaml:3",
     }
     assert get_sources(yaml_parser.parse_args(["--opt=implicit.yaml"])) == {
-        "opt.class_path": "config file implicit.yaml",
+        "opt.class_path": "implicit, from config file implicit.yaml",
         "opt.init_args.lr": "config file implicit.yaml:1",
     }
 
@@ -811,6 +872,19 @@ def test_print_config_provenance(yaml_parser, tmp_cwd, monkeypatch):
         "  init_args:\n"
         "    lr: 0.2 # default\n"
         "    momentum: 0.9 # default\n"
+    )
+
+
+@skip_if_no_ruamel
+def test_print_config_provenance_implicit_class_path(yaml_parser, tmp_cwd):
+    yaml_parser.add_argument("--opt", type=Optimizer)
+    Path("cfg.yaml").write_text("opt:\n  lr: 0.5\n")
+    out = get_parse_args_stdout(yaml_parser, ["--config=cfg.yaml", "--print_config=provenance"])
+    assert out == (
+        "opt:\n"
+        f"  class_path: {optimizer} # implicit, from config file cfg.yaml:1\n"
+        "  init_args:\n"
+        "    lr: 0.5 # config file cfg.yaml:2\n"
     )
 
 

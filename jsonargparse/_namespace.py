@@ -22,9 +22,14 @@ class ValueSource(NamedTuple):
     origin: Any = None  # the path of a config file or the name of an environment variable
     mode: str | None = None  # the parser mode of a config file, required to find line numbers
     key: str | None = None  # the key in a config file that the value corresponds to
+    implied_by: "ValueSource | None" = None  # for implicit values, e.g. a class_path, the source of what implied it
 
     def __deepcopy__(self, memo):
         return self  # immutable, so copies of namespaces can share it, which is much faster, e.g. for list items
+
+
+# Marks a value that was not given, like a class_path derived from a type, until the source that implied it is known
+implicit_source = ValueSource("implicit")
 
 
 # The source of the values being parsed, which is set to the values written to namespaces. Code that
@@ -284,7 +289,7 @@ class Namespace(argparse.Namespace):
             for subkey, subval in value.items():
                 if not only_unset or prefix + subkey not in self:
                     self[prefix + subkey] = subval
-                    _set_source(self, prefix + subkey, provenance.get(subkey, value_source.get()))
+                    _set_source(self, prefix + subkey, _resolve_implicit(provenance.get(subkey, value_source.get())))
         return self
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -366,6 +371,19 @@ def _get_provenance_dict(namespace: Namespace) -> dict[str, ValueSource]:
     return provenance
 
 
+def set_implicit_source(namespace: Namespace, key: str) -> None:
+    """Marks a key as implicit, so that later it gets as source the one of the value that implied it."""
+    _get_provenance_dict(namespace)[key] = implicit_source
+
+
+def _resolve_implicit(source: ValueSource | None) -> ValueSource | None:
+    """For an implicit source, the same with the source of the values being parsed as what implied it."""
+    implied_by = value_source.get()
+    if source is not implicit_source or implied_by is None:
+        return source
+    return source._replace(implied_by=implied_by)
+
+
 def _set_source(namespace: Namespace, key: str, source: ValueSource | None) -> None:
     leaf_key, parent_ns, _ = namespace._parse_key(key)
     if source is None:
@@ -416,6 +434,8 @@ def fill_provenance(value: Any, source: ValueSource) -> None:
             item_source = _child_source(source, "." + del_clash_mark(name))
             if not isinstance(item, Namespace) and name not in provenance:
                 provenance[name] = item_source
+            elif provenance.get(name) is implicit_source:
+                provenance[name] = implicit_source._replace(implied_by=item_source)
             fill_provenance(item, item_source)
     elif isinstance(value, (list, dict)):
         for name, item in enumerate(value) if isinstance(value, list) else value.items():

@@ -1508,9 +1508,9 @@ comma, e.g. ``--print_config=comments,skip_default``. The ``comments`` and
   dataclass, the descriptions from that class.
 - ``provenance``: add to each value a YAML comment saying where it came from,
   i.e. a default, a default config file, a config file, a config string, an
-  environment variable or a command line argument. For config files parsed as
-  YAML, the comment includes the line number, e.g. ``# config file
-  config.yaml:3``.
+  environment variable or a command line argument, or ``implicit`` and what
+  implied it, e.g. a ``class_path`` not given. For config files parsed as YAML,
+  the comment includes the line number, e.g. ``# config file config.yaml:3``.
 - ``skip_default``: skip entries whose value is the same as the default.
 - ``skip_unset``: skip entries that were not given a value, see
   :ref:`unset-values`.
