@@ -27,7 +27,8 @@ Added
 - Parsing now keeps track of where each value came from. Errors due to a given
   value say so, e.g. ``Source: config file config.yaml:3`` followed by that line
   of the file, and the new ``provenance`` flag of the print config argument adds
-  it as comments (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
+  it as comments (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__,
+  `#1001 <https://github.com/mauvilsa/jsonargparse/pull/1001>`__).
 - New ``docstrings`` and ``typeshed`` extras, which install individually the
   respective optional dependencies of the ``signatures`` extra (`#988
   <https://github.com/mauvilsa/jsonargparse/pull/988>`__).
