@@ -612,6 +612,55 @@ def timedelta_deserializer(value):
 register_type_on_first_use("datetime.timedelta", deserializer=timedelta_deserializer)
 
 
+def isoformat_serializer(value) -> str:
+    return value.isoformat()
+
+
+def fromisoformat_deserializer(class_name: str) -> Callable:
+    def deserializer(value):
+        import datetime
+
+        return getattr(datetime, class_name).fromisoformat(value)
+
+    return deserializer
+
+
+for _name in ["datetime", "date", "time"]:
+    register_type_on_first_use(
+        f"datetime.{_name}", serializer=isoformat_serializer, deserializer=fromisoformat_deserializer(_name)
+    )
+
+
+pattern_inline_flags = {re.ASCII: "a", re.IGNORECASE: "i", re.MULTILINE: "m", re.DOTALL: "s", re.VERBOSE: "x"}
+
+
+def pattern_serializer(value: re.Pattern) -> str:
+    """Pattern text, with flags given at compile time prepended as inline flags."""
+    missing_flags = value.flags & ~re.compile(value.pattern).flags
+    inline_flags = "".join(c for f, c in pattern_inline_flags.items() if missing_flags & f)
+    return f"(?{inline_flags}){value.pattern}" if inline_flags else value.pattern
+
+
+def pattern_deserializer(value: str) -> re.Pattern:
+    if not isinstance(value, str):
+        raise TypeError(f"Expected a str pattern, got {value!r}")
+    return re.compile(value)
+
+
+def is_str_pattern(value, class_type) -> bool:
+    return isinstance(value, class_type) and isinstance(value.pattern, str)
+
+
+register_type_on_first_use(
+    "re.Pattern",
+    serializer=pattern_serializer,
+    deserializer=pattern_deserializer,
+    deserializer_exceptions=(re.error, TypeError),
+    type_check=is_str_pattern,
+)
+register_type_on_first_use("fractions.Fraction")
+
+
 def bytes_serializer(value: bytes | bytearray) -> str:
     from base64 import b64encode
 

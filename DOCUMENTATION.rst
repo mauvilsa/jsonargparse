@@ -456,9 +456,11 @@ Types can be nested with any complexity. Notes about the support:
   :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``,
   ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``,
   ``Any``/``object``, ``Union``/``Optional`` (see :ref:`union-types`),
-  ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``, ``timedelta``, the
-  restricted types of :ref:`restricted-numbers` and :ref:`restricted-strings`,
-  and the path and URL types of :ref:`parsing-paths` and :ref:`parsing-urls`.
+  ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``, ``Fraction``,
+  ``re.Pattern`` (str only), ``datetime``/``date``/``time`` (ISO 8601),
+  ``timedelta``, the restricted types of :ref:`restricted-numbers` and
+  :ref:`restricted-strings`, and the path and URL types of :ref:`parsing-paths`
+  and :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
   ``OrderedDict`` and ``TypedDict`` are supported, but only with ``str`` or
@@ -1204,7 +1206,7 @@ representation back, only the class is needed. This is how
 ``jsonargparse.typing`` registers complex numbers, ``register_type(complex)``,
 which is the same as ``register_type(complex, serializer=str,
 deserializer=complex)``. Other classes need a serializer and/or a deserializer,
-for example ``datetime``:
+for example ``datetime`` with a format other than the default ISO 8601:
 
 .. testcode::
 
@@ -1214,18 +1216,18 @@ for example ``datetime``:
 
 
     def serializer(v):
-        return v.isoformat()
+        return v.strftime("%d/%m/%Y %H:%M")
 
 
     def deserializer(v):
-        return datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
+        return datetime.strptime(v, "%d/%m/%Y %H:%M")
 
 
     register_type(datetime, serializer, deserializer)
 
     parser = ArgumentParser()
     parser.add_argument("--datetime", type=datetime)
-    parser.parse_args(["--datetime=2008-09-03T20:56:35"])
+    parser.parse_args(["--datetime=03/09/2008 20:56"])
 
 Registering an already registered type replaces the previous one, jsonargparse's
 own registrations included. A debug log names the module of each, useful when

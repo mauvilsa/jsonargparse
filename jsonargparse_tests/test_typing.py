@@ -4,10 +4,12 @@ import inspect
 import os
 import pickle
 import random
+import re
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from fractions import Fraction
 from random import Random
 from typing import List, Mapping, Optional, TypeVar, Union
 from unittest.mock import patch
@@ -382,19 +384,19 @@ def test_register_non_bool_cast_type(parser):
     assert parser.dump(cfg, format="json_compact") == '{"elems":[1,2,3]}'
 
 
-def test_register_type_datetime(parser):
+def test_register_type_datetime(parser, restore_registrations):
     def serializer(v):
-        return v.isoformat()
+        return v.strftime("%d/%m/%Y %H:%M")
 
     def deserializer(v):
-        return datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
+        return datetime.strptime(v, "%d/%m/%Y %H:%M")
 
     register_type(datetime, serializer, deserializer)
 
     parser.add_argument("--datetime", type=datetime)
-    cfg = parser.parse_args(["--datetime=2008-09-03T20:56:35"])
-    assert cfg.datetime == datetime(2008, 9, 3, 20, 56, 35)
-    assert json_or_yaml_load(parser.dump(cfg)) == {"datetime": "2008-09-03T20:56:35"}
+    cfg = parser.parse_args(["--datetime=03/09/2008 20:56"])
+    assert cfg.datetime == datetime(2008, 9, 3, 20, 56)
+    assert json_or_yaml_load(parser.dump(cfg)) == {"datetime": "03/09/2008 20:56"}
 
     register_type(datetime, serializer, deserializer)  # identical re-registering is okay
 
@@ -558,6 +560,66 @@ def test_uuid(parser):
     assert cfg.uuid == id1
     assert cfg.uuids == [id1, id2]
     assert {"uuid": str(id1), "uuids": [str(id1), str(id2)]} == json_or_yaml_load(parser.dump(cfg))
+
+
+@pytest.mark.parametrize(
+    ["type_", "value", "expected"],
+    [
+        (datetime, "2008-09-03T20:56:35", datetime(2008, 9, 3, 20, 56, 35)),
+        (date, "2008-09-03", date(2008, 9, 3)),
+        (time, "20:56:35", time(20, 56, 35)),
+    ],
+)
+def test_datetime_types(parser, type_, value, expected):
+    parser.add_argument("--value", type=type_)
+    cfg = parser.parse_args([f"--value={value}"])
+    assert cfg.value == expected
+    assert type(cfg.value) is type_
+    assert json_or_yaml_load(parser.dump(cfg)) == {"value": value}
+    with pytest.raises(ArgumentError, match="--value"):
+        parser.parse_args(["--value=not a date"])
+
+
+def test_datetime_rejects_date(parser):
+    parser.add_argument("--date", type=date)
+    with pytest.raises(ArgumentError, match="--date"):
+        parser.parse_args(["--date=2008-09-03T20:56:35"])
+
+
+def test_re_pattern(parser):
+    parser.add_argument("--pattern", type=re.Pattern)
+    parser.add_argument("--patterns", type=List[re.Pattern[str]])
+    cfg = parser.parse_args([r"--pattern=^\d+$", r'--patterns=["a.c", "x*"]'])
+    assert cfg.pattern == re.compile(r"^\d+$")
+    assert cfg.patterns == [re.compile("a.c"), re.compile("x*")]
+    assert json_or_yaml_load(parser.dump(cfg)) == {"pattern": r"^\d+$", "patterns": ["a.c", "x*"]}
+    with pytest.raises(ArgumentError, match="--pattern"):
+        parser.parse_args(["--pattern=("])
+
+
+def test_re_pattern_flags(parser):
+    parser.add_argument("--pattern", type=re.Pattern, default=re.compile("(?x) a b", re.IGNORECASE | re.MULTILINE))
+    cfg = parser.parse_args([])
+    dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump == {"pattern": "(?im)(?x) a b"}
+    cfg = parser.parse_args([f"--pattern={dump['pattern']}"])
+    assert cfg.pattern.flags == re.compile("(?x) a b", re.IGNORECASE | re.MULTILINE).flags
+
+
+def test_re_pattern_bytes_not_supported(parser):
+    parser.add_argument("--pattern", type=re.Pattern)
+    with pytest.raises(ArgumentError, match="Expected a str pattern"):
+        parser.parse_object({"pattern": re.compile(b"a")})
+
+
+def test_fraction(parser):
+    parser.add_argument("--fraction", type=Fraction)
+    cfg = parser.parse_args(["--fraction=1/3"])
+    assert cfg.fraction == Fraction(1, 3)
+    assert json_or_yaml_load(parser.dump(cfg)) == {"fraction": "1/3"}
+    assert parser.parse_args(["--fraction=0.1"]).fraction == Fraction(1, 10)
+    with pytest.raises(ArgumentError, match="--fraction"):
+        parser.parse_args(["--fraction=one third"])
 
 
 def test_secret_str_methods():
