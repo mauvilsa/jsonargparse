@@ -457,9 +457,10 @@ Types can be nested with any complexity. Notes about the support:
   ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``,
   ``Any``/``object``, ``Union``/``Optional`` (see :ref:`union-types`),
   ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``, ``Fraction``,
-  ``re.Pattern``, ``datetime``/``date``/``time`` (ISO 8601), ``timedelta``, the
-  restricted types of :ref:`restricted-numbers` and :ref:`restricted-strings`,
-  and the path and URL types of :ref:`parsing-paths` and :ref:`parsing-urls`.
+  ``re.Pattern`` (str only), ``datetime``/``date``/``time`` (ISO 8601),
+  ``timedelta``, the restricted types of :ref:`restricted-numbers` and
+  :ref:`restricted-strings`, and the path and URL types of :ref:`parsing-paths`
+  and :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
   ``OrderedDict`` and ``TypedDict`` are supported, but only with ``str`` or

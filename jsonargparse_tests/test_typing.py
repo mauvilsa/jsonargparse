@@ -597,6 +597,21 @@ def test_re_pattern(parser):
         parser.parse_args(["--pattern=("])
 
 
+def test_re_pattern_flags(parser):
+    parser.add_argument("--pattern", type=re.Pattern, default=re.compile("(?x) a b", re.IGNORECASE | re.MULTILINE))
+    cfg = parser.parse_args([])
+    dump = json_or_yaml_load(parser.dump(cfg))
+    assert dump == {"pattern": "(?im)(?x) a b"}
+    cfg = parser.parse_args([f"--pattern={dump['pattern']}"])
+    assert cfg.pattern.flags == re.compile("(?x) a b", re.IGNORECASE | re.MULTILINE).flags
+
+
+def test_re_pattern_bytes_not_supported(parser):
+    parser.add_argument("--pattern", type=re.Pattern)
+    with pytest.raises(ArgumentError, match="Expected a str pattern"):
+        parser.parse_object({"pattern": re.compile(b"a")})
+
+
 def test_fraction(parser):
     parser.add_argument("--fraction", type=Fraction)
     cfg = parser.parse_args(["--fraction=1/3"])

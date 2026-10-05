@@ -631,12 +631,32 @@ for _name in ["datetime", "date", "time"]:
     )
 
 
+pattern_inline_flags = {re.ASCII: "a", re.IGNORECASE: "i", re.MULTILINE: "m", re.DOTALL: "s", re.VERBOSE: "x"}
+
+
 def pattern_serializer(value: re.Pattern) -> str:
-    return value.pattern
+    """Pattern text, with flags given at compile time prepended as inline flags."""
+    missing_flags = value.flags & ~re.compile(value.pattern).flags
+    inline_flags = "".join(c for f, c in pattern_inline_flags.items() if missing_flags & f)
+    return f"(?{inline_flags}){value.pattern}" if inline_flags else value.pattern
+
+
+def pattern_deserializer(value: str) -> re.Pattern:
+    if not isinstance(value, str):
+        raise TypeError(f"Expected a str pattern, got {value!r}")
+    return re.compile(value)
+
+
+def is_str_pattern(value, class_type) -> bool:
+    return isinstance(value, class_type) and isinstance(value.pattern, str)
 
 
 register_type_on_first_use(
-    "re.Pattern", serializer=pattern_serializer, deserializer=re.compile, deserializer_exceptions=(re.error, TypeError)
+    "re.Pattern",
+    serializer=pattern_serializer,
+    deserializer=pattern_deserializer,
+    deserializer_exceptions=(re.error, TypeError),
+    type_check=is_str_pattern,
 )
 register_type_on_first_use("fractions.Fraction")
 
