@@ -87,6 +87,7 @@ from ._namespace import (
     ValueSource,
     copy_provenance,
     fill_provenance,
+    set_implicit_source,
     subclasses_disabled_meta_key,
     value_source_context,
 )
@@ -737,6 +738,8 @@ class ActionTypeHint(Action):
                 prev_val = cfg.get(self.dest) if cfg else unset_sentinel
                 if prev_val is unset_sentinel and not sub_defaults.get() and is_subclass_spec(self.default):
                     prev_val = Namespace(class_path=self.default["class_path"])
+                    copy_provenance(self.default, prev_val, key="class_path")  # keeps whether it is implicit
+                    fill_provenance(prev_val, ValueSource("default"))
 
                 kwargs = {
                     "sub_add_kwargs": getattr(self, "sub_add_kwargs", {}),
@@ -1816,6 +1819,7 @@ def adapt_typehints(
                         if return_type and not inspect.isabstract(return_type):
                             with suppress(ValueError):
                                 prev_val = Namespace(class_path=get_import_path(return_type))
+                                set_implicit_source(prev_val, "class_path")
                     val = subclass_spec_as_namespace(val, prev_val)
                     if not is_subclass_spec(val):
                         raise ImportError(
@@ -1869,6 +1873,7 @@ def adapt_typehints(
             with suppress(ValueError):
                 # implicit prev_val class_path
                 prev_val = Namespace(class_path=get_code_given_class_path(typehint))
+                set_implicit_source(prev_val, "class_path")
                 if parse_kwargs.get().get("defaults") is True:
                     prev_implicit_defaults = True
 
@@ -1881,12 +1886,14 @@ def adapt_typehints(
             isinstance(val, NestedArg) and is_subclasses_disabled(typehint)
         ):
             class_type_path = Namespace(class_path=get_code_given_class_path(typehint))
+            set_implicit_source(class_type_path, "class_path")
             val = subclass_spec_as_namespace(val, class_type_path)
         else:
             val = subclass_spec_as_namespace(val, prev_val)
         if val and not is_subclass_spec(val) and "init_args" not in val:
             # implicit val class_path
             val = Namespace(class_path=get_code_given_class_path(typehint), init_args=val)
+            set_implicit_source(val, "class_path")
 
         if not is_subclass_spec(val):
             msg = "Does not implement protocol" if is_protocol(typehint) else "Not a valid subclass of"

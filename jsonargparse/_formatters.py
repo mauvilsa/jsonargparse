@@ -343,6 +343,8 @@ snippet_width = 80
 
 def describe_source(source, cache: dict | None = None) -> str:
     """Returns a description of where a value came from, including the line number for config files."""
+    if source.implied_by is not None:
+        return f"{source.description}, from {describe_source(source.implied_by, cache)}"
     text = source.description if source.origin is None else f"{source.description} {_describe_origin(source.origin)}"
     position = _find_position(source, {} if cache is None else cache)
     return text if position is None else f"{text}:{position[0]}"
