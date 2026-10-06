@@ -41,8 +41,8 @@ Added
   ``add_method_arguments``, and links applied on instantiate can target the
   parameters of these groups (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
-- New ``__include__`` key accepted at any level of a config, which merges into it
-  the configs that it gives, so that a config can be composed from others.
+- New ``__include__`` key accepted at any level of a config, which merges into
+  it the configs that it gives, so that a config can be composed from others.
   Enabled with the new ``config_include_enabled`` of ``set_parsing_settings``
   (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 - Support for ``TypeAliasType`` aliases whose value is a string, e.g.
@@ -56,13 +56,11 @@ Added
   ``JSONARGPARSE_ALLOW_ABBREV`` environment variable, to accept abbreviated
   options in parsers not given ``allow_abbrev`` (`#993
   <https://github.com/mauvilsa/jsonargparse/pull/993>`__).
-- New ``parser_mode`` setting in ``set_parsing_settings`` and
-  ``JSONARGPARSE_PARSER_MODE`` environment variable, to change the mode of
-  parsers not given ``parser_mode`` (`#997
-  <https://github.com/mauvilsa/jsonargparse/pull/997>`__).
 - Support for ``datetime``, ``date`` and ``time`` (ISO 8601), ``re.Pattern``
   (str only) and ``Fraction`` types (`#1002
   <https://github.com/mauvilsa/jsonargparse/pull/1002>`__).
+- New ``json_or_yaml`` parser mode, which parses as JSON and if that fails as
+  YAML (`#1004 <https://github.com/mauvilsa/jsonargparse/pull/1004>`__).
 
 Fixed
 ^^^^^
@@ -114,16 +112,16 @@ Fixed
 - ``--print_config`` failing when a required subcommand is not given, unlike
   other required arguments (`#984
   <https://github.com/mauvilsa/jsonargparse/pull/984>`__).
-- ``instantiate``, ``auto_cli`` and ``from_config`` failing when a signature
-  has positional-only parameters (`#986
+- ``instantiate``, ``auto_cli`` and ``from_config`` failing when a signature has
+  positional-only parameters (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 - AST resolver failing for a method whose ``self`` is positional-only (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 - A typed positional with ``nargs="*"`` set in a config file being reset to
   empty when no values for it are given in the command line (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
-- A positional-only parameter that has a default being required, even though
-  the call can omit it (`#986
+- A positional-only parameter that has a default being required, even though the
+  call can omit it (`#986
   <https://github.com/mauvilsa/jsonargparse/pull/986>`__).
 - Parse errors logged multiple times when raised from a nested parse, e.g. an
   invalid value in a config given as argument (`#989
@@ -145,9 +143,9 @@ Fixed
 - Recursive type aliases, e.g. ``type Json = int | list[Json]``, failing with
   ``RecursionError`` (`#991
   <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
-- Sentinel defaults, e.g. ``UNSET`` for ``x: int | UnsetType = UNSET``, shown
-  in the help as ``<UnsetType object at 0x...>``, and failing to serialize when
-  the sentinel is not defined in the module of its class (`#991
+- Sentinel defaults, e.g. ``UNSET`` for ``x: int | UnsetType = UNSET``, shown in
+  the help as ``<UnsetType object at 0x...>``, and failing to serialize when the
+  sentinel is not defined in the module of its class (`#991
   <https://github.com/mauvilsa/jsonargparse/pull/991>`__).
 - ``TypedDict`` with ``extra_items`` (PEP 728) rejecting the keys it doesn't
   declare, failing with ``Unexpected keys`` instead of validating them against
@@ -178,8 +176,8 @@ Changed
   the only way to strip it (`#969
   <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
 - ``pyyaml`` is no longer a required dependency, install the ``yaml`` extra to
-  have it. Without it, using ``yaml`` raises an informative ``ImportError`` (`#970
-  <https://github.com/mauvilsa/jsonargparse/pull/970>`__).
+  have it. Without it, using ``yaml`` raises an informative ``ImportError``
+  (`#970 <https://github.com/mauvilsa/jsonargparse/pull/970>`__).
 - The ``json`` dump format is now indented, so that the print config argument
   gives a more readable output. Use the new ``json_compact`` format for the
   previous single line output (`#970
@@ -193,7 +191,8 @@ Changed
   <https://github.com/mauvilsa/jsonargparse/pull/973>`__).
 - The ``comments`` flag of the print config argument is now always accepted and
   listed in the help, and fails with an informative error when ``ruamel.yaml``
-  is not installed (`#975 <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
+  is not installed (`#975
+  <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
 - Relative paths in config files are now resolved without changing the process
   working directory (`#979
   <https://github.com/mauvilsa/jsonargparse/pull/979>`__).
@@ -226,14 +225,16 @@ Changed
   <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 - ``from_config`` now fails with ``ArgumentError`` for an invalid config,
   including a missing required parameter, instead of ``TypeError`` or
-  ``ImportDenied`` (`#990 <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
+  ``ImportDenied`` (`#990
+  <https://github.com/mauvilsa/jsonargparse/pull/990>`__).
 - ``allow_abbrev`` now defaults to ``False``, so abbreviated options, e.g.
   ``--max`` for ``--max_epochs``, fail instead of being expanded (`#993
   <https://github.com/mauvilsa/jsonargparse/pull/993>`__).
-- ``parser_mode`` now defaults to ``json`` instead of ``yaml``, so YAML configs
-  and values with YAML syntax, e.g. ``--list=[a, b]`` or ``--flag=yes``, fail
-  unless ``parser_mode="yaml"`` is given. The ``jsonnet`` parser mode no longer
-  accepts YAML (`#997 <https://github.com/mauvilsa/jsonargparse/pull/997>`__).
+- ``parser_mode`` now defaults to the new ``json_or_yaml`` mode instead of
+  ``yaml``, so values are parsed as JSON and only if that fails as YAML, which
+  without the ``yaml`` extra makes YAML configs fail. Load errors now say which
+  format failed to parse (`#1004
+  <https://github.com/mauvilsa/jsonargparse/pull/1004>`__).
 
 Removed
 ^^^^^^^

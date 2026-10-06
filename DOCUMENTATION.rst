@@ -1354,13 +1354,11 @@ Configuration files
 
 jsonargparse can parse configuration files (config files). The dot notation
 hierarchy of the arguments (see :ref:`nested-namespaces`) defines the structure
-expected in these files. The default format is JSON. To change it, use the
-``parser_mode`` parameter of the parser, e.g.
-``ArgumentParser(parser_mode="yaml")``, or set it globally, which also applies
-to parsers created by other code, with ``set_parsing_settings(parser_mode=...)``
-or the environment variable ``JSONARGPARSE_PARSER_MODE``. The examples in this
-documentation use ``yaml``, which requires the ``yaml`` extra, see
-:ref:`installation`.
+expected in these files. The default ``parser_mode`` is ``json_or_yaml``, which
+parses as JSON and, if that fails, as YAML. YAML requires the ``yaml`` extra,
+see :ref:`installation`, so without it only JSON is accepted. To change the
+mode, use the ``parser_mode`` parameter of the parser, e.g.
+``ArgumentParser(parser_mode="json")``.
 
 The :py:attr:`.ArgumentParser.default_config_files` property holds patterns of
 config files to search for, e.g.
@@ -1521,7 +1519,8 @@ From Python, a config object is serialized with the :meth:`dump
 <.ArgumentParser.dump>` and :meth:`save <.ArgumentParser.save>` methods. The
 supported formats are ``yaml``, ``toml``, ``json``/``json_indented``,
 ``json_compact`` and ``parser_mode``, the default, which uses the format of the
-parser, or ``json`` when the parser mode has no dumper. The ``yaml`` format
+parser, ``yaml`` for ``json_or_yaml`` when the ``yaml`` extra is installed, or
+``json`` when the parser mode has no dumper. The ``yaml`` format
 dumps with a subclass of `yaml.SafeDumper
 <https://pyyaml.org/wiki/PyYAMLDocumentation#dumper>`__ that writes multi-line
 strings as literal blocks, i.e. ``|``, instead of escaping the line breaks. More
@@ -3173,9 +3172,9 @@ The parser then uses these variables, unless the command line overrides them:
     'from env 2'
 
 Note the ``default_env=True`` given to the parser. By default :meth:`parse_args
-<.ArgumentParser.parse_args>` does not parse environment variables. If
-``default_env`` is left unset, they can also be enabled by setting
-``JSONARGPARSE_DEFAULT_ENV=true`` in the shell.
+<.ArgumentParser.parse_args>` does not parse environment variables. Setting
+``JSONARGPARSE_DEFAULT_ENV`` to ``true`` or ``false`` in the shell overrides
+``default_env`` for all parsers, even ones given it explicitly.
 
 The :meth:`parse_env <.ArgumentParser.parse_env>` method parses only environment
 variables, useful when there is no command line call.
@@ -3782,7 +3781,8 @@ globally, which also applies to parsers created by other code:
     set_parsing_settings(allow_abbrev=False)
 
 Without changing Python code, the same is achieved by setting the environment
-variable ``JSONARGPARSE_ALLOW_ABBREV=true``.
+variable ``JSONARGPARSE_ALLOW_ABBREV=true``. Neither applies to parsers given
+``allow_abbrev`` explicitly.
 
 User defined types
 ------------------

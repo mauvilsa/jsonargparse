@@ -18,6 +18,7 @@ from jsonargparse_tests.conftest import (
     get_parser_help,
     json_or_yaml_load,
     skip_if_jsonschema_unavailable,
+    skip_if_no_pyyaml,
 )
 
 
@@ -93,6 +94,22 @@ def test_parser_mode_jsonnet(tmp_path):
     assert 15.5 == cfg.records[-2]["val"]
 
     pytest.raises(ArgumentError, lambda: parser.parse_args(["--cfg", "{}}"]))
+
+
+@skip_if_no_pyyaml
+def test_parser_mode_jsonnet_yaml_fallback(parser):
+    parser.parser_mode = "jsonnet"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=list)
+    assert parser.parse_args(["--cfg=list: [a, b]"]).list == ["a", "b"]
+
+
+def test_parser_mode_jsonnet_error(parser):
+    parser.parser_mode = "jsonnet"
+    parser.add_argument("--cfg", action="config")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cfg={}}"])
+    ctx.match("Failed to parse as Jsonnet: STATIC ERROR")
 
 
 def test_parser_mode_jsonnet_import_libsonnet(parser, tmp_cwd):

@@ -32,7 +32,7 @@ from ._common import (
 )
 from ._link_arguments import ActionLink
 from ._namespace import Namespace
-from ._optionals import import_pyyaml, import_ruamel
+from ._optionals import import_pyyaml, import_ruamel, pyyaml_available
 from ._subcommands import ActionSubCommands, find_action
 from ._type_checking import ArgumentParser, ruamelCommentedMap
 from ._typehints import (
@@ -337,7 +337,7 @@ def _set_provenance_comments(cfg, provenance: dict, key_lines: dict, prefix: str
                     _set_provenance_comments(item, provenance, key_lines, f"{full_key}[{num}].", depth + 1)
 
 
-line_number_modes = {"yaml", "omegaconf", "omegaconf+"}
+line_number_modes = {"yaml", "omegaconf", "omegaconf+"} | ({"json_or_yaml"} if pyyaml_available else set())
 snippet_width = 80
 
 

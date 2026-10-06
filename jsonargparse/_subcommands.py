@@ -128,7 +128,7 @@ class ActionSubCommands(_SubParsersAction):
         parser.env_prefix = f"{self.env_prefix}{name}_"
         parser.default_env = self.parent_parser.default_env
         parser.parent_parser = self.parent_parser  # type: ignore[attr-defined]
-        parser.parser_mode = self.parent_parser._parser_mode
+        parser.parser_mode = self.parent_parser.parser_mode
         parser.exit_on_error = self.parent_parser.exit_on_error
         parser.formatter_class = self.parent_parser.formatter_class
         parser.logger = self.parent_parser.logger

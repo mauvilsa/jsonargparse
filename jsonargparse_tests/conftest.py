@@ -32,10 +32,6 @@ if docstring_parser_support:
 
     set_parsing_settings(docstring_parse_style=DocstringStyle.GOOGLE)
 
-# most tests write yaml configs when pyyaml is installed, while the default parser_mode is json
-if pyyaml_available:
-    set_parsing_settings(parser_mode="yaml")
-
 
 columns = "200"
 
@@ -120,7 +116,7 @@ def parser_modes(test_function):
     if "JSONARGPARSE_OMEGACONF_FULL_TEST" in os.environ:
         parser_modes = ["yaml"]
     else:
-        parser_modes = ["json"]
+        parser_modes = ["json", "json_or_yaml"]
         if toml_load_available:
             parser_modes += ["toml"]
         if pyyaml_available:

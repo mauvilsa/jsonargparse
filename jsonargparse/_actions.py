@@ -130,12 +130,19 @@ class ActionConfigFile(Action):
                 cfg_path: Path | None = Path(value, mode=_get_config_read_mode())
             except TypeError as ex_path:
                 try:
-                    if isinstance(load_value(value), str):
+                    try:
+                        loaded = load_value(value)
+                    except get_loader_exceptions() as ex_load:
+                        if value.strip()[:1] in {"[", "{"}:  # clearly not intended as a path
+                            raise ex_load
+                        errors = f"- {ex_path}\n- {indent_text(str(ex_load), first_line=False)}"
+                        raise TypeError(f"Not a valid path nor a config string:\n{errors}") from ex_load
+                    if isinstance(loaded, str):
                         raise ex_path
                     cfg_path = None
                     cfg_file = parser.parse_string(value, **kwargs)
                 except (TypeError, ValueError) + get_loader_exceptions() as ex_str:
-                    raise TypeError(f'Parser key "{dest}": {ex_str}') from ex_str
+                    raise TypeError(f'Parser key "{dest}": {indent_text(str(ex_str), first_line=False)}') from ex_str
             else:
                 cfg_file = parser.parse_path(value, **kwargs)
             cfg_merged = merge_config(parser, cfg_file, cfg)

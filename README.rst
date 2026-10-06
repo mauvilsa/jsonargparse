@@ -190,11 +190,12 @@ specifying one or more of the following extras (optional dependencies):
 ``signatures``, ``docstrings``, ``typeshed``, ``yaml``, ``jsonschema``,
 ``jsonnet``, ``urls``, ``fsspec``, ``toml``, ``ruamel``, ``omegaconf``,
 ``shtab``, and ``argcomplete``. The ``yaml`` extra installs `PyYAML
-<https://pypi.org/project/PyYAML/>`__, required for ``parser_mode="yaml"``. The
-``signatures`` extra includes ``docstrings`` and ``typeshed``, which can also be
-installed individually. Additionally, the ``all`` extras can be used to enable
-all optional features (excluding tab completion ones). To install
-``jsonargparse`` with extras, use the following syntax:
+<https://pypi.org/project/PyYAML/>`__, without which config files are parsed
+only as JSON. The ``signatures`` extra includes ``docstrings`` and
+``typeshed``, which can also be installed individually. Additionally, the
+``all`` extras can be used to enable all optional features (excluding tab
+completion ones). To install ``jsonargparse`` with extras, use the following
+syntax:
 
 .. code-block:: bash
 

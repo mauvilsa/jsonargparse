@@ -15,7 +15,6 @@ from jsonargparse_tests.conftest import (
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_load,
-    skip_if_no_pyyaml,
 )
 from jsonargparse_tests.test_typehints import Optimizer
 
@@ -75,57 +74,6 @@ def test_allow_abbrev_parser_takes_precedence(monkeypatch):
 def test_allow_abbrev_invalid(parser):
     with pytest.raises(ValueError, match="allow_abbrev expects a boolean or None"):
         parser.allow_abbrev = "invalid"
-
-
-# parser_mode
-
-
-def test_set_parser_mode_failure():
-    with pytest.raises(ValueError, match="accepted values for parser_mode"):
-        set_parsing_settings(parser_mode="invalid")
-
-
-@skip_if_no_pyyaml
-def test_parser_mode_setting(parser):
-    parser.add_argument("--list", type=List[str])
-    set_parsing_settings(parser_mode="json")
-    assert parser.parser_mode == "json"
-    with pytest.raises(ArgumentError, match='key "list"'):
-        parser.parse_args(["--list=[a, b]"])
-    set_parsing_settings(parser_mode="yaml")
-    assert parser.parse_args(["--list=[a, b]"]).list == ["a", "b"]
-
-
-@skip_if_no_pyyaml
-def test_parser_mode_setting_subcommands(parser, subparser):
-    parser.add_subcommands().add_subcommand("sub", subparser)
-    set_parsing_settings(parser_mode="json")
-    assert subparser.parser_mode == "json"
-    set_parsing_settings(parser_mode="yaml")
-    assert subparser.parser_mode == "yaml"
-
-
-@skip_if_no_pyyaml
-def test_parser_mode_env_var(parser, monkeypatch):
-    set_parsing_settings(parser_mode="json")
-    monkeypatch.setenv("JSONARGPARSE_PARSER_MODE", "yaml")
-    assert parser.parser_mode == "yaml"
-
-
-def test_parser_mode_env_var_invalid(parser, monkeypatch):
-    monkeypatch.setenv("JSONARGPARSE_PARSER_MODE", "invalid")
-    with pytest.raises(ValueError, match="JSONARGPARSE_PARSER_MODE"):
-        parser.parser_mode
-
-
-@skip_if_no_pyyaml
-def test_parser_mode_parser_takes_precedence(monkeypatch):
-    set_parsing_settings(parser_mode="yaml")
-    monkeypatch.setenv("JSONARGPARSE_PARSER_MODE", "yaml")
-    parser = ArgumentParser(parser_mode="json")
-    assert parser.parser_mode == "json"
-    parser.parser_mode = None
-    assert parser.parser_mode == "yaml"
 
 
 # validate_defaults
