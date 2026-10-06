@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import ArgumentParser, get_loader, set_dumper, set_loader
+from jsonargparse import ArgumentError, ArgumentParser, get_loader, set_dumper, set_loader
 from jsonargparse._common import parser_context
 from jsonargparse._loaders_dumpers import load_value
 from jsonargparse._optionals import pyyaml_available, toml_dump_available, toml_load_available
@@ -60,10 +60,129 @@ def test_invalid_parser_mode():
     pytest.raises(ValueError, lambda: ArgumentParser(parser_mode="invalid"))
 
 
-def test_default_parser_mode_json(monkeypatch):
-    monkeypatch.delenv("JSONARGPARSE_PARSER_MODE", raising=False)
+def test_parser_mode_none():
+    with pytest.raises(ValueError, match="accepted values for parser_mode"):
+        ArgumentParser(parser_mode=None)
+
+
+def test_default_parser_mode_json_or_yaml():
     code = "from jsonargparse import ArgumentParser; print(ArgumentParser().parser_mode)"
-    assert subprocess.check_output([sys.executable, "-c", code], text=True) == "json\n"
+    out = subprocess.check_output([sys.executable, "-c", code], text=True)
+    assert out == "json_or_yaml\n"
+
+
+# json_or_yaml parser mode
+
+
+def test_json_or_yaml_loads_json(parser):
+    parser.parser_mode = "json_or_yaml"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=List[str])
+    parser.add_argument("--flag", type=bool)
+    cfg = parser.parse_args(['--cfg={"list": ["a", "b"], "flag": true}'])
+    assert cfg.list == ["a", "b"]
+    assert cfg.flag is True
+
+
+@skip_if_no_pyyaml
+def test_json_or_yaml_loads_yaml(parser, tmp_cwd):
+    parser.parser_mode = "json_or_yaml"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=List[str])
+    parser.add_argument("--flag", type=bool)
+    Path("cfg.yaml").write_text("list: [a, b]\n")
+    cfg = parser.parse_args(["--cfg=cfg.yaml", "--flag=yes"])
+    assert cfg.list == ["a", "b"]
+    assert cfg.flag is True
+
+
+@skip_if_no_pyyaml
+def test_json_or_yaml_both_fail_error(parser):
+    parser.parser_mode = "json_or_yaml"
+    parser.add_argument("--cfg", action="config")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--cfg={"a": [1}'])
+    ctx.match("Failed to parse as JSON: Expecting ',' delimiter")
+    ctx.match("Failed to parse as YAML: while parsing a flow sequence")
+
+
+@pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
+def test_json_or_yaml_without_pyyaml_error(parser):
+    parser.parser_mode = "json_or_yaml"
+    parser.add_argument("--cfg", action="config")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cfg=a: 1"])
+    ctx.match("Failed to parse as JSON: Expecting value")
+
+
+def test_json_or_yaml_dump(parser):
+    parser.parser_mode = "json_or_yaml"
+    parser.add_argument("--int", type=int, default=1)
+    expected = "int: 1\n" if pyyaml_available else '{\n  "int": 1\n}\n'
+    assert parser.dump(parser.get_defaults()) == expected
+
+
+# load error messages
+
+
+@skip_if_no_pyyaml
+def test_json_mode_config_file_yaml_error(parser, tmp_cwd):
+    parser.parser_mode = "json"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--a", type=int)
+    Path("cfg.yaml").write_text("a: 1\n")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cfg=cfg.yaml"])
+    ctx.match("Failed to parse as JSON: Expecting value")
+    ctx.match("parses as YAML, to accept it use parser_mode='json_or_yaml'")
+
+
+@skip_if_no_pyyaml
+def test_json_mode_list_yaml_error(parser):
+    parser.parser_mode = "json"
+    parser.add_argument("--list", type=List[str])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--list=[a, b]"])
+    ctx.match("Failed to parse as JSON: Expecting value")
+    ctx.match("parses as YAML")
+
+
+def test_json_mode_invalid_error_no_yaml_hint(parser):
+    parser.parser_mode = "json"
+    parser.add_argument("--cfg", action="config")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--cfg={"a": [1}'])
+    ctx.match("Failed to parse as JSON: Expecting ',' delimiter")
+    assert "YAML" not in str(ctx.value)
+
+
+def test_config_path_not_found_error(parser, tmp_cwd):
+    parser.parser_mode = "json"
+    parser.add_argument("--cfg", action="config")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cfg=missing.json"])
+    ctx.match("Not a valid path nor a config string")
+    ctx.match("missing.json")
+    ctx.match("Failed to parse as JSON")
+
+
+@skip_if_no_pyyaml
+def test_yaml_mode_error(parser):
+    parser.parser_mode = "yaml"
+    parser.add_argument("--list", type=List[int])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--list=[1, 2"])
+    ctx.match("Failed to parse as YAML: while parsing a flow sequence")
+
+
+def test_custom_mode_error(parser):
+    parser.add_argument("--cfg", action="config")
+    with patch.dict("jsonargparse._loaders_dumpers.loaders"):
+        set_loader("custom", json.loads, (json.JSONDecodeError,))
+        parser.parser_mode = "custom"
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(["--cfg={x"])
+    ctx.match("Failed to parse with parser_mode='custom': Expecting property name")
 
 
 @pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
@@ -235,3 +354,12 @@ def test_toml_print_config(parser):
     parser.add_argument("--group.child2", type=List[float], default=[3.0, 4.5])
     out = get_parse_args_stdout(parser, ["--print_config"])
     assert out.strip() == toml_config.strip()
+
+
+@pytest.mark.skipif(not toml_load_available, reason="tomllib or tomli package is required")
+def test_toml_parse_error(parser):
+    parser.parser_mode = "toml"
+    parser.add_argument("--cfg", action="config")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cfg=a = "])
+    ctx.match("Failed to parse as TOML")

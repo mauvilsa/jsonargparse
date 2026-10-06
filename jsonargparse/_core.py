@@ -45,11 +45,11 @@ from ._jsonnet import ActionJsonnet
 from ._jsonschema import ActionJsonSchema
 from ._link_arguments import ActionLink, ArgumentLinking
 from ._loaders_dumpers import (
-    check_parser_mode,
     check_valid_dump_format,
     dump_using_format,
     get_loader_exceptions,
     load_value,
+    loaders,
 )
 from ._namespace import (
     Namespace,
@@ -70,6 +70,8 @@ from ._optionals import (
     _get_config_read_mode,
     fsspec_support,
     import_fsspec,
+    import_jsonnet,
+    import_pyyaml,
     omegaconf_apply,
     pydantic_model_accepts_extra,
     pydantic_support,
@@ -109,6 +111,7 @@ from ._util import (
     get_argument_group_class,
     get_private_kwargs,
     identity,
+    indent_text,
     load_config_path_context,
     merge_config,
     resolve_config_includes,
@@ -297,7 +300,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         logger: logging.Logger | bool | str | dict = False,
         version: str | None = None,
         print_config: str | None = "--print_%s",
-        parser_mode: str | None = None,
+        parser_mode: str = "json_or_yaml",
         dump_header: list[str] | None = None,
         default_config_files: list[str | os.PathLike] | None = None,
         default_env: bool = False,
@@ -316,8 +319,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             logger: Logger to use or configuration for logger.
             version: Program version which will be printed by the ``--version`` argument.
             print_config: Name for print config argument, ``%s`` is replaced by config dest, set ``None`` to disable.
-            parser_mode: Mode for parsing values: ``json``, ``yaml``, ``jsonnet`` or added via :func:`.set_loader`,
-                ``None`` to use the global setting.
+            parser_mode: Mode for parsing values: ``json_or_yaml``, ``json``, ``yaml``, ``jsonnet`` or added via
+                :func:`.set_loader`.
             dump_header: Header to include as comment when dumping a config object.
             default_config_files: Default config file locations, e.g. ``['~/.config/myapp/*.yaml']``.
             default_env: Set the default value on whether to parse environment variables.
@@ -800,7 +803,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         try:
             cfg_dict = load_value(content, path=path, ext_vars=ext_vars)
         except get_loader_exceptions() as ex:
-            raise TypeError(f"Problems parsing config: {ex}") from ex
+            raise TypeError(f"Problems parsing config:\n{indent_text(str(ex))}") from ex
         if not isinstance(cfg_dict, dict):
             raise TypeError(f"Unexpected config: {content}")
         return self._apply_actions(resolve_config_includes(cfg_dict), prev_cfg=prev_cfg)
@@ -1712,24 +1715,25 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     @property
     def parser_mode(self) -> str:
-        """Mode for parsing config files, ``json``, ``yaml``, ``jsonnet`` or ones added via :func:`.set_loader`.
-
-        When set to ``None``, the ``parser_mode`` setting of :func:`.set_parsing_settings` is used.
+        """Mode for parsing config files, ``json_or_yaml``, ``json``, ``yaml``, ``jsonnet`` or via :func:`.set_loader`.
 
         :getter: Returns the current parser mode.
-        :setter: Sets the parser mode or ``None``.
+        :setter: Sets the parser mode.
 
         Raises:
             ValueError: If an invalid value is given.
         """
-        if self._parser_mode is None:
-            return get_parsing_setting("parser_mode")
         return self._parser_mode
 
     @parser_mode.setter
-    def parser_mode(self, parser_mode: str | None):
-        if parser_mode is not None:
-            check_parser_mode(parser_mode)
+    def parser_mode(self, parser_mode: str):
+        accepted = set(loaders).union({"omegaconf", "omegaconf+"})
+        if parser_mode not in accepted:
+            raise ValueError(f"The only accepted values for parser_mode are {accepted}.")
+        if parser_mode == "jsonnet":
+            import_jsonnet("parser_mode=jsonnet")
+        elif parser_mode == "yaml":
+            import_pyyaml("parser_mode=yaml")
         self._parser_mode = parser_mode
         if self._subcommands_action:
             for subparser in self._subcommands_action._name_parser_map.values():

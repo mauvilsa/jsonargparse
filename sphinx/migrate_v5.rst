@@ -35,14 +35,12 @@ changes:
 - **``pyyaml`` is no longer a required dependency.** Gives no deprecation
   warning. If your code imports ``yaml``, or you want YAML configs, install with
   the ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
-- **``parser_mode`` defaults to ``json``.** Gives no deprecation warning. Config
-  files and command line values are loaded as JSON instead of YAML, so YAML
-  syntax, e.g. ``key: value`` configs, ``--list=[a, b]`` or ``--flag=yes``,
-  fails. To keep YAML, give ``parser_mode="yaml"`` to the parser, which also
-  works in v4, or set it globally with
-  ``set_parsing_settings(parser_mode="yaml")`` or the
-  ``JSONARGPARSE_PARSER_MODE=yaml`` environment variable. The ``jsonnet`` parser
-  mode no longer accepts YAML either.
+- **``parser_mode`` defaults to ``json_or_yaml``.** Gives no deprecation
+  warning. Config files and command line values are parsed as JSON, and only if
+  that fails as YAML, so with the ``yaml`` extra installed YAML keeps working.
+  Without it, YAML syntax, e.g. ``key: value`` configs or ``--list=[a, b]``,
+  fails. For strict JSON, give ``parser_mode="json"`` to the parser, which also
+  works in v4.
 - **``json`` dumps are now indented.** Gives no deprecation warning.
   ``dump(format="json")``, ``save`` and the print config argument produce
   indented JSON instead of a single line. Use ``format="json_compact"`` for the
@@ -77,12 +75,13 @@ changes:
   ``instantiate`` gives a :func:`functools.partial` with the arguments bound, or
   an :func:`operator.methodcaller` for a method that is called with an instance,
   instead of the parsed namespace. Call it, e.g. ``init.fn()`` instead of
-  ``fn(**init.fn)``, or give ``instantiate=False`` to keep the namespace. Warns
-  only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
+  ``fn(**init.fn)``, or in v5 give ``instantiate=False`` to keep the namespace.
+  Warns only with ``JSONARGPARSE_DEPRECATION_WARNINGS=all``.
 - **Abbreviated options are disabled.** ``allow_abbrev`` defaults to ``False``,
   so e.g. ``--max`` no longer matches ``--max_epochs``. Use full option names,
-  or keep abbreviations with ``allow_abbrev=True`` in the parser, or globally
-  with ``set_parsing_settings(allow_abbrev=True)`` or the
+  or keep abbreviations with ``allow_abbrev=True`` in the parser, which also
+  works in v4, or in v5 globally with
+  ``set_parsing_settings(allow_abbrev=True)`` or the
   ``JSONARGPARSE_ALLOW_ABBREV=true`` environment variable.
 
 

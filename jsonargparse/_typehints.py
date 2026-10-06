@@ -723,13 +723,16 @@ class ActionTypeHint(Action):
         if not islist:
             value = [value]
         for num, val in enumerate(value):
+            load_error = None
             try:
                 orig_val = val
                 enable_path = self._enable_path and not isinstance(val, NestedArg)
                 try:
                     val, config_path = parse_value_or_config(val, enable_path=enable_path)
-                except get_loader_exceptions():
+                except get_loader_exceptions() as ex:
                     config_path = None
+                    if isinstance(val, str) and val.strip()[:1] in {"[", "{"}:
+                        load_error = ex  # included in the error, since it seems intended as a list or dict
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 # a single sub-config appended to a list becomes one more list item
                 appended_subconfig = append and config_path is not None and not isinstance(val, list)
@@ -790,7 +793,7 @@ class ActionTypeHint(Action):
                     value[num] = val
                 else:
                     elem = "" if not islist else f" element {num + 1}"
-                    error = indent_text(str(ex))
+                    error = indent_text(str(ex) if load_error is None else f"{ex}\n{load_error}")
                     raise TypeError(f'Parser key "{self.dest}"{elem}:\n{error}') from ex
         return value if islist else value[0]
 

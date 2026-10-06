@@ -501,6 +501,19 @@ def test_list_and_dict_values(parser, tmp_cwd):
     }
 
 
+@skip_if_no_pyyaml
+def test_json_or_yaml_line_numbers(tmp_cwd):
+    parser = ArgumentParser(exit_on_error=False, parser_mode="json_or_yaml")
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int)
+    parser.add_argument("--b", type=int)
+    Path("cfg.yaml").write_text("a: 1\nb: 2\n")
+    assert get_sources(parser.parse_args(["--config=cfg.yaml"])) == {
+        "a": "config file cfg.yaml:1",
+        "b": "config file cfg.yaml:2",
+    }
+
+
 @pytest.mark.skipif(not omegaconf_support, reason="omegaconf package is required")
 def test_omegaconf_interpolation(tmp_cwd):
     parser = ArgumentParser(exit_on_error=False, parser_mode="omegaconf+")
@@ -827,6 +840,15 @@ def test_error_syntax_without_line_number(yaml_parser, tmp_cwd):
     yaml_parser.add_argument("--val", type=int, default=0)
     Path("cfg.yaml").write_text("val: [1, 2\n")
     assert get_error(yaml_parser, ["--config=cfg.yaml"]).endswith("\n  Source: config file cfg.yaml")
+
+
+@skip_if_no_pyyaml
+def test_error_json_config_not_composable_as_yaml(tmp_cwd):
+    parser = ArgumentParser(exit_on_error=False, parser_mode="json_or_yaml")
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--val", type=int, default=0)
+    Path("cfg.json").write_text('{"val": "abc"}\n\t\n')  # valid json, but yaml rejects the tab
+    assert get_error(parser, ["--config=cfg.json"]).endswith("Got value: abc\n  Source: config file cfg.json")
 
 
 @skip_if_no_pyyaml

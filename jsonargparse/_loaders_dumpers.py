@@ -3,6 +3,7 @@
 import inspect
 import os
 import re
+import textwrap
 from argparse import HelpFormatter
 from collections.abc import Callable
 from contextlib import suppress
@@ -15,6 +16,7 @@ from ._optionals import (
     import_toml_dumps,
     import_toml_loads,
     omegaconf_support,
+    pyyaml_available,
     ruamel_support,
 )
 from ._paths import current_local_dir
@@ -30,6 +32,10 @@ __all__ = [
 not_loaded = object()
 yaml_default_loader = None
 yaml_default_dumper = None
+
+
+class LoadError(ValueError):
+    """Raised when a value fails to be parsed, saying which format was attempted."""
 
 
 def load_basic(value):
@@ -118,6 +124,21 @@ def toml_load(value):
     return toml_loads(value)
 
 
+def json_or_yaml_load(value):
+    import json
+
+    try:
+        return json_load(value)
+    except json.JSONDecodeError as ex:
+        if not pyyaml_available:
+            raise
+        json_ex = ex
+    try:
+        return yaml_load(value)
+    except get_loader_exceptions("yaml") as yaml_ex:
+        raise LoadError(f"{parse_failure('as JSON', json_ex)}\n{parse_failure('as YAML', yaml_ex)}") from yaml_ex
+
+
 def jsonnet_load(stream, path="", ext_vars=None):
     from ._jsonnet import ActionJsonnet
 
@@ -130,6 +151,9 @@ def jsonnet_load(stream, path="", ext_vars=None):
     try:
         val = _jsonnet.evaluate_snippet(path, stream, ext_vars=ext_vars, ext_codes=ext_codes)
     except RuntimeError as ex:
+        if str(ex).startswith("STATIC ERROR"):  # not jsonnet syntax, so maybe json or yaml
+            with suppress(*get_loader_exceptions("json_or_yaml")):
+                return json_or_yaml_load(stream)
         raise ValueError(str(ex)) from ex
     return json_load(val)
 
@@ -137,15 +161,26 @@ def jsonnet_load(stream, path="", ext_vars=None):
 loaders: dict[str, Callable] = {
     "yaml": yaml_load,
     "json": json_load,
+    "json_or_yaml": json_or_yaml_load,
     "toml": toml_load,
 }
 loader_exceptions: dict[str, tuple[type[Exception], ...]] = {}
 loader_json_superset: dict[str, bool] = {
     "yaml": True,
     "json": True,
+    "json_or_yaml": True,
     "toml": False,
 }
 loader_params: dict[str, set[str]] = {}
+format_names = {
+    "yaml": "YAML",
+    "json": "JSON",
+    "json_or_yaml": "JSON",
+    "toml": "TOML",
+    "jsonnet": "Jsonnet",
+    "omegaconf": "YAML with OmegaConf",
+    "omegaconf+": "YAML with OmegaConf",
+}
 
 
 def get_load_value_mode() -> str:
@@ -163,23 +198,30 @@ def get_loader_exceptions(mode: str | None = None) -> tuple[type[Exception], ...
     if mode not in loader_exceptions:
         if mode == "yaml":
             loader_exceptions[mode] = (import_pyyaml("get_loader_exceptions").YAMLError,)
-        elif mode == "json":
+        elif mode in {"json", "json_or_yaml"}:
             loader_exceptions[mode] = (__import__("json").JSONDecodeError,)
+            if mode == "json_or_yaml" and pyyaml_available:
+                loader_exceptions[mode] += (import_pyyaml("get_loader_exceptions").YAMLError,)
         elif mode == "toml":
             loader_exceptions[mode] = (import_toml_loads("get_loader_exceptions")[1],)
         elif mode == "jsonnet":
             loader_exceptions[mode] = (ValueError,)
-    return loader_exceptions[mode]
+    return (LoadError,) + loader_exceptions[mode]
 
 
-def check_parser_mode(parser_mode: str) -> None:
-    accepted = set(loaders).union({"omegaconf", "omegaconf+"})
-    if parser_mode not in accepted:
-        raise ValueError(f"The only accepted values for parser_mode are {accepted}.")
-    if parser_mode == "jsonnet":
-        import_jsonnet("parser_mode=jsonnet")
-    elif parser_mode == "yaml":
-        import_pyyaml("parser_mode=yaml")
+def parse_failure(name: str, ex: Exception) -> str:
+    return f"Failed to parse {name}: " + textwrap.indent(str(ex), "  ").lstrip()
+
+
+def load_error_message(mode: str, value: str, ex: Exception) -> str:
+    """Error message for a value that failed to load, saying which format was attempted."""
+    name = f"as {format_names[mode]}" if mode in format_names else f"with parser_mode={mode!r}"
+    message = parse_failure(name, ex)
+    if mode == "json" and pyyaml_available:
+        with suppress(*get_loader_exceptions("yaml")):
+            if isinstance(yaml_load(value), (dict, list)):
+                message += "\nThe value parses as YAML, to accept it use parser_mode='json_or_yaml'"
+    return message
 
 
 def load_list_or_dict(value: str):
@@ -210,7 +252,12 @@ def load_value(value: str, simple_types: bool = False, **kwargs):
         if kwargs and mode in loader_params:
             params = loader_params[mode]
             load_kwargs = {k: v for k, v in kwargs.items() if k in params}
-        loaded_value = loader(value, **load_kwargs)
+        try:
+            loaded_value = loader(value, **load_kwargs)
+        except LoadError:
+            raise
+        except get_loader_exceptions(mode) as ex:
+            raise LoadError(load_error_message(mode, value, ex)) from ex
 
     if not simple_types and isinstance(loaded_value, (int, float, bool, str)):
         loaded_value = value
@@ -333,8 +380,9 @@ def dump_using_format(
     provenance: dict | None = None,
 ) -> str:
     if dump_format == "parser_mode":
-        default_format = "yaml" if parser.parser_mode.startswith("omegaconf") else "json"
-        dump_format = parser.parser_mode if parser.parser_mode in dumpers else default_format
+        mode = parser.parser_mode
+        is_yaml = mode.startswith("omegaconf") or (mode == "json_or_yaml" and pyyaml_available)
+        dump_format = mode if mode in dumpers else ("yaml" if is_yaml else "json")
     if with_comments or provenance is not None:
         if f"{dump_format}_comments" not in dumpers:
             if dump_format == "yaml":
