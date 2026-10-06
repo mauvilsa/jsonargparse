@@ -416,7 +416,11 @@ def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
             positions[child_key] = (position_node.start_mark.line + 1, position_node.start_mark.column)
             collect(value_node, child_key)
 
-    collect(yaml.compose(content, Loader=get_yaml_default_loader()), "")
+    try:
+        node = yaml.compose(content, Loader=get_yaml_default_loader())
+    except yaml.YAMLError:  # e.g. json that yaml does not accept, so positions are unknown
+        return positions
+    collect(node, "")
     return positions
 
 

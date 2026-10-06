@@ -67,7 +67,8 @@ def test_parser_mode_none():
 
 def test_default_parser_mode_json_or_yaml():
     code = "from jsonargparse import ArgumentParser; print(ArgumentParser().parser_mode)"
-    assert subprocess.check_output([sys.executable, "-c", code], text=True) == "json_or_yaml\n"
+    out = subprocess.check_output([sys.executable, "-c", code], text=True)
+    assert out == "json_or_yaml\n"
 
 
 # json_or_yaml parser mode

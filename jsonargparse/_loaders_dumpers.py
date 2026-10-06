@@ -151,8 +151,9 @@ def jsonnet_load(stream, path="", ext_vars=None):
     try:
         val = _jsonnet.evaluate_snippet(path, stream, ext_vars=ext_vars, ext_codes=ext_codes)
     except RuntimeError as ex:
-        with suppress(*get_loader_exceptions("json_or_yaml")):
-            return json_or_yaml_load(stream)
+        if str(ex).startswith("STATIC ERROR"):  # not jsonnet syntax, so maybe json or yaml
+            with suppress(*get_loader_exceptions("json_or_yaml")):
+                return json_or_yaml_load(stream)
         raise ValueError(str(ex)) from ex
     return json_load(val)
 

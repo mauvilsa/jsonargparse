@@ -104,6 +104,15 @@ def test_parser_mode_jsonnet_yaml_fallback(parser):
     assert parser.parse_args(["--cfg=list: [a, b]"]).list == ["a", "b"]
 
 
+def test_parser_mode_jsonnet_runtime_error_no_yaml_fallback(parser):
+    parser.parser_mode = "jsonnet"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--a", type=str)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--cfg={"a": error "boom"}'])
+    ctx.match("Failed to parse as Jsonnet: RUNTIME ERROR: boom")
+
+
 def test_parser_mode_jsonnet_error(parser):
     parser.parser_mode = "jsonnet"
     parser.add_argument("--cfg", action="config")

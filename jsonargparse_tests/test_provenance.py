@@ -843,6 +843,15 @@ def test_error_syntax_without_line_number(yaml_parser, tmp_cwd):
 
 
 @skip_if_no_pyyaml
+def test_error_json_config_not_composable_as_yaml(tmp_cwd):
+    parser = ArgumentParser(exit_on_error=False, parser_mode="json_or_yaml")
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--val", type=int, default=0)
+    Path("cfg.json").write_text('{"val": "abc"}\n\t\n')  # valid json, but yaml rejects the tab
+    assert get_error(parser, ["--config=cfg.json"]).endswith("Got value: abc\n  Source: config file cfg.json")
+
+
+@skip_if_no_pyyaml
 def test_dump_without_provenance(yaml_parser):
     yaml_parser.add_argument("--val", type=int, default=1)
     cfg = yaml_parser.parse_args(["--val=2"])

@@ -151,6 +151,9 @@ Fixed
   declare, failing with ``Unexpected keys`` instead of validating them against
   the ``extra_items`` type (`#1000
   <https://github.com/mauvilsa/jsonargparse/pull/1000>`__).
+- ``jsonnet`` parser mode hiding Jsonnet evaluation errors when the config also
+  parses as YAML, e.g. ``{"a": error "boom"}`` giving ``a`` the string ``error
+  "boom"`` (`#1004 <https://github.com/mauvilsa/jsonargparse/pull/1004>`__).
 
 Changed
 ^^^^^^^
