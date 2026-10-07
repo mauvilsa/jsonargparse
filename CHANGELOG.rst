@@ -1641,8 +1641,8 @@ v4.29.0 (2024-05-24)
 
 Added
 ^^^^^
-- Support for ``TypedDict`` (`#457
-  <https://github.com/mauvilsa/jsonargparse/issues/457>`__).
+- Support for ``TypedDict`` (`#494
+  <https://github.com/mauvilsa/jsonargparse/pull/494>`__).
 - Directly providing a dict with parameters or a single parameter to a subclass
   or callable with class return now implicitly tries using the base class as
   ``class_path`` if not abstract (`#505
@@ -1651,9 +1651,10 @@ Added
 Fixed
 ^^^^^
 - Parameter resolving falling back to assumptions resolver for optional
-  ``Union`` types (`#498 <https://github.com/mauvilsa/jsonargparse/pull/498>`__).
-- Nested parameters failing to parse from command line when value includes
-  space (`#499 <https://github.com/mauvilsa/jsonargparse/pull/499>`__).
+  ``Union`` types (`#498
+  <https://github.com/mauvilsa/jsonargparse/pull/498>`__).
+- Nested parameters failing to parse from command line when value includes space
+  (`#499 <https://github.com/mauvilsa/jsonargparse/pull/499>`__).
 - ``format_usage()`` not working (`#502
   <https://github.com/mauvilsa/jsonargparse/pull/502>`__).
 - Not able to modify init args for callable with class return and default class
@@ -1675,31 +1676,29 @@ v4.28.0 (2024-04-17)
 
 Added
 ^^^^^
-- Support for "-" as value for Path class initialization so that user
-  can ask to use standard input/output instead of file (`#463
-  <https://github.com/mauvilsa/jsonargparse/issues/463>`__).
+- Support for "-" as value for Path class initialization so that user can ask to
+  use standard input/output instead of file (`#475
+  <https://github.com/mauvilsa/jsonargparse/pull/475>`__).
 - Option in ``CLI`` to provide subcommands help when components given in a dict
-  (`litgpt#996 comment
-  <https://github.com/Lightning-AI/litgpt/issues/996#issuecomment-1996201548>`__).
+  (`#485 <https://github.com/mauvilsa/jsonargparse/pull/485>`__).
 - `TypeAliasType` support added (`#480
-  <https://github.com/mauvilsa/jsonargparse/issues/480>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/480>`__).
 
 Fixed
 ^^^^^
 - Account for breaking change in ``argparse.ArgumentParser._parse_optional``
-  affecting python ``>=3.11.9`` and ``>=3.12.3`` (`#484
-  <https://github.com/mauvilsa/jsonargparse/issues/484>`__).
-- ``lazy_instance`` not working for callable classes (`#473 comment
-  <https://github.com/mauvilsa/jsonargparse/issues/481#issuecomment-2030932435>`__).
-- ``Callable`` type with class return and zero arguments not working
-  (`lightning#19574 comment
-  <https://github.com/lightning-AI/pytorch-lightning/issues/19574#issuecomment-2002932565>`__).
+  affecting python ``>=3.11.9`` and ``>=3.12.3`` (`#486
+  <https://github.com/mauvilsa/jsonargparse/pull/486>`__).
+- ``lazy_instance`` not working for callable classes (`#487
+  <https://github.com/mauvilsa/jsonargparse/pull/487>`__).
+- ``Callable`` type with class return and zero arguments not working (`#483
+  <https://github.com/mauvilsa/jsonargparse/pull/483>`__).
 - Attrs and Pydantic 2 dataclasses with non-init fields fail to instantiate
-  (`#480 <https://github.com/mauvilsa/jsonargparse/issues/480>`__).
+  (`#480 <https://github.com/mauvilsa/jsonargparse/pull/480>`__).
 - Default values/factories for Pydantic 2 dataclasses with `Field` initializers
-  are not right (`#480 <https://github.com/mauvilsa/jsonargparse/issues/480>`__).
+  are not right (`#480 <https://github.com/mauvilsa/jsonargparse/pull/480>`__).
 - `Annotated` fields in dataclass-likes (eg FastAPI types) resolve incorrectly
-  (`#480 <https://github.com/mauvilsa/jsonargparse/issues/480>`__).
+  (`#480 <https://github.com/mauvilsa/jsonargparse/pull/480>`__).
 
 
 v4.27.7 (2024-03-21)
@@ -1710,8 +1709,7 @@ Fixed
 - Regression from `14456c2
   <https://github.com/mauvilsa/jsonargparse/commit/14456c21ff7a11ba420f010d2b21bcfdb14977a2>`__
   that prevented ``**kwargs`` parameter resolving when an ``Optional[Callable]``
-  type is used (`#473
-  <https://github.com/mauvilsa/jsonargparse/issues/473>`__).
+  type is used (`#476 <https://github.com/mauvilsa/jsonargparse/pull/476>`__).
 
 
 v4.27.6 (2024-03-15)
@@ -1720,16 +1718,17 @@ v4.27.6 (2024-03-15)
 Fixed
 ^^^^^
 - Failure when getting parameters from a class created with
-  ``class_from_function`` from a ``classmethod`` without parameter types (`#454
-  <https://github.com/mauvilsa/jsonargparse/issues/454>`__).
-- Subsubcommand parse failing when ``default_env=True`` (`#465
-  <https://github.com/mauvilsa/jsonargparse/issues/465>`__).
+  ``class_from_function`` from a ``classmethod`` without parameter types (`#458
+  <https://github.com/mauvilsa/jsonargparse/pull/458>`__).
+- Subsubcommand parse failing when ``default_env=True`` (`#466
+  <https://github.com/mauvilsa/jsonargparse/pull/466>`__).
 - Optional callable that returns a class instance with a lambda default,
-  produces an invalid string default.
-- dataclass single parameter change incorrectly resetting previous values (`#464
-  <https://github.com/mauvilsa/jsonargparse/issues/464>`__).
+  produces an invalid string default (`#469
+  <https://github.com/mauvilsa/jsonargparse/pull/469>`__).
+- dataclass single parameter change incorrectly resetting previous values (`#471
+  <https://github.com/mauvilsa/jsonargparse/pull/471>`__).
 - Add function signature failing when conditionally calling different functions
-  (`#467 <https://github.com/mauvilsa/jsonargparse/issues/467>`__).
+  (`#468 <https://github.com/mauvilsa/jsonargparse/pull/468>`__).
 
 
 v4.27.5 (2024-02-12)
@@ -1737,11 +1736,13 @@ v4.27.5 (2024-02-12)
 
 Fixed
 ^^^^^
-- Importable class instances fail to parse and serialize (`#446
-  <https://github.com/mauvilsa/jsonargparse/issues/446>`__).
-- Failure when trying to pickle instances created with ``lazy_instance``.
+- Importable class instances fail to parse and serialize (`#448
+  <https://github.com/mauvilsa/jsonargparse/pull/448>`__).
+- Failure when trying to pickle instances created with ``lazy_instance`` (`#450
+  <https://github.com/mauvilsa/jsonargparse/pull/450>`__).
 - Confusing error message when creating a link with a target that is already a
-  target of another link.
+  target of another link (`#451
+  <https://github.com/mauvilsa/jsonargparse/pull/451>`__).
 
 
 v4.27.4 (2024-02-01)
@@ -1749,13 +1750,14 @@ v4.27.4 (2024-02-01)
 
 Fixed
 ^^^^^
-- ``argcomplete`` not working when type and choices given (`#442
-  <https://github.com/mauvilsa/jsonargparse/issues/442>`__).
+- ``argcomplete`` not working when type and choices given (`#443
+  <https://github.com/mauvilsa/jsonargparse/pull/443>`__).
 - Confusing error message when ``CLI`` is used with a class that defines a
-  ``subcommand`` method (`#430 comment
-  <https://github.com/mauvilsa/jsonargparse/issues/430#issuecomment-1903974112>`__).
+  ``subcommand`` method (`#444
+  <https://github.com/mauvilsa/jsonargparse/pull/444>`__).
 - ``CLI`` crashes when a method has a ``config`` parameter. Due to redundancy,
-  ``--config`` argument should not be added.
+  ``--config`` argument should not be added (`#445
+  <https://github.com/mauvilsa/jsonargparse/pull/445>`__).
 
 
 v4.27.3 (2024-01-26)
@@ -1763,11 +1765,11 @@ v4.27.3 (2024-01-26)
 
 Fixed
 ^^^^^
-- Argument links not working for target ``init_args`` in an optional list (`#433
-  <https://github.com/mauvilsa/jsonargparse/issues/433>`__).
+- Argument links not working for target ``init_args`` in an optional list (`#434
+  <https://github.com/mauvilsa/jsonargparse/pull/434>`__).
 - Signature parameter default that doesn't match its type failing on
-  instantiation and serialization (`lightning#19289 comment
-  <https://github.com/Lightning-AI/pytorch-lightning/pull/19289#issuecomment-1902618722>`__).
+  instantiation and serialization (`#435
+  <https://github.com/mauvilsa/jsonargparse/pull/435>`__).
 
 
 v4.27.2 (2024-01-18)
@@ -1775,10 +1777,10 @@ v4.27.2 (2024-01-18)
 
 Fixed
 ^^^^^
-- reconplogger's logger level being unexpectedly overwritten.
+- reconplogger's logger level being unexpectedly overwritten (`#431
+  <https://github.com/mauvilsa/jsonargparse/pull/431>`__).
 - Signature parameter default value that doesn't match its type considered
-  invalid (`lightning#19289 comment
-  <https://github.com/Lightning-AI/pytorch-lightning/pull/19289#issuecomment-1894063743>`__).
+  invalid (`#432 <https://github.com/mauvilsa/jsonargparse/pull/432>`__).
 
 
 v4.27.1 (2023-11-23)
@@ -1787,10 +1789,12 @@ v4.27.1 (2023-11-23)
 Fixed
 ^^^^^
 - Confusing error message when adding signature parameters that conflict with
-  existing arguments.
-- Deprecation warnings not printing the correct file and line of code.
-- ``sub_configs=True`` not working for callable types that return a class (`#419
-  <https://github.com/mauvilsa/jsonargparse/issues/419>`__).
+  existing arguments (`#420
+  <https://github.com/mauvilsa/jsonargparse/pull/420>`__).
+- Deprecation warnings not printing the correct file and line of code (`#422
+  <https://github.com/mauvilsa/jsonargparse/pull/422>`__).
+- ``sub_configs=True`` not working for callable types that return a class (`#424
+  <https://github.com/mauvilsa/jsonargparse/pull/424>`__).
 
 
 v4.27.0 (2023-11-02)
@@ -1798,13 +1802,16 @@ v4.27.0 (2023-11-02)
 
 Added
 ^^^^^
-- Support for pydantic's ``SecretStr`` type.
+- Support for pydantic's ``SecretStr`` type (`#416
+  <https://github.com/mauvilsa/jsonargparse/pull/416>`__).
 - New ``SecretStr`` type in ``jsonargparse.typing`` to provide secret support
-  without additional dependency.
+  without additional dependency (`#416
+  <https://github.com/mauvilsa/jsonargparse/pull/416>`__).
 
 Fixed
 ^^^^^
-- Links applied on parse failing when source is a class with a nested callable.
+- Links applied on parse failing when source is a class with a nested callable
+  (`#417 <https://github.com/mauvilsa/jsonargparse/pull/417>`__).
 
 
 v4.26.2 (2023-10-26)
@@ -1813,10 +1820,11 @@ v4.26.2 (2023-10-26)
 Fixed
 ^^^^^
 - Failure to parse subclass added via add_argument and required arg as link
-  target.
-- ``choices`` working incorrectly when ``nargs`` is ``+``, ``*`` or number.
-- Unable link two deep level arguments sharing the same root class (`#297
-  <https://github.com/mauvilsa/jsonargparse/issues/297>`__).
+  target (`#409 <https://github.com/mauvilsa/jsonargparse/pull/409>`__).
+- ``choices`` working incorrectly when ``nargs`` is ``+``, ``*`` or number
+  (`#410 <https://github.com/mauvilsa/jsonargparse/pull/410>`__).
+- Unable link two deep level arguments sharing the same root class (`#412
+  <https://github.com/mauvilsa/jsonargparse/pull/412>`__).
 
 
 v4.26.1 (2023-10-23)
@@ -1824,8 +1832,10 @@ v4.26.1 (2023-10-23)
 
 Fixed
 ^^^^^
-- Failures when choices is a ``dict_keys`` object and value non-hashable.
-- AST resolver not using the correct component globals in some cases.
+- Failures when choices is a ``dict_keys`` object and value non-hashable (`#406
+  <https://github.com/mauvilsa/jsonargparse/pull/406>`__).
+- AST resolver not using the correct component globals in some cases (`#408
+  <https://github.com/mauvilsa/jsonargparse/pull/408>`__).
 
 
 v4.26.0 (2023-10-19)
@@ -1833,25 +1843,26 @@ v4.26.0 (2023-10-19)
 
 Added
 ^^^^^
-- Support for on parse argument links with target subclasses in a list (`#394
-  <https://github.com/mauvilsa/jsonargparse/issues/394>`__, `lightning#18161
-  <https://github.com/Lightning-AI/lightning/issues/18161>`__).
-- AST resolver now supports some local import cases.
+- Support for on parse argument links with target subclasses in a list (`#399
+  <https://github.com/mauvilsa/jsonargparse/pull/399>`__).
+- AST resolver now supports some local import cases (`#403
+  <https://github.com/mauvilsa/jsonargparse/pull/403>`__).
 
 Fixed
 ^^^^^
 - Failures with subcommands and default_config_files when keys are repeated
-  (`#160 <https://github.com/mauvilsa/jsonargparse/issues/160>`__).
-- Key related errors printing messages within single quotes.
-- Choices not validated when value comes from config file (`#404
-  <https://github.com/mauvilsa/jsonargparse/issues/404>`__).
+  (`#397 <https://github.com/mauvilsa/jsonargparse/pull/397>`__).
+- Key related errors printing messages within single quotes (`#401
+  <https://github.com/mauvilsa/jsonargparse/pull/401>`__).
+- Choices not validated when value comes from config file (`#405
+  <https://github.com/mauvilsa/jsonargparse/pull/405>`__).
 
 Changed
 ^^^^^^^
-- Subclass types no longer allow class instance to be set as default
-  (`lightning#18731
-  <https://github.com/Lightning-AI/lightning/issues/18731>`__).
-- ``JSONARGPARSE_DEBUG`` must now have a non-empty value to enable debug mode.
+- Subclass types no longer allow class instance to be set as default (`#400
+  <https://github.com/mauvilsa/jsonargparse/pull/400>`__).
+- ``JSONARGPARSE_DEBUG`` must now have a non-empty value to enable debug mode
+  (`#402 <https://github.com/mauvilsa/jsonargparse/pull/402>`__).
 
 
 v4.25.0 (2023-09-25)
@@ -1859,46 +1870,51 @@ v4.25.0 (2023-09-25)
 
 Added
 ^^^^^
-- Support for user-defined generic types (`#366
-  <https://github.com/mauvilsa/jsonargparse/issues/366>`__).
+- Support for user-defined generic types (`#378
+  <https://github.com/mauvilsa/jsonargparse/pull/378>`__).
 - New function ``extend_base_type`` for easy creation and registering of custom
-  types that extend a base type (`#195
-  <https://github.com/mauvilsa/jsonargparse/issues/195>`__).
+  types that extend a base type (`#380
+  <https://github.com/mauvilsa/jsonargparse/pull/380>`__).
 - Support for ``Annotated`` types either ignoring the metadata or using it for
   validation in case of `pydantic types
-  <https://docs.pydantic.dev/latest/api/types/>`__ (`#384
-  <https://github.com/mauvilsa/jsonargparse/issues/384>`__).
-- Support for Python 3.12.
+  <https://docs.pydantic.dev/latest/api/types/>`__ (`#389
+  <https://github.com/mauvilsa/jsonargparse/pull/389>`__).
+- Support for Python 3.12 (`#376
+  <https://github.com/mauvilsa/jsonargparse/pull/376>`__).
 
 Fixed
 ^^^^^
-- ``--print_config`` fails when parser has shallow links.
+- ``--print_config`` fails when parser has shallow links (`#381
+  <https://github.com/mauvilsa/jsonargparse/pull/381>`__).
 - Argument links unnecessarily applied when ``--print_config`` used and parser
-  has subcommands (`#311 <https://github.com/mauvilsa/jsonargparse/issues/311>`__).
+  has subcommands (`#381
+  <https://github.com/mauvilsa/jsonargparse/pull/381>`__).
 - Parsing fails when data type is a ``Callable`` with multiple input arguments
-  (`#372 <https://github.com/mauvilsa/jsonargparse/issues/372>`__).
-- Postponed annotations not working for dataclasses.
-- Unsupported pop/get default incorrectly sets default as ``None``
-  (`lightning#18616
-  <https://github.com/Lightning-AI/lightning/issues/18616>`__).
-- Pydantic models and dataclasses not working for ``pydantic>=2.0.0`` (`#361
-  <https://github.com/mauvilsa/jsonargparse/issues/361>`__).
+  (`#383 <https://github.com/mauvilsa/jsonargparse/pull/383>`__).
+- Postponed annotations not working for dataclasses (`#386
+  <https://github.com/mauvilsa/jsonargparse/pull/386>`__).
+- Unsupported pop/get default incorrectly sets default as ``None`` (`#390
+  <https://github.com/mauvilsa/jsonargparse/pull/390>`__).
+- Pydantic models and dataclasses not working for ``pydantic>=2.0.0`` (`#389
+  <https://github.com/mauvilsa/jsonargparse/pull/389>`__).
 
 Changed
 ^^^^^^^
-- Provide a more informative error message to remind user to select
-  and provide a subcommand when a subcommand is required but not
-  given (`#371 <https://github.com/mauvilsa/jsonargparse/pull/371>`__).
+- Provide a more informative error message to remind user to select and provide
+  a subcommand when a subcommand is required but not given (`#371
+  <https://github.com/mauvilsa/jsonargparse/pull/371>`__).
 - Now when an argument link ``compute_fn`` fails, the error message will say
-  this (`#311 <https://github.com/mauvilsa/jsonargparse/issues/311>`__).
+  this (`#381 <https://github.com/mauvilsa/jsonargparse/pull/381>`__).
 - ``add_subclass_arguments`` now shows a better error message when an empty
   tuple is given (`lightning#18546
   <https://github.com/Lightning-AI/lightning/issues/18546>`__).
-- Document the requirements for creating and using custom types (`#195
-  <https://github.com/mauvilsa/jsonargparse/issues/195>`__).
+- Document the requirements for creating and using custom types (`#380
+  <https://github.com/mauvilsa/jsonargparse/pull/380>`__).
 - Parameters with default and without type, now get as type
-  ``Union[type(default), Any]``.
-- Removed support for python 3.6.
+  ``Union[type(default), Any]`` (`#390
+  <https://github.com/mauvilsa/jsonargparse/pull/390>`__).
+- Removed support for python 3.6 (`#373
+  <https://github.com/mauvilsa/jsonargparse/pull/373>`__).
 
 
 v4.24.1 (2023-09-06)
@@ -1906,18 +1922,18 @@ v4.24.1 (2023-09-06)
 
 Fixed
 ^^^^^
-- Remove private ``linked_targets`` parameter from API Reference (`#317
-  <https://github.com/mauvilsa/jsonargparse/issues/317>`__).
-- Dataclass nested in list not setting defaults (`#357
-  <https://github.com/mauvilsa/jsonargparse/issues/357>`__).
+- Remove private ``linked_targets`` parameter from API Reference (`#365
+  <https://github.com/mauvilsa/jsonargparse/pull/365>`__).
+- Dataclass nested in list not setting defaults (`#363
+  <https://github.com/mauvilsa/jsonargparse/pull/363>`__).
 - AST resolver ``kwargs.pop()`` with conflicting defaults not setting the
-  conditional default (`#362
-  <https://github.com/mauvilsa/jsonargparse/issues/362>`__).
-- ``ActionJsonSchema`` not setting correctly defaults when schema uses
-  ``oneOf``.
+  conditional default (`#364
+  <https://github.com/mauvilsa/jsonargparse/pull/364>`__).
+- ``ActionJsonSchema`` not setting correctly defaults when schema uses ``oneOf``
+  (`#369 <https://github.com/mauvilsa/jsonargparse/pull/369>`__).
 - Recommended ``print_config`` steps not working when ``default_config_files``
-  used due to the config file initially being empty (`#367
-  <https://github.com/mauvilsa/jsonargparse/issues/367>`__).
+  used due to the config file initially being empty (`#370
+  <https://github.com/mauvilsa/jsonargparse/pull/370>`__).
 
 
 v4.24.0 (2023-08-23)
@@ -1925,23 +1941,28 @@ v4.24.0 (2023-08-23)
 
 Added
 ^^^^^
-- New option in ``dump`` for including link targets.
-- Support ``decimal.Decimal`` as a type.
+- New option in ``dump`` for including link targets (`#351
+  <https://github.com/mauvilsa/jsonargparse/pull/351>`__).
+- Support ``decimal.Decimal`` as a type (`#352
+  <https://github.com/mauvilsa/jsonargparse/pull/352>`__).
 - ``CLI`` now accepts components as a dict, such that the keys define names of
-  the subcommands (`#334
-  <https://github.com/mauvilsa/jsonargparse/issues/334>`__).
-- Resolve types that use ``TYPE_CHECKING`` blocks (`#337 comment
-  <https://github.com/mauvilsa/jsonargparse/issues/337#issuecomment-1665055459>`__).
-- Improved resolving of nested forward references in types.
-- The ``ext_vars`` for an ``ActionJsonnet`` argument can now have a default.
+  the subcommands (`#346
+  <https://github.com/mauvilsa/jsonargparse/pull/346>`__).
+- Resolve types that use ``TYPE_CHECKING`` blocks (`#344
+  <https://github.com/mauvilsa/jsonargparse/pull/344>`__).
+- Improved resolving of nested forward references in types (`#344
+  <https://github.com/mauvilsa/jsonargparse/pull/344>`__).
+- The ``ext_vars`` for an ``ActionJsonnet`` argument can now have a default
+  (`#358 <https://github.com/mauvilsa/jsonargparse/pull/358>`__).
 - New method ``ArgumentParser.add_instantiator`` that enables developers to
-  implement custom instantiation (`#170
-  <https://github.com/mauvilsa/jsonargparse/issues/170>`__).
+  implement custom instantiation (`#326
+  <https://github.com/mauvilsa/jsonargparse/pull/326>`__).
 
 Deprecated
 ^^^^^^^^^^
 - ``ActionJsonnetExtVars`` is deprecated and will be removed in v5.0.0. Instead
-  use ``type=dict``.
+  use ``type=dict`` (`#358
+  <https://github.com/mauvilsa/jsonargparse/pull/358>`__).
 
 
 v4.23.1 (2023-08-04)
@@ -1950,13 +1971,13 @@ v4.23.1 (2023-08-04)
 Fixed
 ^^^^^
 - ``save`` fails when a link target is a required parameter nested in a subclass
-  (`#332 <https://github.com/mauvilsa/jsonargparse/issues/332>`__).
-- ``typing.Literal`` types skipped when typing_extensions is installed
-  (`lightning#18184 <https://github.com/Lightning-AI/lightning/pull/18184>`__).
+  (`#333 <https://github.com/mauvilsa/jsonargparse/pull/333>`__).
+- ``typing.Literal`` types skipped when typing_extensions is installed (`#338
+  <https://github.com/mauvilsa/jsonargparse/pull/338>`__).
 - ``class_from_function`` failing when called on the same function multiple
-  times (`lightning#18180
-  <https://github.com/Lightning-AI/lightning/issues/18180>`__).
-- Prevent showing errors when running ``ps`` on windows.
+  times (`#339 <https://github.com/mauvilsa/jsonargparse/pull/339>`__).
+- Prevent showing errors when running ``ps`` on windows (`#340
+  <https://github.com/mauvilsa/jsonargparse/pull/340>`__).
 
 
 v4.23.0 (2023-07-27)
@@ -1965,21 +1986,23 @@ v4.23.0 (2023-07-27)
 Added
 ^^^^^
 - Classes created with ``class_from_function`` now have a valid import path
-  (`#309 <https://github.com/mauvilsa/jsonargparse/issues/309>`__).
+  (`#315 <https://github.com/mauvilsa/jsonargparse/pull/315>`__).
 
 Fixed
 ^^^^^
-- Invalid environment variable names when ``env_prefix`` is derived from
-  a ``prog`` containing dashes.
-- Pylance unable to resolve types from ``jsonargparse.typing``.
-- Inconsistent ``ARG:`` and missing ``ENV:`` in help when ``default_env=True``.
+- Invalid environment variable names when ``env_prefix`` is derived from a
+  ``prog`` containing dashes (`#323
+  <https://github.com/mauvilsa/jsonargparse/pull/323>`__).
+- Pylance unable to resolve types from ``jsonargparse.typing`` (`#325
+  <https://github.com/mauvilsa/jsonargparse/pull/325>`__).
+- Inconsistent ``ARG:`` and missing ``ENV:`` in help when ``default_env=True``
+  (`#327 <https://github.com/mauvilsa/jsonargparse/pull/327>`__).
 - ``typing.Literal`` types skipped on python 3.9 when typing_extensions is
-  installed (`lightning#18125 comment
-  <https://github.com/Lightning-AI/lightning/pull/18125#issuecomment-1644797707>`__).
+  installed (`#328 <https://github.com/mauvilsa/jsonargparse/pull/328>`__).
 
 Changed
 ^^^^^^^
-- Subcommands main parser help changes:
+- Subcommands main parser help changes (`#324 <https://github.com/mauvilsa/jsonargparse/pull/324>`__):
     - Set notation of subcommands choices now only included in usage.
     - In subcommands section, now each subcommand is always shown separately,
       including the name, and if available aliases and help.
@@ -1992,14 +2015,18 @@ v4.22.1 (2023-07-07)
 Fixed
 ^^^^^
 - Parameter without default and type optional incorrectly added as a required
-  argument (`#312 <https://github.com/mauvilsa/jsonargparse/issues/312>`__).
-- ``class_from_function`` not failing when return annotation is missing.
+  argument (`#313 <https://github.com/mauvilsa/jsonargparse/pull/313>`__).
+- ``class_from_function`` not failing when return annotation is missing (`#314
+  <https://github.com/mauvilsa/jsonargparse/pull/314>`__).
 - ``add_subclass_arguments`` with single base class and no docstring,
-  incorrectly shown as tuple in help.
+  incorrectly shown as tuple in help (`#318
+  <https://github.com/mauvilsa/jsonargparse/pull/318>`__).
 - When all arguments of a group are derived from links, a config load option is
-  incorrectly shown in help.
+  incorrectly shown in help (`#318
+  <https://github.com/mauvilsa/jsonargparse/pull/318>`__).
 - Printing help fails for parsers that have a link whose target is an argument
-  lacking type and help.
+  lacking type and help (`#319
+  <https://github.com/mauvilsa/jsonargparse/pull/319>`__).
 
 
 v4.22.0 (2023-06-23)
@@ -2007,35 +2034,40 @@ v4.22.0 (2023-06-23)
 
 Added
 ^^^^^
-- Parameters that receive a path now also accept ``os.PathLike`` type.
+- Parameters that receive a path now also accept ``os.PathLike`` type (`#298
+  <https://github.com/mauvilsa/jsonargparse/pull/298>`__).
 - ``class_from_function`` now supports ``func_return`` parameter to specify the
-  return type of the function (`lightning-flash#1564 comment
-  <https://github.com/Lightning-Universe/lightning-flash/pull/1564#discussion_r1218147330>`__).
+  return type of the function (`#307
+  <https://github.com/mauvilsa/jsonargparse/pull/307>`__).
 - Support for postponed evaluation of annotations PEP `563
   <https://peps.python.org/pep-0563/>`__ ``from __future__ import annotations``
-  (`#120 <https://github.com/mauvilsa/jsonargparse/issues/120>`__).
+  (`#294 <https://github.com/mauvilsa/jsonargparse/pull/294>`__).
 - Backport types in python<=3.9 to support PEP `585
   <https://peps.python.org/pep-0585/>`__ and `604
   <https://peps.python.org/pep-0604/>`__ for postponed evaluation of annotations
-  (`#120 <https://github.com/mauvilsa/jsonargparse/issues/120>`__).
-- Support for ``range`` as a type.
+  (`#294 <https://github.com/mauvilsa/jsonargparse/pull/294>`__).
+- Support for ``range`` as a type (`#310
+  <https://github.com/mauvilsa/jsonargparse/pull/310>`__).
 
 Fixed
 ^^^^^
-- Regular expressions vulnerable to polynomial runtime due to backtracking.
-- ``attrs`` fields with factory default causes parse to fail (`#299
-  <https://github.com/mauvilsa/jsonargparse/issues/299>`__).
+- Regular expressions vulnerable to polynomial runtime due to backtracking
+  (`#300 <https://github.com/mauvilsa/jsonargparse/pull/300>`__).
+- ``attrs`` fields with factory default causes parse to fail (`#303
+  <https://github.com/mauvilsa/jsonargparse/pull/303>`__).
 - Stop subclass dive if you hit bad import (`#304
-  <https://github.com/mauvilsa/jsonargparse/issues/304>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/304>`__).
 
 Changed
 ^^^^^^^
-- Added ``_`` prefix to module names to be explicit about non-public API.
+- Added ``_`` prefix to module names to be explicit about non-public API (`#302
+  <https://github.com/mauvilsa/jsonargparse/pull/302>`__).
 
 Deprecated
 ^^^^^^^^^^
 - Importing from original non-public module paths (without ``_`` prefix) now
-  gives a ``DeprecationWarning``. From v5.0.0 these imports will fail.
+  gives a ``DeprecationWarning``. From v5.0.0 these imports will fail (`#302
+  <https://github.com/mauvilsa/jsonargparse/pull/302>`__).
 
 
 v4.21.2 (2023-06-08)
@@ -2043,10 +2075,10 @@ v4.21.2 (2023-06-08)
 
 Fixed
 ^^^^^
-- Failure for nested argument in optional dataclass type (`#289
-  <https://github.com/mauvilsa/jsonargparse/issues/289>`__).
+- Failure for nested argument in optional dataclass type (`#290
+  <https://github.com/mauvilsa/jsonargparse/pull/290>`__).
 - Argument links applied on parse silently ignored when the source validation
-  fails.
+  fails (`#296 <https://github.com/mauvilsa/jsonargparse/pull/296>`__).
 
 
 v4.21.1 (2023-05-09)
@@ -2055,9 +2087,10 @@ v4.21.1 (2023-05-09)
 Fixed
 ^^^^^
 - AST resolver not working for dict used in a method when the dict is created
-  using the curly braces syntax.
-- Failure on multiple deep arguments linked on instantiation (`#275
-  <https://github.com/mauvilsa/jsonargparse/issues/275>`__).
+  using the curly braces syntax (`#273
+  <https://github.com/mauvilsa/jsonargparse/pull/273>`__).
+- Failure on multiple deep arguments linked on instantiation (`#282
+  <https://github.com/mauvilsa/jsonargparse/pull/282>`__).
 
 
 v4.21.0 (2023-04-21)
@@ -2065,45 +2098,50 @@ v4.21.0 (2023-04-21)
 
 Added
 ^^^^^
-- Support for dataclasses nested in a type (`#243
-  <https://github.com/mauvilsa/jsonargparse/issues/243>`__).
+- Support for dataclasses nested in a type (`#267
+  <https://github.com/mauvilsa/jsonargparse/pull/267>`__).
 - Support for pydantic `models <https://docs.pydantic.dev/usage/models/>`__ and
   attrs `define <https://www.attrs.org/en/stable/examples.html>`__ similar to
-  dataclasses.
+  dataclasses (`#266 <https://github.com/mauvilsa/jsonargparse/pull/266>`__).
 - Support for `pydantic types
-  <https://docs.pydantic.dev/usage/types/#pydantic-types>`__.
+  <https://docs.pydantic.dev/usage/types/#pydantic-types>`__ (`#268
+  <https://github.com/mauvilsa/jsonargparse/pull/268>`__).
 - Backport type stubs in python<=3.9 to support PEP `585
   <https://peps.python.org/pep-0585/>`__ and `604
-  <https://peps.python.org/pep-0604/>`__ syntax.
+  <https://peps.python.org/pep-0604/>`__ syntax (`#269
+  <https://github.com/mauvilsa/jsonargparse/pull/269>`__).
 
 Fixed
 ^^^^^
 - `str` parameter in subclass incorrectly parsed as dict with implicit `null`
-  value (`#262 <https://github.com/mauvilsa/jsonargparse/issues/262>`__).
-- Wrong error indentation for subclass in union (`lightning#17254
-  <https://github.com/Lightning-AI/lightning/issues/17254>`__).
-- ``dataclass`` from pydantic not working (`#100 comment
-  <https://github.com/mauvilsa/jsonargparse/issues/100#issuecomment-1408413796>`__).
-- ``add_dataclass_arguments`` not forwarding ``sub_configs`` parameter.
-- Failure to instantiate nested class group without arguments (`lightning#17263
-  <https://github.com/Lightning-AI/lightning/issues/17263>`__).
+  value (`#263 <https://github.com/mauvilsa/jsonargparse/pull/263>`__).
+- Wrong error indentation for subclass in union (`#264
+  <https://github.com/mauvilsa/jsonargparse/pull/264>`__).
+- ``dataclass`` from pydantic not working (`#266
+  <https://github.com/mauvilsa/jsonargparse/pull/266>`__).
+- ``add_dataclass_arguments`` not forwarding ``sub_configs`` parameter (`#267
+  <https://github.com/mauvilsa/jsonargparse/pull/267>`__).
+- Failure to instantiate nested class group without arguments (`#272
+  <https://github.com/mauvilsa/jsonargparse/pull/272>`__).
 
 Changed
 ^^^^^^^
-- Switched from ``setup.cfg`` to ``pyproject.toml`` for configuration.
-- Removed ``build_sphinx`` from ``setup.py`` and documented how to build.
-- Include enum members in error when invalid value is given
-  (`lightning#17247
-  <https://github.com/Lightning-AI/lightning/issues/17247>`__).
+- Switched from ``setup.cfg`` to ``pyproject.toml`` for configuration (`#260
+  <https://github.com/mauvilsa/jsonargparse/pull/260>`__).
+- Removed ``build_sphinx`` from ``setup.py`` and documented how to build (`#260
+  <https://github.com/mauvilsa/jsonargparse/pull/260>`__).
+- Include enum members in error when invalid value is given (`#261
+  <https://github.com/mauvilsa/jsonargparse/pull/261>`__).
 - The ``signatures`` extras now installs the ``typing-extensions`` package on
-  python<=3.9.
-- ``CLI`` now when given a class without methods, the class instance is
-  returned.
+  python<=3.9 (`#269 <https://github.com/mauvilsa/jsonargparse/pull/269>`__).
+- ``CLI`` now when given a class without methods, the class instance is returned
+  (`#270 <https://github.com/mauvilsa/jsonargparse/pull/270>`__).
 
 Deprecated
 ^^^^^^^^^^
 - Support for python 3.6 will be removed in v5.0.0. New features added in
-  >=4.21.0 releases are not guaranteed to work in python 3.6.
+  >=4.21.0 releases are not guaranteed to work in python 3.6 (`#266
+  <https://github.com/mauvilsa/jsonargparse/pull/266>`__).
 
 
 v4.20.1 (2023-03-30)
@@ -2111,16 +2149,15 @@ v4.20.1 (2023-03-30)
 
 Fixed
 ^^^^^
-- Dump not working for partial callable with return instance
-  (`lightning#15340 comment
-  <https://github.com/Lightning-AI/lightning/issues/15340#issuecomment-1439203008>`__).
+- Dump not working for partial callable with return instance (`#246
+  <https://github.com/mauvilsa/jsonargparse/pull/246>`__).
 - Allow ``discard_init_args_on_class_path_change`` to handle more nested
-  contexts (`#247 <https://github.com/mauvilsa/jsonargparse/issues/247>`__).
-- Failure with dataclasses that have field with ``init=False`` (`#252
-  <https://github.com/mauvilsa/jsonargparse/issues/252>`__).
+  contexts (`#248 <https://github.com/mauvilsa/jsonargparse/pull/248>`__).
+- Failure with dataclasses that have field with ``init=False`` (`#253
+  <https://github.com/mauvilsa/jsonargparse/pull/253>`__).
 - Failure when setting individual dict key values for subclasses and
-  ``.init_args.`` is included in argument (`#251
-  <https://github.com/mauvilsa/jsonargparse/issues/251>`__).
+  ``.init_args.`` is included in argument (`#254
+  <https://github.com/mauvilsa/jsonargparse/pull/254>`__).
 
 
 v4.20.0 (2023-02-20)
@@ -2128,36 +2165,40 @@ v4.20.0 (2023-02-20)
 
 Added
 ^^^^^
-- ``CLI`` support for callable class instances (`#238
-  <https://github.com/mauvilsa/jsonargparse/issues/238>`__).
-- ``add_dataclass_arguments`` now supports the ``fail_untyped`` parameter (`#241
-  <https://github.com/mauvilsa/jsonargparse/issues/241>`__).
+- ``CLI`` support for callable class instances (`#239
+  <https://github.com/mauvilsa/jsonargparse/pull/239>`__).
+- ``add_dataclass_arguments`` now supports the ``fail_untyped`` parameter (`#242
+  <https://github.com/mauvilsa/jsonargparse/pull/242>`__).
 
 Fixed
 ^^^^^
 - ``add_subcommands`` fails when parser has required argument and default config
-  available (`#232 <https://github.com/mauvilsa/jsonargparse/issues/232>`__).
+  available (`#233 <https://github.com/mauvilsa/jsonargparse/pull/233>`__).
 
 Changed
 ^^^^^^^
 - When parsing fails, now ``argparse.ArgumentError`` is raised instead of
-  ``ParserError``.
-- Improved error messages when ``fail_untyped=True`` (`#137
-  <https://github.com/mauvilsa/jsonargparse/issues/137>`__).
-- ``CLI`` no longer uses the module's docstring as main parser description (`#245
-  <https://github.com/mauvilsa/jsonargparse/issues/245>`__).
+  ``ParserError`` (`#231
+  <https://github.com/mauvilsa/jsonargparse/pull/231>`__).
+- Improved error messages when ``fail_untyped=True`` (`#240
+  <https://github.com/mauvilsa/jsonargparse/pull/240>`__).
+- ``CLI`` no longer uses the module's docstring as main parser description
+  (`#245 <https://github.com/mauvilsa/jsonargparse/issues/245>`__).
 
 Deprecated
 ^^^^^^^^^^
 - Path ``skip_check`` parameter is deprecated and will be removed in v5.0.0.
-  Instead use as type ``str`` or ``os.PathLike``.
+  Instead use as type ``str`` or ``os.PathLike`` (`#228
+  <https://github.com/mauvilsa/jsonargparse/pull/228>`__).
 - Modifying Path attributes is deprecated. In v5.0.0 they will be properties
-  without a setter and two renamed: ``rel_path -> relative`` and
-  ``abs_path -> absolute``.
+  without a setter and two renamed: ``rel_path -> relative`` and ``abs_path ->
+  absolute`` (`#228 <https://github.com/mauvilsa/jsonargparse/pull/228>`__).
 - ``ActionPathList`` is deprecated and will be removed in v5.0.0. Instead use as
-  type ``List[<path_type>]`` with ``enable_path=True``.
+  type ``List[<path_type>]`` with ``enable_path=True`` (`#228
+  <https://github.com/mauvilsa/jsonargparse/pull/228>`__).
 - ``ArgumentParser.error_handler`` is deprecated and will be removed in v5.0.0.
-  Instead use the new exit_on_error parameter from argparse.
+  Instead use the new exit_on_error parameter from argparse (`#231
+  <https://github.com/mauvilsa/jsonargparse/pull/231>`__).
 
 
 v4.19.0 (2022-12-27)
@@ -2165,50 +2206,69 @@ v4.19.0 (2022-12-27)
 
 Added
 ^^^^^
-- ``CLI`` now supports the ``fail_untyped`` and ``parser_class`` parameters.
+- ``CLI`` now supports the ``fail_untyped`` and ``parser_class`` parameters
+  (`#210 <https://github.com/mauvilsa/jsonargparse/pull/210>`__, `#225
+  <https://github.com/mauvilsa/jsonargparse/pull/225>`__).
 - ``bytes`` and ``bytearray`` registered on first use and decodes from standard
-  Base64.
+  Base64 (`#215 <https://github.com/mauvilsa/jsonargparse/pull/215>`__).
 - Support getting the import path of variables in modules, e.g.
-  ``random.randint``.
+  ``random.randint`` (`#216
+  <https://github.com/mauvilsa/jsonargparse/pull/216>`__).
 - Specific error messages for when an argument link uses as source the target of
-  a previous parse link and vice versa (`#208
-  <https://github.com/mauvilsa/jsonargparse/issues/208>`__).
-- New resolver that identifies parameter types from stub files ``*.pyi``.
-- Support for relative paths within remote fsspec/url config files.
+  a previous parse link and vice versa (`#218
+  <https://github.com/mauvilsa/jsonargparse/pull/218>`__).
+- New resolver that identifies parameter types from stub files ``*.pyi`` (`#220
+  <https://github.com/mauvilsa/jsonargparse/pull/220>`__).
+- Support for relative paths within remote fsspec/url config files (`#222
+  <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
 - New context manager methods for path types: ``open`` and
-  ``relative_path_context``.
-- Path types now implement the ``os.PathLike`` protocol.
+  ``relative_path_context`` (`#222
+  <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
+- Path types now implement the ``os.PathLike`` protocol (`#222
+  <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
 - New path mode ``cc`` to not require the parent directory to exists but that it
-  can be created.
-- The parent parser class is now used to create internal parsers (`#171
-  <https://github.com/mauvilsa/jsonargparse/issues/171>`__).
+  can be created (`#222 <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
+- The parent parser class is now used to create internal parsers (`#225
+  <https://github.com/mauvilsa/jsonargparse/pull/225>`__).
 
 Fixed
 ^^^^^
-- List type with empty list default causes failure (`PyLaia#48
-  <https://github.com/jpuigcerver/PyLaia/issues/48>`__).
-- Pure dataclass instance default being considered as a subclass type.
-- Discard ``init_args`` after ``class_path`` change causes error (`#205
-  <https://github.com/mauvilsa/jsonargparse/issues/205>`__).
-- ``fail_untyped=False`` not propagated to subclass ``--*.help`` actions.
-- Issues reported by CodeQL.
-- Incorrect value when ``Path`` is cast to ``str`` and ``rel_path`` was changed.
-- Argument links with target a subclass mixed with other types not working (`#208
-  <https://github.com/mauvilsa/jsonargparse/issues/208>`__).
-- Failures when using a sequence type and the default is a tuple.
-- Parent parser logger not being forwarded to subcommand and internal parsers.
+- List type with empty list default causes failure (`#211
+  <https://github.com/mauvilsa/jsonargparse/pull/211>`__).
+- Pure dataclass instance default being considered as a subclass type (`#214
+  <https://github.com/mauvilsa/jsonargparse/pull/214>`__).
+- Discard ``init_args`` after ``class_path`` change causes error (`#212
+  <https://github.com/mauvilsa/jsonargparse/pull/212>`__).
+- ``fail_untyped=False`` not propagated to subclass ``--*.help`` actions (`#220
+  <https://github.com/mauvilsa/jsonargparse/pull/220>`__).
+- Issues reported by CodeQL (`#217
+  <https://github.com/mauvilsa/jsonargparse/pull/217>`__).
+- Incorrect value when ``Path`` is cast to ``str`` and ``rel_path`` was changed
+  (`#222 <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
+- Argument links with target a subclass mixed with other types not working
+  (`#223 <https://github.com/mauvilsa/jsonargparse/pull/223>`__).
+- Failures when using a sequence type and the default is a tuple (`#224
+  <https://github.com/mauvilsa/jsonargparse/pull/224>`__).
+- Parent parser logger not being forwarded to subcommand and internal parsers
+  (`#225 <https://github.com/mauvilsa/jsonargparse/pull/225>`__).
 
 Changed
 ^^^^^^^
 - Clearer error message for when an argument link targets a subclass and the
-  target key does not have ``init_args`` (`lightning#16032
-  <https://github.com/Lightning-AI/lightning/issues/16032>`__).
-- The ``signatures`` extras now installs the ``typeshed-client`` package.
-- ``validators`` package is no longer a dependency.
-- Path types are no longer a subclass of ``str``.
-- Parsing steps logging now at debug level.
-- Discarding ``init_args`` warning changed to log at debug level.
-- Removed replacing list instead of append warning.
+  target key does not have ``init_args`` (`#218
+  <https://github.com/mauvilsa/jsonargparse/pull/218>`__).
+- The ``signatures`` extras now installs the ``typeshed-client`` package (`#220
+  <https://github.com/mauvilsa/jsonargparse/pull/220>`__).
+- ``validators`` package is no longer a dependency (`#222
+  <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
+- Path types are no longer a subclass of ``str`` (`#222
+  <https://github.com/mauvilsa/jsonargparse/pull/222>`__).
+- Parsing steps logging now at debug level (`#225
+  <https://github.com/mauvilsa/jsonargparse/pull/225>`__).
+- Discarding ``init_args`` warning changed to log at debug level (`#225
+  <https://github.com/mauvilsa/jsonargparse/pull/225>`__).
+- Removed replacing list instead of append warning (`#225
+  <https://github.com/mauvilsa/jsonargparse/pull/225>`__).
 
 
 v4.18.0 (2022-11-29)
@@ -2217,7 +2277,7 @@ v4.18.0 (2022-11-29)
 Added
 ^^^^^
 - AST resolving for defaults with a class instance or a lambda that returns a
-  class instance.
+  class instance (`#198 <https://github.com/mauvilsa/jsonargparse/pull/198>`__).
 
 Fixed
 ^^^^^
@@ -2225,18 +2285,17 @@ Fixed
 - ``parse_string`` raises ``AttributeError`` when given a simple string.
 - Added missing ``return_parser`` deprecation warning when ``CLI`` has
   subcommands.
-- Parsing fails for registered types that can't be cast to boolean (`#196
-  <https://github.com/mauvilsa/jsonargparse/issues/196>`__).
+- Parsing fails for registered types that can't be cast to boolean (`#197
+  <https://github.com/mauvilsa/jsonargparse/pull/197>`__).
 - List append not working for ``default_config_files`` set in a subcommand
-  subparser (`lightning#15256
-  <https://github.com/Lightning-AI/lightning/issues/15256>`__).
+  subparser (`#194 <https://github.com/mauvilsa/jsonargparse/pull/194>`__).
 - Specifying only the class name through command line not working for
-  ``Callable`` with class return type.
+  ``Callable`` with class return type (`#198
+  <https://github.com/mauvilsa/jsonargparse/pull/198>`__).
 - ``init_args`` not discarded for nested subclasses provided through command
-  line (`lightning#15796
-  <https://github.com/Lightning-AI/lightning/issues/15796>`__).
+  line (`#199 <https://github.com/mauvilsa/jsonargparse/pull/199>`__).
 - Unable to set/get values in ``Namespace`` when key is the same as a method
-  name.
+  name (`#201 <https://github.com/mauvilsa/jsonargparse/pull/201>`__).
 
 Changed
 ^^^^^^^
@@ -2254,19 +2313,19 @@ v4.17.0 (2022-11-11)
 Added
 ^^^^^
 - AST resolver now ignores if/elif/else code when condition is a global constant
-  (`#187 <https://github.com/mauvilsa/jsonargparse/issues/187>`__).
-- AST resolver support for conditional ``**kwargs`` use in multiple calls (`#187
-  comment
-  <https://github.com/mauvilsa/jsonargparse/issues/187#issuecomment-1295141338>`__).
+  (`#190 <https://github.com/mauvilsa/jsonargparse/pull/190>`__).
+- AST resolver support for conditional ``**kwargs`` use in multiple calls (`#190
+  <https://github.com/mauvilsa/jsonargparse/pull/190>`__).
 
 Fixed
 ^^^^^
 - ``str`` type fails to parse value when pyyaml raises ``ConstructorError``
   (`#189 <https://github.com/mauvilsa/jsonargparse/issues/189>`__).
-- ``Namespace`` clone should not deepcopy leaf values (`#187
-  <https://github.com/mauvilsa/jsonargparse/issues/187>`__).
+- ``Namespace`` clone should not deepcopy leaf values (`#190
+  <https://github.com/mauvilsa/jsonargparse/pull/190>`__).
 - ``_ActionHelpClassPath`` actions fail to instantiate when base class uses new
-  union type syntax.
+  union type syntax (`#191
+  <https://github.com/mauvilsa/jsonargparse/pull/191>`__).
 
 Changed
 ^^^^^^^
@@ -2281,12 +2340,15 @@ v4.16.0 (2022-10-28)
 Added
 ^^^^^
 - Type ``Any`` now parses and instantiates classes when given dict that follows
-  subclass specification (`lightning#15115
-  <https://github.com/Lightning-AI/lightning/issues/15115>`__).
-- Signature methods now accept skipping a number of positionals.
+  subclass specification (`#182
+  <https://github.com/mauvilsa/jsonargparse/pull/182>`__).
+- Signature methods now accept skipping a number of positionals (`#186
+  <https://github.com/mauvilsa/jsonargparse/pull/186>`__).
 - Callable type hint with return type a class can now be given a subclass which
-  produces a callable that returns an instance of the class.
-- Support for Python 3.11.
+  produces a callable that returns an instance of the class (`#186
+  <https://github.com/mauvilsa/jsonargparse/pull/186>`__).
+- Support for Python 3.11 (`#184
+  <https://github.com/mauvilsa/jsonargparse/pull/184>`__).
 
 Fixed
 ^^^^^
@@ -2317,12 +2379,15 @@ Fixed
   variable names to not be shown in subcommand help (`lightning#12790
   <https://github.com/Lightning-AI/lightning/issues/12790>`__).
 - Cannot override Callable ``init_args`` without passing the ``class_path``
-  (`#174 <https://github.com/mauvilsa/jsonargparse/issues/174>`__).
+  (`#175 <https://github.com/mauvilsa/jsonargparse/pull/175>`__, `#176
+  <https://github.com/mauvilsa/jsonargparse/pull/176>`__).
 - Positional subclass type incorrectly adds subclass help as positional.
-- Order of types in ``Union`` not being considered.
-- ``str`` type fails to parse values of the form ``^\w+: *``.
+- Order of types in ``Union`` not being considered (`#177
+  <https://github.com/mauvilsa/jsonargparse/pull/177>`__).
+- ``str`` type fails to parse values of the form ``^\w+: *`` (`#177
+  <https://github.com/mauvilsa/jsonargparse/pull/177>`__).
 - ``parse_object`` does not consider given namespace for previous ``class_path``
-  values.
+  values (`#177 <https://github.com/mauvilsa/jsonargparse/pull/177>`__).
 
 
 v4.15.1 (2022-10-07)
@@ -2331,9 +2396,11 @@ v4.15.1 (2022-10-07)
 Fixed
 ^^^^^
 - ``compute_fn`` of an argument link applied on parse not given subclass default
-  ``init_args`` when loading from config.
+  ``init_args`` when loading from config (`#166
+  <https://github.com/mauvilsa/jsonargparse/pull/166>`__).
 - Subclass ``--*.help`` option not available when type is a ``Union`` mixed with
-  not subclass types.
+  not subclass types (`#167
+  <https://github.com/mauvilsa/jsonargparse/pull/167>`__).
 - Override of ``dict_kwargs`` items from command line not working.
 - Multiple subclass ``init_args`` given through command line not being
   considered (`lightning#15007
@@ -2348,27 +2415,34 @@ v4.15.0 (2022-09-27)
 
 Added
 ^^^^^
-- ``set_defaults`` now supports subclass by name and normalization of import path.
+- ``set_defaults`` now supports subclass by name and normalization of import
+  path (`#162 <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
 
 Fixed
 ^^^^^
-- Loop variable capture bug pointed out by lgtm.com.
-- Issue with discard ``init_args`` when ``class_path`` not a subclass.
+- Loop variable capture bug pointed out by lgtm.com (`#164
+  <https://github.com/mauvilsa/jsonargparse/pull/164>`__).
+- Issue with discard ``init_args`` when ``class_path`` not a subclass (`#162
+  <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
 - No error shown when arguments given to class group that does not accept
-  arguments (`#161 comment
-  <https://github.com/mauvilsa/jsonargparse/issues/161#issuecomment-1256973565>`__).
-- Incorrect replacement of ``**kwargs`` when ``*args`` present in parameter resolver.
+  arguments (`#162 <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
+- Incorrect replacement of ``**kwargs`` when ``*args`` present in parameter
+  resolver (`#162 <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
 - Override of ``class_path`` not discarding ``init_args`` when loading from
-  config file.
+  config file (`#162 <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
 - Invalid values given to the ``compute_fn`` of a argument link applied on parse
-  without showing an understandable error message.
+  without showing an understandable error message (`#162
+  <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
 
 Changed
 ^^^^^^^
 - Now ``UUID`` and ``timedelta`` types are registered on first use to avoid
-  possibly unused imports.
-- json/yaml dump sort now defaults to false for all python implementations.
-- ``add_class_arguments`` will not add config load option if no added arguments.
+  possibly unused imports (`#163
+  <https://github.com/mauvilsa/jsonargparse/pull/163>`__).
+- json/yaml dump sort now defaults to false for all python implementations
+  (`#163 <https://github.com/mauvilsa/jsonargparse/pull/163>`__).
+- ``add_class_arguments`` will not add config load option if no added arguments
+  (`#162 <https://github.com/mauvilsa/jsonargparse/pull/162>`__).
 
 
 v4.14.1 (2022-09-26)
@@ -2444,8 +2518,8 @@ Added
 
 Fixed
 ^^^^^
-- Mypy fails to find jsonargparse type hints (`#151
-  <https://github.com/mauvilsa/jsonargparse/issues/151>`__).
+- Mypy fails to find jsonargparse type hints (`#152
+  <https://github.com/mauvilsa/jsonargparse/pull/152>`__).
 - For multiple ``dict_kwargs`` command line arguments only the last one was
   kept.
 - Positional ``list`` with subtype causing crash (`#154
@@ -2468,8 +2542,8 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/issues/144>`__).
 - Instantiation links with source an entire subclass incorrectly showed
   ``--*.help``.
-- Ensure AST-based parameter resolver handles value-less type annotations without error
-  (`#148 <https://github.com/mauvilsa/jsonargparse/issues/148>`__).
+- Ensure AST-based parameter resolver handles value-less type annotations
+  without error (`#148 <https://github.com/mauvilsa/jsonargparse/pull/148>`__).
 - Discarding ``init_args`` on ``class_path`` change not working for ``Union``
   with mixed non-subclass types.
 - In some cases debug logs not shown even though ``JSONARGPARSE_DEBUG`` set.
@@ -2503,7 +2577,8 @@ Fixed
 
 Deprecated
 ^^^^^^^^^^
-- ``env_prefix`` property will no longer accept ``None`` in v5.0.0.
+- ``env_prefix`` property will no longer accept ``None`` in v5.0.0 (`#145
+  <https://github.com/mauvilsa/jsonargparse/pull/145>`__).
 
 
 v4.10.2 (2022-07-01)
@@ -2592,8 +2667,8 @@ v4.8.0 (2022-05-26)
 
 Added
 ^^^^^
-- Support append to lists both from command line and config file (`#85
-  <https://github.com/mauvilsa/jsonargparse/issues/85>`__).
+- Support append to lists both from command line and config file (`#138
+  <https://github.com/mauvilsa/jsonargparse/pull/138>`__).
 - New ``register_unresolvable_import_paths`` function to allow getting the
   import paths of objects that don't have a proper ``__module__`` attribute
   (`lightning#13092
@@ -2660,8 +2735,8 @@ v4.6.0 (2022-04-11)
 
 Added
 ^^^^^
-- Dump option to exclude entries whose value is the same as the default (`#91
-  <https://github.com/mauvilsa/jsonargparse/issues/91>`__).
+- Dump option to exclude entries whose value is the same as the default (`#132
+  <https://github.com/mauvilsa/jsonargparse/pull/132>`__).
 - Support specifying ``class_path`` only by name for known subclasses (`#84
   <https://github.com/mauvilsa/jsonargparse/issues/84>`__).
 - ``add_argument`` with subclass type now also adds ``--*.help`` option.
@@ -2890,19 +2965,24 @@ Added
   conversions.
 - python 3.10 is now supported and included in circleci tests.
 - Readme changed to use doctest and tests are run in github workflow.
-- More type hints throughout the code base.
-- New unit tests to increase coverage.
-- Include dataclasses extras require for tox testing.
+- More type hints throughout the code base (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
+- New unit tests to increase coverage (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
+- Include dataclasses extras require for tox testing (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
 - Automatic namespace to dict for link based on target or compute_fn type.
 
 Fixed
 ^^^^^
-- Fixed issues related to conflict namespace base.
-- Fixed the parsing of ``Dict[int, str]`` type (`#87
-  <https://github.com/mauvilsa/jsonargparse/issues/87>`__).
-- Fixed inner relative config with for commented tests for parse_env and CLI.
+- Fixed issues related to conflict namespace base (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
+- Fixed the parsing of ``Dict[int, str]`` type (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
+- Fixed inner relative config with for commented tests for parse_env and CLI
+  (`#97 <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
 - init_args from default_config_files not discarded when class_path is
-  overridden.
+  overridden (`#97 <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
 - Problems with class instantiation for parameters of final classes.
 - dump/save not removing linked target keys.
 - lazy_instance not working with torch.nn.Module (`#96
@@ -2910,11 +2990,14 @@ Fixed
 
 Changed
 ^^^^^^^
-- General refactoring and cleanup related to new Namespace class.
+- General refactoring and cleanup related to new Namespace class (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
 - Parsed values from ActionJsonSchema/ActionJsonnet are now dict instead of
-  Namespace.
-- Removed support for python 3.5 and related code cleanup.
-- contextvars package is now an install require for python 3.6.
+  Namespace (`#97 <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
+- Removed support for python 3.5 and related code cleanup (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
+- contextvars package is now an install require for python 3.6 (`#97
+  <https://github.com/mauvilsa/jsonargparse/pull/97>`__).
 - Deprecations are now shown as JsonargparseDeprecationWarning.
 
 Deprecated
@@ -2946,8 +3029,8 @@ v3.19.3 (2021-09-16)
 
 Fixed
 ^^^^^
-- add_subclass_arguments with required=False failing on instantiation (`#83
-  <https://github.com/mauvilsa/jsonargparse/issues/83>`__).
+- add_subclass_arguments with required=False failing on instantiation (`#90
+  <https://github.com/mauvilsa/jsonargparse/pull/90>`__).
 
 
 v3.19.2 (2021-09-09)
@@ -2994,8 +3077,10 @@ v3.18.0 (2021-08-18)
 
 Added
 ^^^^^
-- Support for parsing ``Mapping`` and ``MutableMapping`` types.
-- Support for parsing ``frozenset``, ``MutableSequence`` and ``MutableSet`` types.
+- Support for parsing ``Mapping`` and ``MutableMapping`` types (`#66
+  <https://github.com/mauvilsa/jsonargparse/pull/66>`__).
+- Support for parsing ``frozenset``, ``MutableSequence`` and ``MutableSet``
+  types (`#71 <https://github.com/mauvilsa/jsonargparse/pull/71>`__).
 
 Fixed
 ^^^^^
@@ -3005,8 +3090,8 @@ Fixed
 - Optional subcommands fail with a KeyError (`#68
   <https://github.com/mauvilsa/jsonargparse/issues/68>`__).
 - Conflicting namespace for subclass key in subcommand.
-- ``instantiate_classes`` not working for subcommand keys (`#70
-  <https://github.com/mauvilsa/jsonargparse/issues/70>`__).
+- ``instantiate_classes`` not working for subcommand keys (`#78
+  <https://github.com/mauvilsa/jsonargparse/pull/78>`__).
 - Proper file not found message from _ActionConfigLoad (`#64
   <https://github.com/mauvilsa/jsonargparse/issues/64>`__).
 - ``parse_path`` not parsing inner config files.
@@ -3140,9 +3225,12 @@ v3.12.0 (2021-05-13)
 
 Added
 ^^^^^
-- Path support for fsspec file systems using the 's' mode flag.
-- set_config_read_mode function that can enable fsspec for config reading.
-- Option for print_config and dump with help as yaml comments.
+- Path support for fsspec file systems using the 's' mode flag (`#55
+  <https://github.com/mauvilsa/jsonargparse/pull/55>`__).
+- set_config_read_mode function that can enable fsspec for config reading (`#55
+  <https://github.com/mauvilsa/jsonargparse/pull/55>`__).
+- Option for print_config and dump with help as yaml comments (`#56
+  <https://github.com/mauvilsa/jsonargparse/pull/56>`__).
 
 Changed
 ^^^^^^^
@@ -3150,7 +3238,8 @@ Changed
 
 Deprecated
 ^^^^^^^^^^
-- set_url_support functionality now should be done with set_config_read_mode.
+- set_url_support functionality now should be done with set_config_read_mode
+  (`#55 <https://github.com/mauvilsa/jsonargparse/pull/55>`__).
 
 
 v3.11.2 (2021-05-03)
@@ -3245,21 +3334,25 @@ Added
 - Dataclasses are now supported as a type.
 - New predefined type Path_dc.
 - Experimental Callable type support.
-- Signature methods with nested key can be made required.
+- Signature methods with nested key can be made required (`#51
+  <https://github.com/mauvilsa/jsonargparse/pull/51>`__).
 - Support for Literal types.
 - New option in signatures methods to not fail for untyped required.
 
 Changed
 ^^^^^^^
 - Generation of yaml now uses internally pyyaml's safe_dump.
-- New cleaner implementation for type hints support.
-- Moved deprecated code to a module specific for this.
+- New cleaner implementation for type hints support (`#51
+  <https://github.com/mauvilsa/jsonargparse/pull/51>`__).
+- Moved deprecated code to a module specific for this (`#51
+  <https://github.com/mauvilsa/jsonargparse/pull/51>`__).
 - Path types repr now has format Path(rel[, cwd=dir]).
 - instantiate_subclasses now always returns a dict.
 
 Deprecated
 ^^^^^^^^^^
-- ActionEnum should no longer be used, instead enums are given as type.
+- ActionEnum should no longer be used, instead enums are given as type (`#51
+  <https://github.com/mauvilsa/jsonargparse/pull/51>`__).
 
 Fixed
 ^^^^^
