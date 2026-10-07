@@ -5,6 +5,7 @@ import copy
 import operator
 import re
 import uuid
+from collections import Counter, abc
 from enum import Enum
 from types import ModuleType
 from typing import Any, Callable, Optional, Tuple, Union
@@ -81,7 +82,7 @@ subcommand_description = (
     "present in the config, or can be given as a command line argument."
 )
 
-basic_type_schemas = {
+basic_type_schemas: dict[Any, dict] = {
     bool: {"type": "boolean"},
     int: {"type": "integer"},
     float: {"type": "number"},
@@ -90,6 +91,12 @@ basic_type_schemas = {
     dict: {"type": "object"},
     list: {"type": "array"},
     ModuleType: {"type": "string"},
+    # in json, objects are not hashable (arrays become tuples), and numbers, booleans and null are not sized
+    abc.Hashable: {
+        "type": ["null", "boolean", "integer", "number", "string", "array"],
+        "items": {"not": {"type": "object"}},
+    },
+    abc.Sized: {"type": ["string", "array", "object"]},
 }
 
 uuid_schema = {
@@ -517,6 +524,8 @@ class ParserJsonschema:
             return self.items_schema(typehint, action, key, {"type": "array"})
         if root in mapping_origin_types:
             args: tuple = getattr(typehint, "__args__", ())
+            if root is Counter and args:
+                args = (args[0], int)  # a Counter is subscripted only with the type of its keys
             if len(args) == 2:
                 values_schema = self.typehint_schema(args[1], action, key)
                 if values_schema:

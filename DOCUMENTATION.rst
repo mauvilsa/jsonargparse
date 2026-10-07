@@ -453,18 +453,20 @@ Types can be nested with any complexity. Notes about the support:
 - Fully supported types are: ``str``/``LiteralString``, ``bool`` (see
   :ref:`boolean-arguments`), ``int``, ``float``, ``Decimal``, ``complex``,
   ``bytes``/``bytearray`` (Base64 encoding), ``range``, ``list`` (see
-  :ref:`list-append`), ``Deque``, ``Iterable``, ``Sequence``,
-  ``MutableSequence``, ``Collection``, ``Container``, ``Reversible``,
-  ``Any``/``object``, ``Union``/``Optional`` (see :ref:`union-types`),
-  ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``, ``Fraction``,
-  ``re.Pattern`` (str only), ``datetime``/``date``/``time`` (ISO 8601),
-  ``timedelta``, the restricted types of :ref:`restricted-numbers` and
+  :ref:`list-append`), ``Deque``, ``Iterable``, ``Iterator`` (a list until
+  instantiation), ``Sequence``, ``MutableSequence``, ``Collection``,
+  ``Container``, ``Reversible``, ``Hashable`` (lists become tuples),
+  ``Sized`` (no subclass specs, for an object use a link, see
+  :ref:`argument-linking`), ``Any``/``object``, ``Union``/``Optional`` (see
+  :ref:`union-types`), ``Literal``, ``Type``, ``Enum``, ``PathLike``, ``UUID``,
+  ``Fraction``, ``re.Pattern`` (str only), ``datetime``/``date``/``time`` (ISO
+  8601), ``timedelta``, the restricted types of :ref:`restricted-numbers` and
   :ref:`restricted-strings`, and the path and URL types of :ref:`parsing-paths`
   and :ref:`parsing-urls`.
 
 - ``dict``, ``Mapping``, ``MutableMapping``, ``MappingProxyType``,
-  ``OrderedDict`` and ``TypedDict`` are supported, but only with ``str`` or
-  ``int`` keys, see :ref:`dict-items`.
+  ``OrderedDict``, ``Counter``, ``ChainMap`` and ``TypedDict`` are supported,
+  but only with ``str`` or ``int`` keys, see :ref:`dict-items`.
 
 - ``TypedDict`` accepts ``Required`` and ``NotRequired`` to mark single keys as
   required or optional, ``ReadOnly`` (PEP `705
@@ -537,7 +539,8 @@ Types can be nested with any complexity. Notes about the support:
   and pydantic's ``BaseModel`` are supported, even when nested. By default they
   don't accept subclasses, see :ref:`subclasses-disabled` and
   :ref:`enable-disable-subclasses`. A dataclass that also inherits from a normal
-  class does accept subclasses by default. A pydantic model configured with
+  class does accept subclasses by default. Fields typed ``Final[X]`` or
+  ``InitVar[X]`` are parsed as ``X``. A pydantic model configured with
   ``extra`` as ``"allow"`` or ``"ignore"`` accepts keys not in its signature,
   which are forwarded to the model on instantiation.
 
@@ -689,7 +692,8 @@ part of it can't be validated when:
 - It failed to resolve, e.g. a missing import or a typo in a postponed
   annotation.
 - It is not a type that jsonargparse supports, e.g. a ``TypeVar`` that stands
-  for nothing, see :ref:`generic-types`.
+  for nothing (see :ref:`generic-types`) or a variadic tuple like
+  ``tuple[int, *Ts]``.
 
 The debug log gives the reason for each part, see :ref:`logging`. A parameter
 without a type annotation is shown as ``Untyped`` and behaves the same, see

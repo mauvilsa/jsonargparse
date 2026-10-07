@@ -8,17 +8,21 @@ import sys
 import uuid
 from abc import ABC, abstractmethod
 from calendar import Calendar
+from collections import Counter
 from enum import Enum
 from importlib.util import find_spec
 from typing import (
     Any,
     Callable,
     Dict,
+    Hashable,
+    Iterator,
     List,
     Literal,
     NamedTuple,
     Optional,
     Set,
+    Sized,
     Tuple,
     Type,
     TypedDict,
@@ -351,6 +355,25 @@ def test_container_types(parser):
     }
     assert properties["tuple_ellipsis"] == {"type": "array", "items": {"type": "integer"}}
     assert properties["set"] == {"type": "array", "uniqueItems": True}
+
+
+def test_counter_and_iterator_types(parser):
+    parser.add_argument("--counter", type=Counter[str])
+    parser.add_argument("--iterator", type=Iterator[int])
+    properties = get_schema(parser)["properties"]
+    assert properties["counter"] == {"type": "object", "additionalProperties": {"type": "integer"}}
+    assert properties["iterator"] == {"type": "array", "items": {"type": "integer"}}
+
+
+def test_hashable_and_sized_types(parser):
+    parser.add_argument("--hashable", type=Hashable)
+    parser.add_argument("--sized", type=Sized)
+    properties = get_schema(parser)["properties"]
+    assert properties["hashable"] == {
+        "type": ["null", "boolean", "integer", "number", "string", "array"],
+        "items": {"not": {"type": "object"}},
+    }
+    assert properties["sized"] == {"type": ["string", "array", "object"]}
 
 
 GrowingVar = TypeVar("GrowingVar")

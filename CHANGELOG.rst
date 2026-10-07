@@ -61,6 +61,10 @@ Added
   <https://github.com/mauvilsa/jsonargparse/pull/1002>`__).
 - New ``json_or_yaml`` parser mode, which parses as JSON and if that fails as
   YAML (`#1004 <https://github.com/mauvilsa/jsonargparse/pull/1004>`__).
+- Support for ``Counter``, ``ChainMap`` and ``Iterator`` (a list until
+  instantiation) types, and for fields of dataclass-like types typed
+  ``Final[X]`` or ``InitVar[X]``, parsed as ``X``. Previously these were not
+  validated (`#1007 <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
 
 Fixed
 ^^^^^
@@ -154,6 +158,20 @@ Fixed
 - ``jsonnet`` parser mode hiding Jsonnet evaluation errors when the config also
   parses as YAML, e.g. ``{"a": error "boom"}`` giving ``a`` the string ``error
   "boom"`` (`#1004 <https://github.com/mauvilsa/jsonargparse/pull/1004>`__).
+- Variadic tuples, e.g. ``tuple[int, *Ts]`` or ``tuple[int, *tuple[str, ...]]``,
+  and ``*args: *Ts`` failing with ``The code should never reach here`` (python
+  3.10: ``Unable to add parameter``) or validated as having a fixed number of
+  elements. Now they are unvalidated (`#1007
+  <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
+- Signature parameters with an unhashable type, e.g. ``P.args`` of a
+  ``ParamSpec``, failing with ``unhashable type`` instead of being unvalidated
+  (`#1007 <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
+- A subclass spec with ``init_args`` whose ``class_path`` is the import path of
+  an instance of the type giving that instance and silently ignoring the
+  ``init_args`` (`#1007
+  <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
+- ``dict`` arguments with a ``Counter`` default parsed as an empty ``Counter``
+  (`#1007 <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
 
 Changed
 ^^^^^^^
@@ -238,6 +256,11 @@ Changed
   without the ``yaml`` extra makes YAML configs fail. Load errors now say which
   format failed to parse (`#1004
   <https://github.com/mauvilsa/jsonargparse/pull/1004>`__).
+- ``Hashable`` and ``Sized`` are now value types instead of subclass types: a
+  value is accepted if it is hashable or has a length, the config schema
+  describes the accepted values, a list given for ``Hashable`` becomes a tuple,
+  and ``Sized`` rejects subclass specs (`#1007
+  <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
 
 Removed
 ^^^^^^^
