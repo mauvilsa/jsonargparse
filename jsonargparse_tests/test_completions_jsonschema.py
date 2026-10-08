@@ -359,21 +359,37 @@ def test_container_types(parser):
 
 def test_counter_and_iterator_types(parser):
     parser.add_argument("--counter", type=Counter[str])
+    parser.add_argument("--counter_any", type=Counter)
     parser.add_argument("--iterator", type=Iterator[int])
     properties = get_schema(parser)["properties"]
     assert properties["counter"] == {"type": "object", "additionalProperties": {"type": "integer"}}
+    assert properties["counter_any"] == {"type": "object", "additionalProperties": {"type": "integer"}}
     assert properties["iterator"] == {"type": "array", "items": {"type": "integer"}}
 
 
 def test_hashable_and_sized_types(parser):
     parser.add_argument("--hashable", type=Hashable)
     parser.add_argument("--sized", type=Sized)
-    properties = get_schema(parser)["properties"]
-    assert properties["hashable"] == {
+    schema = get_schema(parser)
+    assert schema["properties"]["hashable"] == {"$ref": "#/$defs/Hashable"}
+    assert schema["$defs"]["Hashable"] == {
         "type": ["null", "boolean", "integer", "number", "string", "array"],
-        "items": {"not": {"type": "object"}},
+        "items": {"$ref": "#/$defs/Hashable"},
     }
-    assert properties["sized"] == {"type": ["string", "array", "object"]}
+    assert schema["properties"]["sized"] == {
+        "type": ["string", "array", "object"],
+        "not": {"type": "object", "required": ["class_path"]},
+    }
+
+
+@skip_if_jsonschema_unavailable
+def test_hashable_and_sized_schemas_reject_unparsable(parser):
+    parser.add_argument("--hashable", type=Hashable)
+    parser.add_argument("--sized", type=Sized)
+    schema = get_schema(parser)
+    validate(schema, {"hashable": [[1, "a"]], "sized": {"a": 1}})
+    assert iter_errors(schema, {"hashable": [[{"a": 1}]]})
+    assert iter_errors(schema, {"sized": {"class_path": "calendar.Calendar"}})
 
 
 GrowingVar = TypeVar("GrowingVar")

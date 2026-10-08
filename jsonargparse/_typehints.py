@@ -1714,7 +1714,8 @@ def adapt_typehints(
         if not serialize and not instantiate_classes:
             validate_subclass_spec_in_mapping(val, typehint, subtypehints, sub_add_kwargs, logger)
         if isinstance(val, NestedArg):
-            if isinstance(prev_val, dict):
+            if isinstance(prev_val, abc.Mapping):
+                prev_val = dict(prev_val)
                 if isinstance(val.key, str) and "." in val.key:
                     key_prefix, key_suffix = val.key.split(".", 1)
                     val = {**prev_val, key_prefix: {key_suffix: val.val}}
@@ -1726,8 +1727,9 @@ def adapt_typehints(
             val = dict(val)
         elif not isinstance(val, dict):
             raise_unexpected_value(f"Expected a {typehint_origin}", val)
-        if typehint_origin is Counter and subtypehints is not None:
-            subtypehints = (subtypehints[0], int)  # a Counter is subscripted only with the type of its keys
+        if typehint_origin is Counter:
+            # a Counter is subscripted only with the type of its keys, and its values are always int
+            subtypehints = (subtypehints[0] if subtypehints else Any, int)
         if subtypehints is not None:
             if subtypehints[0] == int:
                 cast = str if serialize else int
@@ -1746,7 +1748,7 @@ def adapt_typehints(
                 else:
                     kwargs = adapt_kwargs.copy()
                 if kwargs.get("prev_val"):
-                    if isinstance(kwargs["prev_val"], dict):
+                    if isinstance(kwargs["prev_val"], abc.Mapping):
                         kwargs["prev_val"] = kwargs["prev_val"].get(k)
                     else:
                         kwargs["prev_val"] = None

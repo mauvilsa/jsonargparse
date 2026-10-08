@@ -2891,6 +2891,15 @@ def test_counter(parser):
     assert parser.dump(cfg, format="json_compact") == '{"counter":{"a":2,"b":1}}'
 
 
+def test_counter_unsubscripted(parser):
+    parser.add_argument("--counter", type=Counter)
+    cfg = parser.parse_args(['--counter={"a":2}'])
+    assert cfg.counter == Counter({"a": 2})
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--counter={"a":"x"}'])
+    ctx.match("Expected a <class 'int'>")
+
+
 def test_chain_map(parser):
     default = ChainMap({"a": 1}, {"b": 2})
     parser.add_argument("--chain", type=ChainMap[str, int], default=default)
@@ -2902,6 +2911,13 @@ def test_chain_map(parser):
         parser.parse_args(['--chain={"c":"x"}'])
     ctx.match("Expected a <class 'int'>")
     assert parser.dump(cfg, format="json_compact") == '{"chain":{"c":3}}'
+
+
+def test_chain_map_nested_arg_keeps_other_keys(parser):
+    parser.add_argument("--chain", type=ChainMap[str, int])
+    cfg = parser.parse_args(['--chain={"a":1, "b":2}', "--chain.a=3"])
+    assert isinstance(cfg.chain, ChainMap)
+    assert cfg.chain == {"a": 3, "b": 2}
 
 
 @pytest.mark.parametrize("iterator", [Iterator, abc.Iterator], ids=str)
