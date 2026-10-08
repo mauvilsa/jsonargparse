@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Final, List
 from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import Namespace, set_parsing_settings
+from jsonargparse import ArgumentError, Namespace, set_parsing_settings
 from jsonargparse._optionals import attrs_support
 from jsonargparse_tests.conftest import get_parser_help, skip_if_docstring_parser_unavailable
 
@@ -61,6 +61,10 @@ if attrs_support:
     class AttrsAttrDocsSub(AttrsAttrDocsBase):
         p2: int = 2
         """p2 description"""
+
+    @attrs.define
+    class AttrsFinal:
+        p1: Final[int] = 1
 
 
 @pytest.mark.skipif(not attrs_support, reason="attrs package is required")
@@ -129,3 +133,10 @@ class TestAttrs:
         assert cfg.d == Namespace(why=1, p2="x")
         init = parser.instantiate(cfg)
         assert init.d._p2 == "x"
+
+    def test_final_field(self, parser):
+        parser.add_class_arguments(AttrsFinal, "d")
+        assert "(type: int, default: 1)" in get_parser_help(parser)
+        assert parser.parse_args(["--d.p1=2"]).d == Namespace(p1=2)
+        with pytest.raises(ArgumentError):
+            parser.parse_args(["--d.p1=x"])

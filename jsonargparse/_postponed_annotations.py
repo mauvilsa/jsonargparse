@@ -9,6 +9,7 @@ from importlib import import_module
 from types import UnionType
 from typing import Any, ForwardRef, TypeAlias, TypeVar, Union, get_type_hints
 
+from ._common import get_generic_origin
 from ._typehints import literal_types, mapping_origin_types, sequence_origin_types, tuple_set_origin_types
 from ._util import get_typehint_origin
 
@@ -403,8 +404,9 @@ def evaluate_postponed_annotations(params, component, parent, logger):
     if not (params and any(type_requires_eval(p.annotation) for p in params)):
         return
     try:
-        if is_generated_dataclass_init(component, parent):
-            types = get_types(parent, logger)
+        dataclass = get_generic_origin(parent)  # a subscripted generic dataclass is resolved from its origin
+        if is_generated_dataclass_init(component, dataclass):
+            types = get_types(dataclass, logger)
         else:
             types = get_types(component, logger, parent)
     except Exception as ex:

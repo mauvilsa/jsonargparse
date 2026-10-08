@@ -85,7 +85,7 @@ def _recreate_branches(data, skip_keys):
     new_data = data
     if isinstance(data, (Namespace, dict)) and not isinstance(data, OrderedDict):
         new_data = type(data)()
-        for key, val in getattr(data, "__dict__", data).items():
+        for key, val in (data.__dict__ if isinstance(data, Namespace) else data).items():
             if skip_keys is None or key not in skip_keys:
                 new_data[key] = _recreate_branches(val, skip_keys)
         provenance = getattr(data, provenance_key, None)

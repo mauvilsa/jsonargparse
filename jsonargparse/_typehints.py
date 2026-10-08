@@ -8,7 +8,7 @@ import re
 import sys
 import typing
 from argparse import ArgumentError
-from collections import OrderedDict, abc, defaultdict, deque
+from collections import ChainMap, Counter, OrderedDict, abc, defaultdict, deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
@@ -29,6 +29,7 @@ from typing import (
     ForwardRef,
     FrozenSet,
     Iterable,
+    Iterator,
     List,
     Literal,
     Mapping,
@@ -68,6 +69,7 @@ from ._common import (
     is_instance,
     is_subclass,
     is_subclasses_disabled,
+    is_unpack_typehint,
     lenient_check,
     nested_links,
     parent_parser,
@@ -165,12 +167,14 @@ root_types = {
     Collection,
     Container,
     Iterable,
+    Iterator,
     Reversible,
     Sequence,
     MutableSequence,
     abc.Collection,
     abc.Container,
     abc.Iterable,
+    abc.Iterator,
     abc.Reversible,
     abc.Sequence,
     abc.MutableSequence,
@@ -191,6 +195,10 @@ root_types = {
     abc.Mapping,
     abc.MutableMapping,
     OrderedDict,
+    Counter,
+    ChainMap,
+    abc.Hashable,
+    abc.Sized,
     Callable,
     abc.Callable,
     ModuleType,
@@ -199,7 +207,6 @@ root_types = {
     NotRequired,
     ReadOnly,
     Required,
-    Unpack,
 }
 
 leaf_types = {
@@ -221,12 +228,14 @@ sequence_origin_types = {
     Collection,
     Container,
     Iterable,
+    Iterator,
     Reversible,
     Sequence,
     MutableSequence,
     abc.Collection,
     abc.Container,
     abc.Iterable,
+    abc.Iterator,
     abc.Reversible,
     abc.Sequence,
     abc.MutableSequence,
@@ -240,9 +249,12 @@ mapping_origin_types = {
     abc.Mapping,
     abc.MutableMapping,
     OrderedDict,
+    Counter,
+    ChainMap,
 }
 sequence_or_mapping_origin_types = sequence_origin_types.union(mapping_origin_types)
 callable_origin_types = {Callable, abc.Callable}
+structural_types = {abc.Hashable, abc.Sized}
 
 literal_types = {Literal}
 _capture_typing_extension_shadows("Literal", root_types, literal_types)
@@ -266,9 +278,6 @@ _capture_typing_extension_shadows("_TypedDictMeta", typed_dict_meta_types)
 
 no_extra_items_types = {NoExtraItems}
 _capture_typing_extension_shadows("NoExtraItems", no_extra_items_types)
-
-unpack_types = {Unpack}
-_capture_typing_extension_shadows("Unpack", unpack_types)
 
 subclass_arg_parser: ContextVar = ContextVar("subclass_arg_parser")
 allow_default_instance: ContextVar = ContextVar("allow_default_instance", default=False)
@@ -443,6 +452,10 @@ class ActionTypeHint(Action):
         A recursive alias is considered supported where it references itself, since it is supported if the rest is.
         Aliases are compared without what they are subscripted with, since this can change in each reference.
         """
+        if not isinstance(typehint, abc.Hashable) or is_unpacked(typehint):
+            # unhashable, e.g. a ParamSpecArgs, can't be looked up in the sets of supported types, and
+            # unpacked, e.g. *Ts, only makes sense in a variadic tuple, which is not supported either
+            return False
         if get_registered_type(typehint) is not None:
             return True
         if is_alias_type(typehint):
@@ -1062,6 +1075,11 @@ class UntypedType(UnvalidatedType):
 Untyped = UntypedType()
 
 
+def is_unpacked(typehint) -> bool:
+    """Whether a type hint is unpacked, e.g. ``*Ts``, ``Unpack[Ts]`` or ``*tuple[int, ...]``."""
+    return is_unpack_typehint(typehint) or getattr(typehint, "__unpacked__", False) is True
+
+
 def accepts_any_value(typehint) -> bool:
     """Whether a type hint accepts any value, i.e. it does not validate."""
     return typehint is object or typehint == Any or isinstance(typehint, UnvalidatedType)
@@ -1104,6 +1122,9 @@ def replace_unvalidatable_typehints(typehint, unvalidated: list | None = None, r
     # only a tuple, since e.g. types.UnionType and types.GenericAlias have __args__ as a
     # class level slot descriptor, which is truthy but not the subtypes of an instance
     if isinstance(args, tuple) and args:
+        if replace_unsupported and typehint_origin is tuple and any(is_unpacked(a) for a in args):
+            # a variadic tuple, i.e. its number of elements is not fixed
+            return replaced(typehint, unsupported_reason)
         # Subtypes are only validated when the origin is a supported container type. For the
         # others, e.g. a user defined generic, the subtypes are not used for validation, so
         # only the unresolved ones are replaced, keeping the type hint as in the source code.
@@ -1684,13 +1705,17 @@ def adapt_typehints(
                     val[n] = adapt_typehints(v, subtypehints[0], **adapt_kwargs_n)
         if typehint_origin is deque:
             val = list(val) if serialize else deque(val)
+        elif typehint_origin is abc.Iterator and instantiate_classes:
+            # only on instantiation, since an iterator would be exhausted by e.g. a dump
+            val = iter(val)
 
     # Dict, Mapping
     elif typehint_origin in mapping_origin_types:
         if not serialize and not instantiate_classes:
             validate_subclass_spec_in_mapping(val, typehint, subtypehints, sub_add_kwargs, logger)
         if isinstance(val, NestedArg):
-            if isinstance(prev_val, dict):
+            if isinstance(prev_val, abc.Mapping):
+                prev_val = dict(prev_val)
                 if isinstance(val.key, str) and "." in val.key:
                     key_prefix, key_suffix = val.key.split(".", 1)
                     val = {**prev_val, key_prefix: {key_suffix: val.val}}
@@ -1698,10 +1723,13 @@ def adapt_typehints(
                     val = {**prev_val, val.key: val.val}
             else:
                 val = {val.key: val.val}
-        elif isinstance(val, MappingProxyType):
+        elif isinstance(val, (MappingProxyType, ChainMap)):
             val = dict(val)
         elif not isinstance(val, dict):
             raise_unexpected_value(f"Expected a {typehint_origin}", val)
+        if typehint_origin is Counter:
+            # a Counter is subscripted only with the type of its keys, and its values are always int
+            subtypehints = (subtypehints[0] if subtypehints else Any, int)
         if subtypehints is not None:
             if subtypehints[0] == int:
                 cast = str if serialize else int
@@ -1720,7 +1748,7 @@ def adapt_typehints(
                 else:
                     kwargs = adapt_kwargs.copy()
                 if kwargs.get("prev_val"):
-                    if isinstance(kwargs["prev_val"], dict):
+                    if isinstance(kwargs["prev_val"], abc.Mapping):
                         kwargs["prev_val"] = kwargs["prev_val"].get(k)
                     else:
                         kwargs["prev_val"] = None
@@ -1741,8 +1769,8 @@ def adapt_typehints(
                 val[k] = adapt_typehints(v, replace_unvalidatable_typehints(key_type), **adapt_kwargs)
         if typehint_origin is MappingProxyType and not serialize:
             val = MappingProxyType(val)
-        elif typehint_origin is OrderedDict:
-            val = dict(val) if serialize else OrderedDict(val)
+        elif typehint_origin in {OrderedDict, Counter, ChainMap}:
+            val = dict(val) if serialize else typehint_origin(val)
 
     # TypedDict Required, NotRequired and ReadOnly
     elif typehint_origin in typed_dict_key_qualifiers:
@@ -1780,6 +1808,15 @@ def adapt_typehints(
             val[k] = adapt_typehints(v, replace_unvalidatable_typehints(annotations[k]), **kwargs)
         if not serialize:
             val = typehint(**val)
+
+    # Hashable and Sized, which accept any value that is hashable or that has a length
+    elif typehint_origin in structural_types:
+        if typehint_origin is abc.Hashable and not serialize:
+            val = lists_to_tuples(val)  # a list is never hashable, and json and yaml have no tuples
+        if typehint_origin is abc.Sized and isinstance(val, dict) and "class_path" in val:
+            raise_unexpected_value("Subclass specs are not supported for Sized", val)
+        if not is_structural_instance(val, typehint_origin):
+            raise_unexpected_value(f"Expected a {typehint_origin}", val)
 
     # Callable
     elif (
@@ -1912,7 +1949,7 @@ def adapt_typehints(
         try:
             class_path = resolve_class_path_by_name(typehint, val["class_path"])
             val_class = import_object(class_path)
-            if is_instance_or_supports_protocol(val_class, typehint):
+            if not val.get("init_args") and is_instance_or_supports_protocol(val_class, typehint):
                 return val_class  # importable instance
             if is_protocol(val_class):
                 raise_unexpected_value(f"Expected an instantiatable class, but {val['class_path']} is a protocol")
@@ -2235,6 +2272,22 @@ def is_subclass_or_implements_protocol(value, class_type) -> bool:
     if is_protocol(class_type):
         return implements_protocol(value, class_type)
     return is_subclass(value, class_type)
+
+
+def lists_to_tuples(value):
+    """Returns the value with all its lists, including nested ones, converted to tuples."""
+    return tuple(lists_to_tuples(v) for v in value) if isinstance(value, list) else value
+
+
+def is_structural_instance(value, class_type) -> bool:
+    """Whether a value is an instance of Hashable or Sized, where a tuple is hashable only if all its items are."""
+    if class_type is abc.Hashable:
+        try:
+            hash(value)
+        except TypeError:
+            return False
+        return True
+    return isinstance(value, class_type)
 
 
 def is_instance_or_supports_protocol(value, class_type):
@@ -2856,7 +2909,8 @@ def replace_type_vars(typehint):
     ``type[~T]``. A TypeVar that stands for nothing is left as is, so that it
     becomes an ``Unvalidated<...>``.
     """
-    if isinstance(typehint, TypeVar):
+    # hasattr since in python 3.10 a TypeVarTuple and Unpack[Ts] from typing_extensions pretend to be a TypeVar
+    if isinstance(typehint, TypeVar) and hasattr(typehint, "__constraints__"):
         return replace_type_var(typehint, in_type_subtype=False)
     if get_typehint_origin(typehint) in literal_types:
         return typehint  # the args of a Literal are values, not types

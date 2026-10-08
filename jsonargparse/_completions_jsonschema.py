@@ -5,6 +5,7 @@ import copy
 import operator
 import re
 import uuid
+from collections import Counter, abc
 from enum import Enum
 from types import ModuleType
 from typing import Any, Callable, Optional, Tuple, Union
@@ -81,7 +82,7 @@ subcommand_description = (
     "present in the config, or can be given as a command line argument."
 )
 
-basic_type_schemas = {
+basic_type_schemas: dict[Any, dict] = {
     bool: {"type": "boolean"},
     int: {"type": "integer"},
     float: {"type": "number"},
@@ -90,6 +91,8 @@ basic_type_schemas = {
     dict: {"type": "object"},
     list: {"type": "array"},
     ModuleType: {"type": "string"},
+    # in json, numbers, booleans and null are not sized, and subclass specs are rejected
+    abc.Sized: {"type": ["string", "array", "object"], "not": {"type": "object", "required": ["class_path"]}},
 }
 
 uuid_schema = {
@@ -490,6 +493,8 @@ class ParserJsonschema:
             return dict(uuid_schema)
         if is_sentinel(typehint):
             return {"const": get_import_path(typehint)}
+        if root is abc.Hashable:
+            return self.hashable_ref(key)
         if typehint in basic_type_schemas:
             return dict(basic_type_schemas[typehint])
         registered = get_registered_type(typehint)
@@ -517,6 +522,8 @@ class ParserJsonschema:
             return self.items_schema(typehint, action, key, {"type": "array"})
         if root in mapping_origin_types:
             args: tuple = getattr(typehint, "__args__", ())
+            if root is Counter:
+                args = (args[0] if args else Any, int)  # a Counter is subscripted only with the type of its keys
             if len(args) == 2:
                 values_schema = self.typehint_schema(args[1], action, key)
                 if values_schema:
@@ -527,6 +534,15 @@ class ParserJsonschema:
         if is_single_subclass_or_closed_type(typehint, origin):
             return self.class_ref(typehint, action, key, subclass=False)
         return {}
+
+    def hashable_ref(self, key: str) -> dict:
+        """References the definition of Hashable, which in json is anything but objects, including nested in arrays."""
+
+        def build_def(kwargs: dict) -> dict:
+            json_types = ["null", "boolean", "integer", "number", "string", "array"]
+            return {"type": json_types, "items": self.hashable_ref(key)}
+
+        return self.def_ref(("hashable",), self.def_name(abc.Hashable), key, {}, build_def)
 
     def alias_schema(self, alias, action, key: str) -> dict:
         """Describes a type alias, which when recursive is a definition that has variants like the ones of classes.

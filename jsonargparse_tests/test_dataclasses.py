@@ -4,7 +4,7 @@ import abc
 import dataclasses
 import json
 import sys
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, Final, Generic, List, Optional, Tuple, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -23,6 +23,7 @@ from jsonargparse._optionals import (
     typing_extensions_import,
 )
 from jsonargparse._signatures import convert_to_dict
+from jsonargparse._subcommands import find_action
 from jsonargparse.typing import PositiveFloat, PositiveInt, restricted_number_type
 from jsonargparse_tests.conftest import (
     get_parse_args_stdout,
@@ -648,6 +649,31 @@ def test_generic_dataclass_subclass(parser):
     assert isinstance(init.x, GenericSubclass)
     assert isinstance(init.x.children[0], GenericChild)
     assert isinstance(init.x.children[1], GenericChild)
+
+
+@dataclasses.dataclass
+class FinalAndInitVarData(Generic[V]):
+    init_var: dataclasses.InitVar[V]
+    fin: Final[int] = 1
+
+    def __post_init__(self, init_var):
+        self.from_init_var = init_var
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="python 3.10 fails to resolve a postponed InitVar annotation")
+def test_dataclass_final_and_init_var_fields(parser):
+    parser.add_class_arguments(FinalAndInitVarData[float], "d")
+    assert find_action(parser, "d.fin")._typehint is int
+    assert find_action(parser, "d.init_var")._typehint is float
+    cfg = parser.parse_args(["--d.fin=2", "--d.init_var=3"])
+    assert cfg.d == Namespace(init_var=3.0, fin=2)
+    for args in [["--d.fin=x", "--d.init_var=3"], ["--d.init_var=x"]]:
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(args)
+        ctx.match("Expected a <class 'int'>" if "--d.fin=x" in args else "Expected a <class 'float'>")
+    init = parser.instantiate(cfg)
+    assert init.d.fin == 2
+    assert init.d.from_init_var == 3.0
 
 
 @dataclasses.dataclass

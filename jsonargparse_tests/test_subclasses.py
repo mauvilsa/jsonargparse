@@ -641,6 +641,14 @@ def test_importable_instances(parser):
     assert dump == {"dtype": f"{__name__}.float32"}
 
 
+def test_importable_instance_with_init_args(parser):
+    parser.add_argument("--dtype", type=dtype)
+    value = {"class_path": f"{__name__}.float32", "init_args": {"a": 1}}
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--dtype={json.dumps(value)}"])
+    ctx.match("float32 does not correspond to a subclass of dtype")
+
+
 calendar_instance = Calendar(firstweekday=3)
 
 

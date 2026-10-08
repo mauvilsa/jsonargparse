@@ -12,7 +12,7 @@ from copy import deepcopy
 from functools import partial, partialmethod
 from importlib import import_module
 from types import MethodType
-from typing import Any, Literal, Union
+from typing import Any, Final, Literal, Union
 
 from ._common import (
     LoggerProperty,
@@ -322,8 +322,18 @@ def get_signature_parameters_and_indexes(component, parent, logger):
         )
     evaluate_postponed_annotations(params, signature_source, parent, logger)
     stubs = get_stub_types(params, signature_source, parent, logger)
+    strip_field_qualifiers(params)
     replace_generic_type_vars(params, parent)
     return params, args_idx, kwargs_idx, doc_params, stubs
+
+
+def strip_field_qualifiers(params: ParamList) -> None:
+    """Removes a top level Final or InitVar, which qualify a field of a dataclass-like type but not its value."""
+    for param in params:
+        if get_typehint_origin(param.annotation) is Final:
+            param.annotation = param.annotation.__args__[0]
+        elif isinstance(param.annotation, dataclasses.InitVar):
+            param.annotation = param.annotation.type
 
 
 def replace_generic_type_vars(params: ParamList, parent) -> None:
@@ -1256,6 +1266,7 @@ def get_parameters_from_pydantic_or_attrs(
             field_names.append(get_field_names(field, name, function_or_class))
     # after the attribute names have been used to resolve the annotations
     evaluate_postponed_annotations(params, function_or_class, None, logger)
+    strip_field_qualifiers(params)
     set_param_names_and_aliases(params, field_names)
 
     return params

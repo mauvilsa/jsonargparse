@@ -8,7 +8,7 @@ import random
 import sys
 import time
 import uuid
-from collections import OrderedDict, abc, deque, namedtuple
+from collections import ChainMap, Counter, OrderedDict, abc, deque, namedtuple
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
@@ -21,6 +21,7 @@ from typing import (
     AbstractSet,
     Annotated,
     Any,
+    Awaitable,
     Callable,
     Collection,
     Container,
@@ -40,6 +41,7 @@ from typing import (
     NewType,
     NoReturn,
     Optional,
+    ParamSpec,
     Protocol,
     Reversible,
     Sequence,
@@ -63,6 +65,7 @@ from jsonargparse._optionals import (
     typing_extensions_import,
     typing_extensions_support,
 )
+from jsonargparse._subcommands import find_action
 from jsonargparse._typehints import (
     ActionTypeHint,
     NoExtraItems,
@@ -812,6 +815,48 @@ def test_tuples_nested_ellipsis(parser):
     assert (("foo", "bar"), ((1, 2.02), (3, 3.09))) == cfg.tuple
 
 
+TypeVarTuple = typing_extensions_import("TypeVarTuple")
+skip_if_no_variadic_generics = pytest.mark.skipif(
+    not (Unpack and TypeVarTuple), reason="Unpack and TypeVarTuple introduced in python 3.11 or in typing_extensions"
+)
+
+if Unpack and TypeVarTuple:
+    Ts = TypeVarTuple("Ts")
+
+    def function_variadic_tuples(
+        p1: Tuple[int, Unpack[Ts]] = (0, "a"),
+        p2: Tuple[int, Unpack[Tuple[str, ...]]] = (0, "a"),
+        *args: Unpack[Ts],
+    ):
+        return p1, p2, args  # pragma: no cover
+
+
+@skip_if_no_variadic_generics
+def test_variadic_tuples_unvalidated(parser):
+    # the number of elements of a variadic tuple is not fixed, thus it is not validated
+    parser.add_function_arguments(function_variadic_tuples, "fn")
+    p1, p2 = Tuple[int, Unpack[Ts]], Tuple[int, Unpack[Tuple[str, ...]]]
+    assert find_action(parser, "fn.p1")._typehint == UnvalidatedType(p1)
+    assert find_action(parser, "fn.p2")._typehint == UnvalidatedType(p2)
+    assert find_action(parser, "fn.args")._typehint == list[UnvalidatedType(Unpack[Ts])]
+    cfg = parser.parse_args(['--fn.p1=[1, "a", 2]', '--fn.p2=[1, "a", "b"]', '--fn.args=[1, "a"]'])
+    assert cfg.fn == Namespace(p1=[1, "a", 2], p2=[1, "a", "b"], args=[1, "a"])
+
+
+@skip_if_no_variadic_generics
+def test_variadic_tuple_unsupported_as_argument_type():
+    with pytest.raises(ValueError, match="Unsupported type hint"):
+        ActionTypeHint(typehint=Tuple[int, Unpack[Tuple[str, ...]]])
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="star unpacking in subscripts introduced in python 3.11")
+def test_star_unpacked_tuple_unvalidated():
+    unpacked = next(iter(tuple[str, ...]))  # i.e. *tuple[str, ...], which is not valid syntax in python 3.10
+    typehint = tuple[int, unpacked]
+    assert replace_unvalidatable_typehints(typehint) == UnvalidatedType(typehint)
+    assert replace_unvalidatable_typehints(unpacked) == UnvalidatedType(unpacked)
+
+
 def test_tuple_union(parser, tmp_cwd):
     parser.add_argument("--tuple", type=Tuple[Union[int, EnumABC], Path_fc, NotEmptyStr])
     cfg = parser.parse_args(['--tuple=[2, "a", "b"]'])
@@ -1493,7 +1538,7 @@ UserId = NewType("UserId", int)
 Vector = NewType("Vector", List[float])
 NestedUserId = NewType("NestedUserId", UserId)
 CalendarType = NewType("CalendarType", calendar.Calendar)
-UnsupportedNewType = NewType("UnsupportedNewType", Iterator[int])  # type: ignore[misc]
+UnsupportedNewType = NewType("UnsupportedNewType", Awaitable[int])  # type: ignore[misc]
 
 
 def test_new_type(parser):
@@ -1654,7 +1699,7 @@ def test_unsubscripted_sequence_alias(parser, alias, expected):
     assert parser.dump(cfg, format="json_compact") == '{"x":[1,2]}'
 
 
-@pytest.mark.parametrize("alias", [Dict, Mapping, MutableMapping], ids=str)
+@pytest.mark.parametrize("alias", [Dict, Mapping, MutableMapping, Counter, ChainMap], ids=str)
 def test_unsubscripted_mapping_alias(parser, alias):
     parser.add_argument("--x", type=alias)
     cfg = parser.parse_args(['--x={"a": 1}'])
@@ -1691,12 +1736,51 @@ def test_unsubscripted_alias_signature_parameter(parser):
 def test_hashable(parser, hashable):
     parser.add_argument("--x", type=hashable)
     assert parser.parse_args(["--x=abc"]).x == "abc"
+    assert "--x.help" not in get_parser_help(parser)  # not a subclass type
+
+
+@pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
+def test_hashable_list_to_tuple(parser, hashable):
+    # a list is never hashable, and json and yaml have no tuples
+    parser.add_argument("--x", type=hashable)
+    cfg = parser.parse_args(['--x=[1, ["a", "b"]]'])
+    assert cfg.x == (1, ("a", "b"))
+    dump = parser.dump(cfg, format="json_compact")
+    assert dump == '{"x":[1,["a","b"]]}'
+    assert parser.parse_string(dump).x == (1, ("a", "b"))
+
+
+@pytest.mark.parametrize("value", [{"a": 1}, {"class_path": "calendar.Calendar"}, [1, {"a": 1}]], ids=str)
+@pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
+def test_hashable_unhashable_value(parser, hashable, value):
+    parser.add_argument("--x", type=hashable)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_object({"x": value})
+    ctx.match("Expected a <class 'collections.abc.Hashable'>")
 
 
 @pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
 def test_sized(parser, sized):
     parser.add_argument("--x", type=sized)
     assert parser.parse_args(["--x=[1, 2]"]).x == [1, 2]
+    assert "--x.help" not in get_parser_help(parser)  # not a subclass type
+
+
+@pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
+def test_sized_subclass_spec_rejected(parser, sized):
+    # reserved, so that supporting subclass specs in the future is not a breaking change
+    parser.add_argument("--x", type=sized)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_object({"x": {"class_path": "collections.UserList", "init_args": {"initlist": [1]}}})
+    ctx.match("Subclass specs are not supported for Sized")
+
+
+@pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
+def test_sized_unsized_value(parser, sized):
+    parser.add_argument("--x", type=sized)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_object({"x": 1})
+    ctx.match("Expected a <class 'collections.abc.Sized'>")
 
 
 @pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
@@ -1832,7 +1916,7 @@ def test_typeddict_key_bound_typevar(parser):
 
 class UnsupportedKeyOptions(TypedDict, total=False):
     supported: int
-    unsupported: Iterator[int]
+    unsupported: Awaitable[int]
 
 
 def test_typeddict_key_unsupported_type(parser):
@@ -1842,7 +1926,7 @@ def test_typeddict_key_unsupported_type(parser):
     assert parser.parse_args(['--options={"unsupported": [1]}']).options == {"unsupported": [1]}
     help_str = get_parse_args_stdout(parser, ["--options.help"])
     assert "--options.unsupported UNSUPPORTED" in help_str
-    assert "(type: Unvalidated<Iterator[int]>)" in help_str
+    assert "(type: Unvalidated<Awaitable[int]>)" in help_str
 
 
 def test_subscripted_non_generic_typeddict(parser):
@@ -2519,8 +2603,9 @@ def test_signature_required_param_with_default(parser, wrappers_module):
 
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
-def test_unpack_support(parser):
-    assert ActionTypeHint.is_supported_typehint(Unpack[Any])
+def test_unpack_not_supported_by_itself(parser):
+    # Unpack is only supported for **kwargs, whose TypedDict is expanded into parameters
+    assert not ActionTypeHint.is_supported_typehint(Unpack[Any])
 
 
 if Unpack:  # and Required and NotRequired
@@ -2789,6 +2874,72 @@ def test_ordered_dict(parser):
     assert parser.dump(cfg, format="json_compact") == '{"odict":{"a":1,"b":2}}'
     if pyyaml_available:
         assert parser.dump(cfg, format="yaml") == "odict:\n  a: 1\n  b: 2\n"
+
+
+def test_counter(parser):
+    parser.add_argument("--counter", type=Counter[str])
+    assert "(type: Counter[str], default: null)" in get_parser_help(parser)
+    cfg = parser.parse_args(['--counter={"a":2, "b":1}'])
+    assert isinstance(cfg.counter, Counter)
+    assert cfg.counter == Counter({"a": 2, "b": 1})
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--counter={"a":"x"}'])
+    ctx.match("Expected a <class 'int'>")
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--counter=[a, a]"])
+    ctx.match("Expected a <class 'collections.Counter'>")
+    assert parser.dump(cfg, format="json_compact") == '{"counter":{"a":2,"b":1}}'
+
+
+def test_counter_unsubscripted(parser):
+    parser.add_argument("--counter", type=Counter)
+    cfg = parser.parse_args(['--counter={"a":2}'])
+    assert cfg.counter == Counter({"a": 2})
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--counter={"a":"x"}'])
+    ctx.match("Expected a <class 'int'>")
+
+
+def test_chain_map(parser):
+    default = ChainMap({"a": 1}, {"b": 2})
+    parser.add_argument("--chain", type=ChainMap[str, int], default=default)
+    assert parser.get_defaults().chain == {"a": 1, "b": 2}
+    cfg = parser.parse_args(['--chain={"c":3}'])
+    assert isinstance(cfg.chain, ChainMap)
+    assert cfg.chain == ChainMap({"c": 3})
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--chain={"c":"x"}'])
+    ctx.match("Expected a <class 'int'>")
+    assert parser.dump(cfg, format="json_compact") == '{"chain":{"c":3}}'
+
+
+def test_chain_map_nested_arg_keeps_other_keys(parser):
+    parser.add_argument("--chain", type=ChainMap[str, int])
+    cfg = parser.parse_args(['--chain={"a":1, "b":2}', "--chain.a=3"])
+    assert isinstance(cfg.chain, ChainMap)
+    assert cfg.chain == {"a": 3, "b": 2}
+
+
+@pytest.mark.parametrize("iterator", [Iterator, abc.Iterator], ids=str)
+def test_iterator(parser, iterator):
+    parser.add_argument("--iter", type=iterator[int])
+    cfg = parser.parse_args(["--iter=[1, 2]"])
+    # kept as a list, since an iterator would be exhausted by e.g. a dump
+    assert cfg.iter == [1, 2]
+    assert parser.dump(cfg, format="json_compact") == '{"iter":[1,2]}'
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--iter=["x"]'])
+    ctx.match("Expected a <class 'int'>")
+    init = parser.instantiate(cfg)
+    assert isinstance(init.iter, abc.Iterator)
+    assert list(init.iter) == [1, 2]
+
+
+def test_dict_default_counter(parser):
+    parser.add_argument("--dict", type=dict, default=Counter({"a": 2}))
+    cfg = parser.parse_args([])
+    assert isinstance(cfg.dict, Counter)
+    assert cfg.dict == {"a": 2}
 
 
 def test_dict_default_ordered_dict(parser):
@@ -3843,6 +3994,19 @@ unvalidated_var = UnvalidatedType(UnsupportedVar)
 class UserGeneric(Generic[UnsupportedVar]):
     def __init__(self, p1: int = 1):
         self.p1 = p1  # pragma: no cover
+
+
+P = ParamSpec("P")
+
+
+def function_param_spec_args(p1: P.args):  # type: ignore[valid-type]
+    return p1  # pragma: no cover
+
+
+def test_unhashable_type_unvalidated(parser):
+    parser.add_function_arguments(function_param_spec_args, "fn")
+    assert find_action(parser, "fn.p1")._typehint == UnvalidatedType(P.args)
+    assert parser.parse_args(["--fn.p1=x"]).fn.p1 == "x"
 
 
 def test_unvalidated_type_repr():
