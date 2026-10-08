@@ -172,6 +172,11 @@ Fixed
   <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
 - ``dict`` arguments with a ``Counter`` default parsed as an empty ``Counter``
   (`#1007 <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
+- With ``parse_optionals_as_positionals=True``, an unrecognized option, e.g.
+  ``--mistake value``, either silently set as the value of an optional or
+  failing with a type error of that optional, and values after ``--`` that
+  look like options rejected as unrecognized (`#1009
+  <https://github.com/mauvilsa/jsonargparse/pull/1009>`__).
 
 Changed
 ^^^^^^^
@@ -265,6 +270,9 @@ Changed
   strings, as in YAML 1.2, instead of as numbers, which prevented parsing them
   as ``datetime.time`` (`#1008
   <https://github.com/mauvilsa/jsonargparse/pull/1008>`__).
+- With ``parse_optionals_as_positionals=True``, giving a value both by name and
+  as positional now fails, instead of the positional taking precedence (`#1009
+  <https://github.com/mauvilsa/jsonargparse/pull/1009>`__).
 
 Removed
 ^^^^^^^

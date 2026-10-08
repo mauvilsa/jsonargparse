@@ -324,9 +324,8 @@ are ``--o3=val3 val1 val2`` and ``val1 val2 val3``.
 
 .. note::
 
-    Positionals take precedence. If a value is given both ways, the positional
-    one is used, no matter the order. With the parser above, ``val1 val2a
-    --o2=val2b`` gives ``o2=val2a``.
+    Giving a value both ways fails, e.g. ``val1 val2a --o2=val2b``. Values
+    after ``--`` are positionals even if they look like options.
 
 
 Always fail arguments

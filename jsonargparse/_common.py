@@ -543,7 +543,7 @@ def validate_default(container: ActionsContainer, action: argparse.Action, logge
         logger.debug(msg)
 
 
-def get_optionals_as_positionals_actions(parser, include_positionals=False):
+def get_optionals_as_positionals_actions(parser):
     from jsonargparse._actions import ActionConfigFile, ActionFail, _ActionConfigLoad, filter_non_parsing_actions
     from jsonargparse._completions import PrintCompletionAction
     from jsonargparse._typehints import ActionTypeHint
@@ -556,7 +556,7 @@ def get_optionals_as_positionals_actions(parser, include_positionals=False):
             continue
         if action.nargs not in {1, None}:
             continue
-        if not include_positionals and action.option_strings == []:
+        if action.option_strings == []:
             continue
         actions.append(action)
 

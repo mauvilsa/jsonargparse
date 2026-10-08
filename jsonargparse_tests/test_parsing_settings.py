@@ -149,14 +149,15 @@ def test_parse_optionals_as_positionals_simple(parser, logger, subtests):
         cfg = parser.parse_args(["p1", "3", "o2", "v3"])
         assert cfg == Namespace(p1="p1", o1=3, o2="o2", o3="v3", flag=False)
 
-    with subtests.test("extra positional has precedence"):
-        cfg = parser.parse_args(["p1", "3", "o2", "--o1=4"])
-        assert cfg == Namespace(p1="p1", o1=3, o2="o2", o3=None, flag=False)
+    with subtests.test("given both as positional and by name"):
+        with pytest.raises(ArgumentError, match='"o1" given both as --o1 and as positional value "3"'):
+            parser.parse_args(["p1", "3", "o2", "--o1=4"])
 
     with subtests.test("extra positionals invalid values"):
         with pytest.raises(ArgumentError) as ex:
             parser.parse_args(["p1", "o2", "5"])
         assert re.match('Parser key "o1".*Given value: o2', ex.value.message, re.DOTALL)
+        assert "Source: command line argument o1" in ex.value.message
 
         with pytest.raises(ArgumentError) as ex:
             parser.parse_args(["p1", "6", "invalid"])
@@ -167,13 +168,68 @@ def test_parse_optionals_as_positionals_simple(parser, logger, subtests):
         with capture_logs(logger) as logs:
             with pytest.raises(ArgumentError, match="unrecognized arguments: --unk=x"):
                 parser.parse_args(["--unk=x"])
-        assert "Positional argument p1 missing, aborting _positional_optionals" in logs.getvalue()
+        assert "unrecognized arguments: --unk=x" in logs.getvalue()
 
     with subtests.test("mixed unrecognized"):
         with capture_logs(logger) as logs:
             with pytest.raises(ArgumentError, match="unrecognized arguments: --unexpected arg xyz"):
                 parser.parse_args(["p1", "3", "--unexpected", "arg", "xyz"])
         assert "unrecognized arguments: --unexpected arg xyz" in logs.getvalue()
+
+
+def test_parse_optionals_as_positionals_unrecognized_option(parser, subtests):
+    set_parsing_settings(parse_optionals_as_positionals=True)
+
+    parser.add_argument("name")
+    parser.add_argument("--option")
+    parser.add_argument("--o1", type=int)
+
+    with subtests.test("before positional values"):
+        with pytest.raises(ArgumentError) as ex:
+            parser.parse_args(["name", "--option", "value", "--mistake", "something"])
+        assert ex.value.message == "unrecognized arguments: --mistake something"
+
+    with subtests.test("with value of positional type"):
+        with pytest.raises(ArgumentError) as ex:
+            parser.parse_args(["name", "--mistake=1"])
+        assert ex.value.message == "unrecognized arguments: --mistake=1"
+
+    with subtests.test("negative number is a value"):
+        cfg = parser.parse_args(["name", "x", "-2"])
+        assert cfg == Namespace(name="name", option="x", o1=-2)
+
+
+def test_parse_optionals_as_positionals_separator(parser, subtests):
+    set_parsing_settings(parse_optionals_as_positionals=True)
+
+    parser.add_argument("name")
+    parser.add_argument("--o1")
+    parser.add_argument("--o2")
+
+    with subtests.test("option-like values after separator"):
+        cfg = parser.parse_args(["name", "--", "-x", "--o2"])
+        assert cfg == Namespace(name="name", o1="-x", o2="--o2")
+
+    with subtests.test("separator after positional values"):
+        cfg = parser.parse_args(["name", "a", "--", "b"])
+        assert cfg == Namespace(name="name", o1="a", o2="b")
+
+    with subtests.test("separator as value after separator"):
+        cfg = parser.parse_args(["name", "a", "--", "--"])
+        assert cfg == Namespace(name="name", o1="a", o2="--")
+
+    with subtests.test("trailing separator"):
+        cfg = parser.parse_args(["name", "--o1=a", "--"])
+        assert cfg == Namespace(name="name", o1="a", o2=None)
+
+    with subtests.test("separator before all positionals"):
+        cfg = parser.parse_args(["--", "name", "--", "-x"])
+        assert cfg == Namespace(name="name", o1="--", o2="-x")
+
+    with subtests.test("unrecognized option before separator"):
+        with pytest.raises(ArgumentError) as ex:
+            parser.parse_args(["name", "--mistake", "--", "-x"])
+        assert ex.value.message == "unrecognized arguments: --mistake -- -x"
 
 
 def test_parse_optionals_as_positionals_subcommands(parser, subparser, subtests):
