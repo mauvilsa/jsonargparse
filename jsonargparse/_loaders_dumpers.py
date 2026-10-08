@@ -79,8 +79,22 @@ def get_yaml_default_loader():
             ]
 
     remove_implicit_resolver(DefaultLoader, "tag:yaml.org,2002:timestamp")
+    remove_implicit_resolver(DefaultLoader, "tag:yaml.org,2002:int")
     remove_implicit_resolver(DefaultLoader, "tag:yaml.org,2002:float")
 
+    # Without YAML 1.1 sexagesimal (base 60) numbers, e.g. 10:30, which YAML 1.2 removed
+    DefaultLoader.add_implicit_resolver(
+        "tag:yaml.org,2002:int",
+        re.compile(
+            """^(?:
+        [-+]?0b[0-1_]+
+        |[-+]?0[0-7_]+
+        |[-+]?(?:0|[1-9][0-9_]*)
+        |[-+]?0x[0-9a-fA-F_]+)$""",
+            re.X,
+        ),
+        list("-+0123456789"),
+    )
     DefaultLoader.add_implicit_resolver(
         "tag:yaml.org,2002:float",
         re.compile(
@@ -88,7 +102,6 @@ def get_yaml_default_loader():
         [-+]?(?:[0-9][0-9_]*)\\.[0-9_]*(?:[eE][-+]?[0-9]+)?
         |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
         |\\.[0-9_]+(?:[eE][-+][0-9]+)?
-        |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*
         |[-+]?\\.(?:inf|Inf|INF)
         |\\.(?:nan|NaN|NAN))$""",
             re.X,

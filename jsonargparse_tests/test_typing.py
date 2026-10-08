@@ -43,7 +43,7 @@ from jsonargparse.typing import (
     restricted_number_type,
     restricted_string_type,
 )
-from jsonargparse_tests.conftest import capture_logs, get_parser_help, json_or_yaml_load
+from jsonargparse_tests.conftest import capture_logs, get_parser_help, json_or_yaml_load, skip_if_no_pyyaml
 
 if sys.version_info >= (3, 12):
     from typing import TypeAliasType
@@ -578,6 +578,16 @@ def test_datetime_types(parser, type_, value, expected):
     assert json_or_yaml_load(parser.dump(cfg)) == {"value": value}
     with pytest.raises(ArgumentError, match="--value"):
         parser.parse_args(["--value=not a date"])
+
+
+@skip_if_no_pyyaml
+def test_time_in_list_and_config(parser):
+    parser.add_argument("--times", type=List[time])
+    parser.add_argument("--opt", type=Optional[time])
+    cfg = parser.parse_args(["--times=[10:30, 11:00:30]"])
+    assert cfg.times == [time(10, 30), time(11, 0, 30)]
+    cfg = parser.parse_string("opt: 10:30")
+    assert cfg.opt == time(10, 30)
 
 
 def test_datetime_rejects_date(parser):
