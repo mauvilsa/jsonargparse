@@ -25,20 +25,20 @@ repos:
     exclude: .bumpversion.cfg
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06  # frozen: v0.15.21
+  rev: f12be1ebaa5351c1fc76472de98db2c3446c8253  # frozen: v0.16.10
   hooks:
   - id: ruff-check
   - id: ruff-format
 
 - repo: https://github.com/crate-ci/typos
-  rev: bee27e3a4fd1ea2111cf90ab89cd076c870fce14  # frozen: v1.48.0
+  rev: dd369349b73c245acd4dd4154a4bdf771d052150  # frozen: typos-dict-v0.14.2
   hooks:
   - id: typos
     args: []
     verbose: true
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: 41e691678310dfd3833f7ab4e180ddb014310356  # frozen: v2.3.0
+  rev: 2834ec6639549dd6796205c8f011dedcd587288b  # frozen: v2.4.0
   hooks:
   - id: mypy
     files: jsonargparse.*/.*.py
