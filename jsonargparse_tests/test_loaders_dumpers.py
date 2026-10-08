@@ -5,7 +5,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Union
 from unittest.mock import patch
 
 import pytest
@@ -54,6 +54,20 @@ def test_yaml_implicit_null_disabled(parser):
     parser.add_argument("--bar", type=Bar)
     cfg = parser.parse_args(["--bar=Bar", "--bar.x=Foo:"])
     assert "Foo:" == cfg.bar.init_args.x
+
+
+@skip_if_no_pyyaml
+@pytest.mark.parametrize("value", ["10:30", "-1:30:00", "10:30:00.5"])
+def test_yaml_implicit_sexagesimal_disabled(parser, value):
+    parser.add_argument("--val", type=Union[int, float, str])
+    assert value == parser.parse_args([f"--val={value}"]).val
+
+
+@skip_if_no_pyyaml
+@pytest.mark.parametrize(["value", "expected"], [("-1_000", -1000), ("0x1f", 31), ("1.5e3", 1500.0), (".5", 0.5)])
+def test_yaml_implicit_numbers(parser, value, expected):
+    parser.add_argument("--val", type=Union[int, float, str])
+    assert expected == parser.parse_args([f"--val={value}"]).val
 
 
 def test_invalid_parser_mode():

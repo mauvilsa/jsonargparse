@@ -1360,8 +1360,9 @@ jsonargparse can parse configuration files (config files). The dot notation
 hierarchy of the arguments (see :ref:`nested-namespaces`) defines the structure
 expected in these files. The default ``parser_mode`` is ``json_or_yaml``, which
 parses as JSON and, if that fails, as YAML. YAML requires the ``yaml`` extra,
-see :ref:`installation`, so without it only JSON is accepted. To change the
-mode, use the ``parser_mode`` parameter of the parser, e.g.
+see :ref:`installation`, so without it only JSON is accepted. As in YAML 1.2,
+timestamps and base 60 numbers, e.g. ``10:30``, are loaded as strings. To change
+the mode, use the ``parser_mode`` parameter of the parser, e.g.
 ``ArgumentParser(parser_mode="json")``.
 
 The :py:attr:`.ArgumentParser.default_config_files` property holds patterns of

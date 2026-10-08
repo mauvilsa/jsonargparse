@@ -261,6 +261,10 @@ Changed
   describes the accepted values, a list given for ``Hashable`` becomes a tuple,
   and ``Sized`` rejects subclass specs (`#1007
   <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
+- YAML values that look like base 60 numbers, e.g. ``10:30``, are now loaded as
+  strings, as in YAML 1.2, instead of as numbers, which prevented parsing them
+  as ``datetime.time`` (`#1008
+  <https://github.com/mauvilsa/jsonargparse/pull/1008>`__).
 
 Removed
 ^^^^^^^
