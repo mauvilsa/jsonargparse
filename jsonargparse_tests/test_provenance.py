@@ -120,7 +120,29 @@ def test_command_line_positional_left_out(parser):
 def test_optionals_as_positionals(parser, parsing_settings_patch):
     set_parsing_settings(parse_optionals_as_positionals=True)
     parser.add_argument("--val", type=int, default=3)
-    assert get_sources(parser.parse_args(["7"])) == {"val": "command line argument --val"}
+    assert get_sources(parser.parse_args(["7"])) == {"val": "command line argument val"}
+
+
+def test_optionals_as_positionals_override_config(parser, parsing_settings_patch):
+    set_parsing_settings(parse_optionals_as_positionals=True)
+    parser.add_argument("--val", type=int, default=3)
+    cfg = parser.parse_args(['--config={"val": 5}', "7"])
+    assert cfg.val == 7
+    assert get_sources(cfg) == {"val": "command line argument val"}
+
+
+def test_optionals_as_positionals_given_by_name_before_config(parser, parsing_settings_patch):
+    set_parsing_settings(parse_optionals_as_positionals=True)
+    parser.add_argument("--val", type=int, default=3)
+    with pytest.raises(ArgumentError, match='"val" given both as --val and as positional value "7"'):
+        parser.parse_args(["--val=1", '--config={"val": 5}', "7"])
+
+
+def test_optionals_as_positionals_given_by_parent(parser, parsing_settings_patch):
+    set_parsing_settings(parse_optionals_as_positionals=True)
+    parser.add_argument("--encoder", type=Encoder)
+    with pytest.raises(ArgumentError, match='"encoder.layers" given both as --encoder and as positional value "4"'):
+        parser.parse_args(['--encoder={"layers": 3}', "4"])
 
 
 def test_environment_variable(parser, monkeypatch):
