@@ -131,6 +131,13 @@ def test_optionals_as_positionals_override_config(parser, parsing_settings_patch
     assert get_sources(cfg) == {"val": "command line argument val"}
 
 
+def test_optionals_as_positionals_given_by_name_before_config(parser, parsing_settings_patch):
+    set_parsing_settings(parse_optionals_as_positionals=True)
+    parser.add_argument("--val", type=int, default=3)
+    with pytest.raises(ArgumentError, match='"val" given both as --val and as positional value "7"'):
+        parser.parse_args(["--val=1", '--config={"val": 5}', "7"])
+
+
 def test_optionals_as_positionals_given_by_parent(parser, parsing_settings_patch):
     set_parsing_settings(parse_optionals_as_positionals=True)
     parser.add_argument("--encoder", type=Encoder)

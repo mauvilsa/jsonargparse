@@ -8,6 +8,7 @@ import os
 import sys
 from collections.abc import Callable, Sequence
 from contextlib import suppress
+from contextvars import ContextVar
 from typing import (
     Any,
     NoReturn,
@@ -122,6 +123,9 @@ __all__ = ["ArgumentParser"]
 
 
 _parse_known_has_intermixed = "intermixed" in inspect.signature(argparse.ArgumentParser._parse_known_args).parameters
+
+# dests of the options given by name in the current parse_args call, with the option used
+_given_options: ContextVar[dict[str, str] | None] = ContextVar("_given_options", default=None)
 
 
 class _AfterSeparator(str):
@@ -388,14 +392,15 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 return cfg, unk[num:]  # from the first unrecognized option
         values = [str(a) for a in unk if a != "--" or isinstance(a, _AfterSeparator)]
 
-        provenance = get_provenance(cfg)
+        given = _given_options.get() or {}
         for action in get_optionals_as_positionals_actions(self):
             if not values:
                 break
             value = values.pop(0)
-            source = provenance.get(action.dest)
-            if source and source.description == "command line argument":
-                raise argument_error(f'"{action.dest}" given both as {source.origin} and as positional value "{value}"')
+            # also given by name if a parent was, e.g. --encoder for encoder.layers
+            option = next((o for d, o in given.items() if action.dest == d or action.dest.startswith(d + ".")), None)
+            if option:
+                raise argument_error(f'"{action.dest}" given both as {option} and as positional value "{value}"')
             # named like in the usage, as for positionals
             with value_source_context(ValueSource("command line argument", action.dest)):
                 cfg[action.dest] = self._check_value_key(action, value, action.dest, cfg)
@@ -414,7 +419,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         arg_strings = [str(a) for a in arg_strings]  # without the _AfterSeparator type
         values = super()._get_values(action, arg_strings)
         # the source of what the action sets right after this, none for a positional that was left out
-        value_source.set(command_line_source(action) if arg_strings or action.option_strings else None)
+        source = command_line_source(action) if arg_strings or action.option_strings else None
+        value_source.set(source)
+        given = _given_options.get()
+        if given is not None and source and action.option_strings:
+            given[action.dest] = source.origin
         return values
 
     def _get_value(self, action, arg_string):
@@ -553,9 +562,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 else:
                     cfg = merge_config(self, namespace, cfg)
 
-            with parse_kwargs_context({"env": env, "defaults": defaults}):
-                cfg, unk = self._parse_known_args_internal(args=self._mark_after_separator(args), namespace=cfg)
-                cfg, unk = self._positional_optionals(cfg, unk)
+            token = _given_options.set({})  # own for each call, also for nested and subcommand ones
+            try:
+                with parse_kwargs_context({"env": env, "defaults": defaults}):
+                    cfg, unk = self._parse_known_args_internal(args=self._mark_after_separator(args), namespace=cfg)
+                    cfg, unk = self._positional_optionals(cfg, unk)
+            finally:
+                _given_options.reset(token)
             if unk:
                 self.error(f"unrecognized arguments: {' '.join(unk)}")
 

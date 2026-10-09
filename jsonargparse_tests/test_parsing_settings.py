@@ -153,6 +153,11 @@ def test_parse_optionals_as_positionals_simple(parser, logger, subtests):
         with pytest.raises(ArgumentError, match='"o1" given both as --o1 and as positional value "3"'):
             parser.parse_args(["p1", "3", "o2", "--o1=4"])
 
+    with subtests.test("by name in namespace of previous parse"):
+        cfg = parser.parse_args(["p1", "--o1=4"])
+        cfg = parser.parse_args(["p1", "5"], namespace=cfg)
+        assert cfg == Namespace(p1="p1", o1=5, o2=None, o3=None, flag=False)
+
     with subtests.test("extra positionals invalid values"):
         with pytest.raises(ArgumentError) as ex:
             parser.parse_args(["p1", "o2", "5"])
@@ -263,6 +268,11 @@ def test_parse_optionals_as_positionals_subcommands(parser, subparser, subtests)
     with subtests.test("two extra positionals"):
         cfg = parser.parse_args(["subcmd", "p1", "3", "o2"])
         assert cfg.subcmd == Namespace(p1="p1", o1=3, o2="o2")
+
+    with subtests.test("by name in namespace of previous parse"):
+        cfg = parser.parse_args(["subcmd", "p1", "--o1=4"])
+        cfg = parser.parse_args(["subcmd", "p1", "5"], namespace=cfg)
+        assert cfg.subcmd == Namespace(p1="p1", o1=5, o2=None)
 
     with subtests.test("extra positionals invalid values"):
         with pytest.raises(ArgumentError) as ex:
