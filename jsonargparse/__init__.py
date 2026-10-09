@@ -68,4 +68,4 @@ __all__ += _loaders_dumpers.__all__
 __all__ += _util.__all__
 
 
-__version__ = "4.52.0"
+__version__ = "5.0.0rc1"
