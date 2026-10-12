@@ -139,10 +139,8 @@ class CaptureParserException(Exception):
 def capture_parser(function: Callable, *args, **kwargs) -> ArgumentParser:
     """Returns the parser object used within the execution of a function.
 
-    The function execution is stopped on the start of the call to
-    :meth:`parse_args <.ArgumentParser.parse_args>`. No parsing is done or
-    execution of instructions after the :meth:`parse_args
-    <.ArgumentParser.parse_args>`.
+    The execution stops when :meth:`parse_args <.ArgumentParser.parse_args>`
+    is called, so no parsing is done and nothing after it is run.
 
     Args:
         function: A callable that internally creates a parser and calls :meth:`parse_args <.ArgumentParser.parse_args>`.
@@ -392,9 +390,12 @@ unresolvable_import_paths: dict[Any, str] = {}
 
 
 def register_unresolvable_import_paths(*modules: ModuleType):
-    """Saves import paths of module objects for which its import path is unresolvable from the object alone.
+    """Registers the import paths of objects in modules that can't be resolved from the object alone.
 
-    Objects with unresolvable import paths have the ``__module__`` attribute set to ``None``.
+    These are objects whose ``__module__`` attribute is ``None``.
+
+    Args:
+        *modules: Modules whose objects to register.
     """
     for module in modules:
         for val in vars(module).values():

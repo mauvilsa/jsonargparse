@@ -105,8 +105,6 @@ class SignatureArguments(LoggerProperty):
     ) -> list[str]:
         """Adds arguments from a class based on its type hints and docstrings.
 
-        Note: Keyword arguments without at least one valid type are ignored.
-
         Args:
             class_type: Class from which to add arguments.
             nested_key: Key for nested namespace.
@@ -118,14 +116,14 @@ class SignatureArguments(LoggerProperty):
                 :meth:`instantiate <.ArgumentParser.instantiate>`.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether subclass type hints should be loadable from inner config file.
+            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
 
         Returns:
             The list of arguments added.
 
         Raises:
-            ValueError: When not given a class.
-            ValueError: When there are required parameters without at least one valid type.
+            ValueError: When not given a class or given an invalid default.
+            ValueError: When a parameter can't be added, e.g. it has no type and ``fail_untyped`` requires one.
         """
         unaliased_class_type = get_unaliased_type(class_type)
         if not inspect.isclass(get_generic_origin(unaliased_class_type)):
@@ -197,9 +195,7 @@ class SignatureArguments(LoggerProperty):
         fail_untyped: FailUntyped = True,
         sub_configs: bool = False,
     ) -> list[str]:
-        """Adds arguments from a class based on its type hints and docstrings.
-
-        Note: Keyword arguments without at least one valid type are ignored.
+        """Adds arguments from a method based on its type hints and docstrings.
 
         Args:
             class_type: Class which includes the method.
@@ -214,14 +210,14 @@ class SignatureArguments(LoggerProperty):
                 which is called with the instance.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether subclass type hints should be loadable from inner config file.
+            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
 
         Returns:
             The list of arguments added.
 
         Raises:
             ValueError: When not given a class or the name of a method of the class.
-            ValueError: When there are required parameters without at least one valid type.
+            ValueError: When a parameter can't be added, e.g. it has no type and ``fail_untyped`` requires one.
         """
         unaliased_type = get_unaliased_type(class_type)
         if not inspect.isclass(get_generic_origin(unaliased_type)):
@@ -265,8 +261,6 @@ class SignatureArguments(LoggerProperty):
     ) -> list[str]:
         """Adds arguments from a function based on its type hints and docstrings.
 
-        Note: Keyword arguments without at least one valid type are ignored.
-
         Args:
             function: Function from which to add arguments.
             nested_key: Key for nested namespace.
@@ -277,14 +271,14 @@ class SignatureArguments(LoggerProperty):
                 the group by a :func:`functools.partial` of the function with the arguments bound.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether subclass type hints should be loadable from inner config file.
+            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
 
         Returns:
             The list of arguments added.
 
         Raises:
             ValueError: When not given a callable.
-            ValueError: When there are required parameters without at least one valid type.
+            ValueError: When a parameter can't be added, e.g. it has no type and ``fail_untyped`` requires one.
         """
         if not callable(function):
             raise ValueError('Expected "function" argument to be a callable object.')
@@ -334,7 +328,7 @@ class SignatureArguments(LoggerProperty):
             skip: Names of parameters or number of positionals that should be skipped.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether subclass type hints should be loadable from inner config file.
+            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
             instantiate: Whether the group should be instantiated.
             call_target: For a function or method, what the group is bound to on instantiation,
                 a callable or the name of a method to call on an instance.
@@ -640,22 +634,22 @@ class SignatureArguments(LoggerProperty):
     ):
         """Adds arguments to allow specifying any subclass of the given base class.
 
-        This adds an argument that requires a dictionary with a ``class_path``
-        entry which must be a import dot notation expression. Optionally any
-        init arguments for the class can be given in the ``init_args`` entry.
-        Since subclasses can have different init arguments, the help does not
-        show the details of the arguments of the base class. Instead a help
-        argument is added that will print the details for a given class path.
+        The value is a dict with the import path of the class in ``class_path``
+        and optionally its init arguments in ``init_args``. Since subclasses can
+        have different init arguments, the help doesn't show them. Instead, a
+        help argument is added that prints them for a given class path.
 
         Args:
             baseclass: Base class or classes to use to check subclasses.
             nested_key: Key for nested namespace.
             as_group: Whether arguments should be added to a new argument group.
             skip: Names of parameters that should be skipped.
-            required: Whether the argument group is required.
+            instantiate: Whether :meth:`instantiate <.ArgumentParser.instantiate>` should instantiate the class.
+            required: Whether a value must be given.
             metavar: Variable string to show in the argument's help.
-            help: Description of argument to show in the help.
-            **kwargs: Additional parameters like in :meth:`add_class_arguments`.
+            help: Description of argument to show in the help, ``%(baseclass_name)s`` is replaced by the base
+                class name.
+            **kwargs: Additional parameters for :meth:`add_argument <.ArgumentParser.add_argument>`, e.g. ``default``.
 
         Raises:
             ValueError: When given an invalid base class.

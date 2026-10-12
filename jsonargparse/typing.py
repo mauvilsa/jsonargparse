@@ -77,12 +77,15 @@ def class_from_function(
     func_return: type[ClassType] | None = None,
     name: str | None = None,
 ) -> type[ClassType]:
-    """Creates a dynamic class which if instantiated is equivalent to calling func.
+    """Creates a dynamic class whose instantiation is equivalent to calling ``func``.
 
     Args:
         func: A function that returns an instance of a class.
         func_return: The return type of the function. Required if func does not have a return type annotation.
-        name: The name of the class. Defaults to function name suffixed with ``_class``.
+        name: The name of the class. Defaults to the function name suffixed with ``_class``.
+
+    Raises:
+        ValueError: If the return type is unknown, or the caller's module defines the name for something else.
     """
     from functools import wraps
 
@@ -196,15 +199,18 @@ class _LazyInitBaseClass:
 
 
 def lazy_instance(class_type: type[ClassType], **kwargs) -> ClassType:
-    """Instantiates a lazy instance of the given type.
+    """Creates a lazy instance of the given type.
 
-    By lazy it is meant that the ``__init__`` is delayed until the first time that a
-    method of the instance is called. It also provides a `lazy_get_init_data` method
+    Lazy means that ``__init__`` is delayed until a method of the instance is
+    called for the first time. It also has a ``lazy_get_init_data`` method,
     useful for serializing.
 
     Args:
         class_type: The class to instantiate.
         **kwargs: Any keyword arguments to use for instantiation.
+
+    Raises:
+        ValueError: If the keyword arguments are invalid for the class.
     """
     caller_module = inspect.getmodule(inspect.stack()[1][0])
     class_name = f"LazyInstance_{class_type.__name__}"
@@ -231,16 +237,19 @@ def extend_base_type(
     extra_attrs: dict | None = None,
     register_key: tuple | None = None,
 ) -> TypeAlias:
-    """Creates and registers an extension of base type.
+    """Creates and registers an extension of a base type.
 
     Args:
-        name: How the new type will be called.
+        name: Name of the new type.
         base_type: The type from which the created type is extended.
         validation_fn: Function that validates the value on instantiation/casting. Gets two arguments: ``class_type``
             and ``value``.
         docstring: The ``__doc__`` attribute value for the created type.
-        extra_attrs: Attributes set to the type class that the ``validation_fn`` can access.
-        register_key: Used to determine the uniqueness of registered types.
+        extra_attrs: Attributes set on the created type, accessible from ``validation_fn``.
+        register_key: Key that identifies the type, so that an already registered one is returned.
+
+    Returns:
+        The created or retrieved type class.
 
     Raises:
         ValueError: If the type has already been registered with a different name.
@@ -281,12 +290,16 @@ def restricted_number_type(
     Args:
         name: Name for the type or ``None`` for an automatic name.
         base_type: One of ``{int, float}``.
-        restrictions: Tuples of pairs (comparison, reference), e.g. ``('>', 0)``.
+        restrictions: A ``(comparison, reference)`` tuple or a list of them, e.g. ``('>', 0)``. Comparisons
+            are ``>``, ``>=``, ``<``, ``<=``, ``==`` or ``!=``.
         join: How to combine multiple comparisons, one of ``{'or', 'and'}``.
         docstring: Docstring for the type class.
 
     Returns:
         The created or retrieved type class.
+
+    Raises:
+        ValueError: If a parameter is invalid, or the type is already registered with a different name.
     """
     if base_type not in {int, float}:
         raise ValueError("Expected base_type to be one of {int, float}.")
@@ -350,12 +363,15 @@ def restricted_string_type(
     """Creates or returns an already registered restricted string type class.
 
     Args:
-        name: Name for the type or ``None`` for an automatic name.
+        name: Name for the type.
         regex: Regular expression that the string must match.
         docstring: Docstring for the type class.
 
     Returns:
         The created or retrieved type class.
+
+    Raises:
+        ValueError: If the type is already registered with a different name.
     """
     if isinstance(regex, str):
         regex = re.compile(regex)
@@ -400,11 +416,14 @@ def path_type(mode: str, docstring: str | None = None) -> TypeAlias:
     """Creates or returns an already registered path type class.
 
     Args:
-        mode: The required type and access permissions among ``[fdrwxcuFDRWX]``.
+        mode: The required type and access permissions among ``[fdrwxcusFDRWX]``, see :class:`.Path`.
         docstring: Docstring for the type class.
 
     Returns:
         The created or retrieved type class.
+
+    Raises:
+        ValueError: If the mode is invalid.
     """
     Path._check_mode(mode)
     name = "Path_" + mode
@@ -495,10 +514,13 @@ def register_type(
         serializer: Function that converts an instance of the class to a basic type.
         deserializer: Function that converts a basic type to an instance of the
             class. Default instantiates ``class_type``.
-        deserializer_exceptions: Exceptions that deserializer raises when it fails.
+        deserializer_exceptions: Exceptions that the deserializer raises when it fails.
         type_check: Function to check if a value is of ``class_type``. Gets as arguments the value and ``class_type``.
         fail_already_registered: Whether to fail instead of replacing a previous registration of the type.
-        uniqueness_key: Key to determine uniqueness of type.
+        uniqueness_key: Key that identifies the type, to find it when created again.
+
+    Raises:
+        ValueError: If ``class_type`` is not a class, or is registered differently and ``fail_already_registered``.
     """
     if sys.version_info[:2] < (3, 12) and not inspect.isclass(class_type):
         raise ValueError(f"Expected class_type to be a class, got {type(class_type)}")

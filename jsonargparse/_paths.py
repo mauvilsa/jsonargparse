@@ -105,24 +105,20 @@ class PathError(TypeError):
 class Path:
     """Base class for Path types. Stores a (possibly relative) path and the corresponding absolute path.
 
-    From the object the absolute path can be obtained without having to remember
-    the working directory (or parent remote path) from when the object was
-    created.
+    The absolute path can be obtained without having to remember the working
+    directory (or parent remote path) from when the object was created.
 
-    When a Path instance is created, it is checked that: the path exists,
-    whether it is a file or directory and whether it has the required access
-    permissions (f=file, d=directory, r=readable, w=writable, x=executable,
-    c=creatable, u=url, s=fsspec or in uppercase meaning not, i.e., F=not-file,
-    D=not-directory, R=not-readable, W=not-writable and X=not-executable).
+    On creation, the path is checked according to the mode flags: f=file,
+    d=directory, r=readable, w=writable, x=executable, c=creatable, u=URL,
+    s=fsspec, and in uppercase their negation, i.e. F=not-file,
+    D=not-directory, R=not-readable, W=not-writable and X=not-executable.
 
-    The creatable flag "c" can be given one or two times. If given once, the
-    parent directory must exist and be writable. If given twice, the parent
-    directory does not have to exist, but should be allowed to create.
+    The flag ``c`` can be given once or twice. Once, the parent directory must
+    exist and be writable. Twice, the parent directory doesn't need to exist,
+    but it must be possible to create it.
 
-    An instance of Path class can also refer to the standard input or output.
-    To do that, path must be set with the value "-"; it is a common practice.
-    Then, getting the content or opening it will automatically be done on
-    standard input or output.
+    The path ``-`` refers to the standard input or output, which is then used
+    when reading or opening it.
     """
 
     _url_data: _UrlData | None
@@ -138,12 +134,12 @@ class Path:
 
         Args:
             path: The path to check and store.
-            mode: The required type and access permissions among ``[fdrwxcuFDRWX]``.
+            mode: The required type and access permissions among ``[fdrwxcusFDRWX]``.
             cwd: Working directory for relative paths. If ``None`` then ``os.getcwd()`` is used.
 
         Raises:
             ValueError: If the provided mode is invalid.
-            PathError: If the path does not exist or does not agree with the mode.
+            TypeError: If the path does not agree with the mode.
         """
         self._check_mode(mode)
         self._std_io = False
@@ -272,18 +268,22 @@ class Path:
 
     @property
     def mode(self) -> str:
+        """The mode that the path was checked with."""
         return self._mode
 
     @property
     def cwd(self) -> str:
+        """The working directory (or parent remote path) for the relative path."""
         return self._cwd
 
     @property
     def is_url(self) -> bool:
+        """Whether the path is a URL."""
         return self._is_url
 
     @property
     def is_fsspec(self) -> bool:
+        """Whether the path is for an fsspec file system."""
         return self._is_fsspec
 
     def __str__(self):
@@ -326,7 +326,7 @@ class Path:
 
     @contextmanager
     def open(self, mode: str = "r") -> Iterator[IO]:
-        """Return an opened file object for the path."""
+        """Context manager that opens the path and yields the file object."""
         if self._std_io:
             if "r" in mode:
                 yield _get_cached_stdin()

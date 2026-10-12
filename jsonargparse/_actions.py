@@ -473,7 +473,7 @@ class ActionFail(Action):
             super().__init__(**kwargs)
 
     def __call__(self, *args, **kwargs):
-        """Always fails with given message."""
+        """Always fails with the given message."""
         if len(args) == 0:
             kwargs["_message"] = self._message
             return ActionFail(**kwargs)
@@ -484,12 +484,12 @@ class ActionFail(Action):
 class ActionYesNo(Action):
     """Paired options ``--[yes_prefix]opt``, ``--[no_prefix]opt`` to set ``True`` or ``False`` respectively."""
 
-    def __init__(self, yes_prefix: str = "", no_prefix: str = "no_", **kwargs):
+    def __init__(self, yes_prefix: str = "", no_prefix: str | None = "no_", **kwargs):
         """Initializer for ActionYesNo instance.
 
         Args:
-            yes_prefix: Prefix for yes option.
-            no_prefix: Prefix for no option.
+            yes_prefix: Prefix of the option that sets ``True``.
+            no_prefix: Prefix of the option that sets ``False``, ``None`` to not add it.
 
         Raises:
             ValueError: If a parameter is invalid.
@@ -522,7 +522,7 @@ class ActionYesNo(Action):
             super().__init__(**kwargs)
 
     def __call__(self, *args, **kwargs):
-        """Sets the corresponding key to True or False depending on the option string used."""
+        """Sets the corresponding key to ``True`` or ``False`` depending on the option string used."""
         if len(args) == 0:
             kwargs["_yes_prefix"] = self._yes_prefix
             kwargs["_no_prefix"] = self._no_prefix
@@ -561,7 +561,7 @@ class ActionYesNo(Action):
 
 
 class ActionParser:
-    """Action to parse option with a given parser optionally loading from file if string value."""
+    """Action to parse an option with a given parser, its value being a config or a path to a config file."""
 
     def __init__(
         self,

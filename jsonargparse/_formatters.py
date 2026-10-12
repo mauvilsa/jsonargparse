@@ -430,7 +430,7 @@ class DefaultHelpFormatter(HelpFormatter):
     This class is an extension of `argparse.HelpFormatter
     <https://docs.python.org/3/library/argparse.html#argparse.HelpFormatter>`_.
     Default values are always included. Furthermore, if the parser is configured
-    with ``default_env=True`` command line options are preceded by ``ARG:`` and
+    with ``default_env=True``, command line options are preceded by ``ARG:`` and
     the respective environment variable name is included preceded by ``ENV:``.
     """
 

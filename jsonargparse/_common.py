@@ -48,7 +48,7 @@ capture_typing_extension_shadows(_UnpackGenericAlias, "_UnpackGenericAlias", unp
 
 
 class _UnsetType:
-    """Sentinel class for unset argument values."""
+    """Sentinel for argument values that were not given, see ``unset_sentinel`` of :func:`.set_parsing_settings`."""
 
     _instance = None
     _SERIALIZED = "==UNSET=="
@@ -378,8 +378,9 @@ def set_parsing_settings(
     import_path_denylist: list[str] | None = None,
     import_path_allowlist: list[str] | None = None,
 ) -> None:
-    """
-    Modify global parser settings that affect parser creation and parsing behavior.
+    """Modifies global settings that affect parser creation and parsing behavior.
+
+    Settings given as ``None`` are left unchanged.
 
     Args:
         allow_abbrev: Whether parsers accept abbreviated long options, e.g.
@@ -390,14 +391,13 @@ def set_parsing_settings(
             argument type. Defaults are always validated to normalize them, but
             with the default ``False`` an invalid default is kept as is, like
             in argparse.
-        validate_subclass_spec_in_any: If ``True``, when a value for a type that
+        validate_subclass_spec_in_any: If ``True``, a value that looks like a
+            subclass spec, i.e. a dict with a ``class_path`` key, for a type that
             accepts any value, i.e. ``Any``, ``object``, ``Unvalidated<...>`` or
-            a dict that doesn't validate its values, looks like a subclass spec
-            (i.e. a dict with a ``class_path`` key), it is required to be a
-            valid one, otherwise the parsing fails. For dicts the spec is only
-            validated, since the value is kept as a dict. By default, this is
-            ``False``, meaning that an invalid subclass spec is ignored (a debug
-            log is emitted) and the original value is kept.
+            a dict that doesn't validate its values, must be a valid spec,
+            otherwise the parsing fails. For dicts the spec is only validated,
+            since the value is kept as a dict. With the default ``False``, an
+            invalid spec is kept as is and a debug message is logged.
         instantiate_subclass_spec_in_any: Whether ``instantiate`` builds the
             class when a value for a type that accepts any value, i.e. ``Any``,
             ``object`` or ``Unvalidated<...>``, is a valid subclass spec. If
@@ -406,25 +406,26 @@ def set_parsing_settings(
             Enabling it is discouraged because it means that any class can be
             instantiated, so only do it for trusted configs.
         config_read_mode_urls_enabled: Whether to read config files from URLs
-            using requests package. Default is ``False``.
+            using the requests package. Default is ``False``.
         config_read_mode_fsspec_enabled: Whether to read config files from
             fsspec supported file systems. Default is ``False``.
         docstring_parse_style: The docstring style to expect. Default is
             ``DocstringStyle.AUTO``.
         docstring_parse_attribute_docstrings: Whether to parse attribute
             docstrings (slower). Default is ``False``.
-        parse_optionals_as_positionals: If ``True``, the parser will take extra
-            positional command line arguments as values for optional arguments.
-            This means that optional arguments can be given by name
-            ``--key=value`` as usual, but also as positional. The extra
-            positionals are applied to optionals in the order that they were
-            added to the parser. By default, this is ``False``.
+        parse_optionals_as_positionals: If ``True``, extra positional command
+            line arguments are taken as values for optional arguments, in the
+            order that the optionals were added to the parser. So optionals can
+            be given as ``--key=value`` and also as positionals. Default is
+            ``False``.
         add_print_completion_argument: If ``True``, top-level parsers
             automatically include a ``--print_completion`` argument. Its
             accepted values are ``jsonschema`` and, when ``shtab`` is installed,
-            one ``shtab-*`` value per supported shell.
+            one ``shtab-*`` value per supported shell. Default is ``False``. The
+            ``JSONARGPARSE_ADD_PRINT_COMPLETION_ARGUMENT`` environment variable
+            takes precedence over this.
         stubs_resolver_allow_py_files: Whether the stubs resolver should search
-            in ``.py`` files in addition to ``.pyi`` files.
+            in ``.py`` files in addition to ``.pyi`` files. Default is ``False``.
         omegaconf_absolute_to_relative_paths: If ``True``, when loading configs
             with ``omegaconf+`` parser mode, absolute interpolation paths are
             converted to relative. This is only intended for backward
@@ -434,12 +435,11 @@ def set_parsing_settings(
             The ``jsonschema`` completion type then accepts the key and requires
             no keys in configs, since these can be partial. Default is
             ``False``.
-        unset_sentinel: If ``True``, parsers will use the :obj:`.Unset` sentinel
-            for arguments that have not been given a value (instead of
-            ``None``). This allows distinguishing between ``None`` as an
-            explicitly given value and an argument that was not provided at
-            all. If ``False``, uses ``None`` (the default, argparse-compatible
-            behavior) unless overridden by ``argument_default``.
+        unset_sentinel: If ``True``, arguments without a default get the
+            :obj:`.Unset` sentinel instead of ``None``, which distinguishes a
+            ``None`` given explicitly from a value not given at all. Default is
+            ``False``, i.e. ``None`` like in argparse. Either way,
+            ``argument_default`` takes precedence.
         subclasses_disabled: List of types or functions, so that when parsing
             only the exact type hints (not their subclasses) are accepted.
             Descendants of the configured types are also disabled. Functions
@@ -461,6 +461,10 @@ def set_parsing_settings(
             that path out of a denied ``functools``. Paths under ``jsonargparse``
             are not accepted, since a value that names them would be able to
             change these settings.
+
+    Raises:
+        ValueError: If a setting is given an invalid value.
+        ImportError: If a setting requires a package that is not installed.
     """
     # boolean settings
     bool_settings = {
@@ -766,12 +770,12 @@ class LoggerProperty:
 
     @property
     def logger(self) -> logging.Logger:
-        """The logger property for the class.
+        """Logger for debug and error messages.
 
         :getter: Returns the current logger.
-        :setter: Sets the given logging.Logger as logger or sets the default logger
-                 if given True/str(logger name)/dict(name, level), or disables logging
-                 if given False.
+        :setter: Sets a ``logging.Logger``, or a default logger given ``True``, a
+                 name ``str`` or a ``dict`` with ``name`` and ``level``, or
+                 disables logging given ``False``.
 
         Raises:
             ValueError: If an invalid logger value is given.

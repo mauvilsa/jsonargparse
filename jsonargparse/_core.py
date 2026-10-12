@@ -165,7 +165,10 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
         are supported. Additionally it accepts:
 
         Args:
-            sub_configs: Whether to try parsing a sub-config when argument is a complex type.
+            sub_configs: Whether a value can be given as a path to a config file that holds it.
+
+        Raises:
+            ValueError: If the destination is a reserved key or a positional is given a default.
         """
         parser = self.parser if hasattr(self, "parser") else self
         if kwargs.get("action") is not None:
@@ -248,7 +251,7 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
             **kwargs: Sets default values based on keyword arguments.
 
         Raises:
-            KeyError: If key not defined in the parser.
+            KeyError: If a key is not defined in the parser.
         """
         for arg in args:
             for dest, default in arg.items():
@@ -324,14 +327,15 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Args:
             env_prefix: Prefix for environment variables. ``True`` to derive from ``prog``.
             formatter_class: Class for printing help messages.
-            logger: Logger to use or configuration for logger.
-            version: Program version which will be printed by the ``--version`` argument.
-            print_config: Name for print config argument, ``%s`` is replaced by config dest, set ``None`` to disable.
-            parser_mode: Mode for parsing values: ``json_or_yaml``, ``json``, ``yaml``, ``jsonnet`` or added via
-                :func:`.set_loader`.
+            logger: Logger or its configuration, see the ``logger`` property.
+            version: Program version printed by a ``--version`` argument.
+            print_config: Name of the print config argument, ``%s`` is replaced by the config dest, ``None`` to
+                not add it.
+            parser_mode: Mode for loading config files and values, e.g. ``json_or_yaml``, ``yaml``, ``toml``,
+                ``jsonnet``, ``omegaconf`` or one added via :func:`.set_loader`.
             dump_header: Header to include as comment when dumping a config object.
             default_config_files: Default config file locations, e.g. ``['~/.config/myapp/*.yaml']``.
-            default_env: Set the default value on whether to parse environment variables.
+            default_env: Whether to parse environment variables by default.
             allow_abbrev: Whether to accept abbreviated long options, ``None`` to use the global setting.
         """
         super().__init__(*args, formatter_class=formatter_class, logger=logger, allow_abbrev=allow_abbrev, **kwargs)
@@ -730,7 +734,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         Args:
             path: Path to the configuration file to parse.
-            ext_vars: Optional external variables used for parsing jsonnet.
+            ext_vars: External variables for parsing Jsonnet.
             env: Whether to merge with the parsed environment, ``None`` to use the parser's default.
             defaults: Whether to merge with the parser's defaults.
 
@@ -739,6 +743,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         Raises:
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
+            TypeError: If the path does not exist or is not readable.
         """
         fpath = Path(path, mode=_get_config_read_mode())
         with load_config_path_context(fpath), path_dir_context(fpath):
@@ -769,8 +774,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         Args:
             content: The configuration content.
-            path: Optional path to original config path, just for error printing.
-            ext_vars: Optional external variables used for parsing jsonnet.
+            path: Path the content was read from, only used in error messages.
+            ext_vars: External variables for parsing Jsonnet.
             env: Whether to merge with the parsed environment, ``None`` to use the parser's default.
             defaults: Whether to merge with the parser's defaults.
 
@@ -839,22 +844,25 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
     add_method_arguments = SignatureArguments.add_method_arguments
     add_class_arguments = SignatureArguments.add_class_arguments
     add_subclass_arguments = SignatureArguments.add_subclass_arguments
-    link_arguments = ArgumentLinking.link_arguments
 
     def add_subcommands(self, required: bool = True, dest: str = "subcommand", **kwargs) -> ActionSubCommands:
         """Adds subcommand parsers to the ArgumentParser.
 
-        The aim is the same as `argparse.ArgumentParser.add_subparsers
-        <https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.add_subparsers>`_
-        the difference being that dest by default is ``subcommand`` and the parsed
-        values of the subcommand are stored in a nested namespace using the
-        subcommand's name as base key.
+        Like `argparse.ArgumentParser.add_subparsers
+        <https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.add_subparsers>`_,
+        but ``dest`` defaults to ``subcommand`` and the values of a subcommand
+        are stored in a nested namespace with the subcommand's name as key.
 
         Args:
             required: Whether the subcommand must be provided.
             dest: Destination key where the chosen subcommand name is stored.
-            **kwargs: All options that `argparse.ArgumentParser.add_subparsers
-                <https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.add_subparsers>`_ accepts.
+            **kwargs: Other options accepted by ``argparse.ArgumentParser.add_subparsers``.
+
+        Returns:
+            The action to which subcommands are added with :meth:`.ActionSubCommands.add_subcommand`.
+
+        Raises:
+            ValueError: If the parser has a positional that accepts a variable number of values.
         """
         for action in self._actions:
             if not action.option_strings and action.nargs in {"*", "+", argparse.REMAINDER}:
@@ -875,6 +883,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         subcommands.env_prefix = get_env_var(self)
         self._subcommands_action = subcommands
         return subcommands
+
+    link_arguments = ArgumentLinking.link_arguments
 
     ## Methods for serializing config objects ##
 
@@ -897,14 +907,15 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 added via :func:`.set_dumper`.
             skip_unset: Whether to exclude entries whose value is the configured None/Unset value.
             skip_default: Whether to exclude entries whose value is the same as the default.
-            skip_validation: Whether to skip parser checking.
-            with_comments: Whether to add help content as comments. Currently only supported for ``format="yaml"``.
+            skip_validation: Whether to skip validating the namespace.
+            with_comments: Whether to add the help as comments. Only supported for ``format="yaml"``.
             skip_link_targets: Whether to exclude link targets.
 
         Returns:
             The configuration in the chosen format.
 
         Raises:
+            ValueError: If the format is unknown.
             TypeError: If any of the values of namespace is invalid according to the parser.
         """
         with_provenance = get_private_kwargs(kwargs, _with_provenance=False)
@@ -1012,16 +1023,19 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         Args:
             namespace: The configuration object to save.
-            path: Path to the location where to save config.
-            format: The output format: ``yaml``, ``json``, ``json_compact``, ``parser_mode`` or ones added via
-                :func:`.set_dumper`.
+            path: Path of the file to write.
+            format: The output format: ``yaml``, ``json``, ``json_compact``, ``toml``, ``parser_mode`` or ones
+                added via :func:`.set_dumper`.
             skip_unset: Whether to exclude entries whose value is the configured None/Unset value.
-            skip_validation: Whether to skip parser checking.
+            skip_validation: Whether to skip validating the namespace.
             overwrite: Whether to overwrite existing files.
             multifile: Whether to save multiple config files by using the ``__path__`` metas.
+            branch: Base key in case namespace corresponds only to a branch.
 
         Raises:
+            ValueError: If the format is unknown or a file exists and ``overwrite=False``.
             TypeError: If any of the values of namespace is invalid according to the parser.
+            NotImplementedError: If ``multifile=True`` for an fsspec path.
         """
         check_valid_dump_format(format)
 
@@ -1127,7 +1141,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             dest: Destination key from which to get the default.
 
         Raises:
-            KeyError: If key or its default not defined in the parser.
+            KeyError: If the key or its default is not defined in the parser.
         """
         action, _ = find_parent_action_and_subcommand(self, dest)
         if action is None or dest != action.dest:
@@ -1232,13 +1246,28 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     setattr(self, name, self._raise_invalidated_by_completion_script)
 
     def get_completion_script(self, completion_type: str, **kwargs) -> str:
-        """Returns a shell completion script or a JSON Schema for a completion type."""
+        """Returns a shell completion script or a JSON Schema for a completion type.
+
+        After generating an ``shtab-*`` script, the parser can't be used anymore.
+
+        Args:
+            completion_type: ``jsonschema`` or ``shtab-<shell>``, e.g. ``shtab-bash``.
+            **kwargs: Options for ``shtab-*`` types, i.e. ``preambles``.
+
+        Raises:
+            ValueError: If the completion type is unsupported or requires shtab and it isn't installed.
+        """
         return get_completion_script_internal(self, completion_type, **kwargs)
 
     ## Other methods ##
 
     def error(self, message: str, ex: Exception | None = None) -> NoReturn:
-        """Logs error message if a logger is set and exits or raises an :class:`ArgumentError`."""
+        """Logs the error message and exits, or raises an :class:`ArgumentError` if ``exit_on_error=False``.
+
+        Args:
+            message: The error message.
+            ex: The exception that caused the error, if any.
+        """
         source = _get_error_source(ex)
         if source is not None:
             cache: dict = {}
@@ -1285,11 +1314,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             namespace: The configuration object to check.
             skip_unset: Whether to skip checking of values that are the configured None/Unset value.
             skip_required: Whether to skip checking required arguments.
-            branch: Base key in case cfg corresponds only to a branch.
+            branch: Base key in case namespace corresponds only to a branch.
 
         Raises:
             TypeError: If any of the values are not valid.
-            KeyError: If a key in cfg is not defined in the parser.
+            KeyError: If a key in namespace is not defined in the parser.
         """
         prefix = get_private_kwargs(kwargs, _prefix="")
         cfg = ccfg = namespace.clone()
@@ -1690,13 +1719,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     @property
     def default_env(self) -> bool:
-        """Whether by default environment variables parsing is enabled.
+        """Whether environment variables are parsed by default.
 
-        If the ``JSONARGPARSE_DEFAULT_ENV`` environment variable is set to true or
-        false, that value will take precedence.
+        The ``JSONARGPARSE_DEFAULT_ENV`` environment variable, if set to true or
+        false, takes precedence.
 
-        :getter: Returns the current default environment variables parsing setting.
-        :setter: Sets the default environment variables parsing setting.
+        :getter: Returns whether environment variables are parsed by default.
+        :setter: Sets whether environment variables are parsed by default.
 
         Raises:
             ValueError: If an invalid value is given.
@@ -1718,10 +1747,10 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     @property
     def env_prefix(self) -> bool | str:
-        """The environment variables prefix property.
+        """Prefix for environment variable names.
 
         :getter: Returns the current environment variables prefix.
-        :setter: Sets the environment variables prefix.
+        :setter: Sets the prefix, ``True`` to derive it from ``prog``.
 
         Raises:
             ValueError: If an invalid value is given.
@@ -1738,7 +1767,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     @property
     def parser_mode(self) -> str:
-        """Mode for parsing config files, ``json_or_yaml``, ``json``, ``yaml``, ``jsonnet`` or via :func:`.set_loader`.
+        """Mode for loading config files and values, see ``parser_mode`` of :meth:`.ArgumentParser.__init__`.
 
         :getter: Returns the current parser mode.
         :setter: Sets the parser mode.
