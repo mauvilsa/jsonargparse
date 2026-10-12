@@ -116,7 +116,8 @@ class SignatureArguments(LoggerProperty):
                 :meth:`instantiate <.ArgumentParser.instantiate>`.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
+            sub_configs: Whether parameters with a class type (also within containers or as a callable
+                return) or a list of paths type can be given as a path to a config file that holds them.
 
         Returns:
             The list of arguments added.
@@ -210,7 +211,8 @@ class SignatureArguments(LoggerProperty):
                 which is called with the instance.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
+            sub_configs: Whether parameters with a class type (also within containers or as a callable
+                return) or a list of paths type can be given as a path to a config file that holds them.
 
         Returns:
             The list of arguments added.
@@ -271,7 +273,8 @@ class SignatureArguments(LoggerProperty):
                 the group by a :func:`functools.partial` of the function with the arguments bound.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
+            sub_configs: Whether parameters with a class type (also within containers or as a callable
+                return) or a list of paths type can be given as a path to a config file that holds them.
 
         Returns:
             The list of arguments added.
@@ -328,7 +331,8 @@ class SignatureArguments(LoggerProperty):
             skip: Names of parameters or number of positionals that should be skipped.
             fail_untyped: Whether to raise an exception for parameters that don't have a type:
                 True for the required ones, "all" for all of them, False for none.
-            sub_configs: Whether parameter values can be given as a path to a config file that holds them.
+            sub_configs: Whether parameters with a class type (also within containers or as a callable
+                return) or a list of paths type can be given as a path to a config file that holds them.
             instantiate: Whether the group should be instantiated.
             call_target: For a function or method, what the group is bound to on instantiation,
                 a callable or the name of a method to call on an instance.
