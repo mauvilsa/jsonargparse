@@ -119,12 +119,12 @@ class InstantiateMethod:
           or ``add_class_arguments``/``add_subclass_arguments``): An object with
           ``class_path`` and optionally ``init_args`` is replaced by an instance
           of the referenced class, created by calling the class with the
-          ``init_args``. For the case of classes with disabled
-          subclasses, the namespace can have directly the init args without the
-          ``class_path`` + ``init_args`` wrapper.
+          ``init_args``. For a class with subclasses disabled, the namespace
+          has the init args directly, without the ``class_path`` + ``init_args``
+          wrapper.
 
-        - **Callable type arguments**: A dot-import string pointing to a
-          function or method is resolved to the callable object. When
+        - **Callable type arguments**: An import path of a function or method
+          is resolved to the callable object. When
           ``class_path``/``init_args`` is given instead and the class
           instantiates into a callable (or is a subclass of the callable's
           return type), the result is either a class instance or — when not all
@@ -227,28 +227,21 @@ def add_instantiator(
     subclasses: bool = True,
     prepend: bool = False,
 ) -> None:
-    """Adds a custom instantiator for a class type, globally for all ``ArgumentParser.instantiate`` calls.
+    """Adds a custom instantiator for a class type, used by all :meth:`.ArgumentParser.instantiate` calls.
 
-    Prefer the ``instantiators`` parameter of ``instantiate``, which is limited to that call.
+    Prefer the ``instantiators`` parameter of :meth:`.ArgumentParser.instantiate`, which is limited to that call.
 
-    Instantiator functions are expected to have as signature ``(class_type:
-    Type[ClassType], *args, **kwargs) -> ClassType``.
-
-    For reference, the default instantiator is ``return class_type(*args,
-    **kwargs)``.
-
-    In some use cases, the instantiator function might need access to values
-    applied by instantiation links. For this, the instantiator function can
-    have an additional keyword parameter ``applied_instantiation_links:
-    dict``. This parameter will be populated with a dictionary having as
-    keys the targets of the instantiation links and corresponding values
-    that were applied.
+    An instantiator has the signature ``(class_type: type[ClassType], *args,
+    **kwargs) -> ClassType``, the default one being ``class_type(*args,
+    **kwargs)``. If it has a keyword parameter ``applied_instantiation_links:
+    dict``, it receives the values applied by instantiation links, keyed by
+    link target.
 
     Args:
         instantiator: Function that instantiates a class.
         class_type: The class type to instantiate.
-        subclasses: Whether to instantiate subclasses of ``class_type``.
-        prepend: Whether to prepend the instantiator to the existing instantiators.
+        subclasses: Whether to also use it for subclasses of ``class_type``.
+        prepend: Whether it takes precedence over the instantiators added before.
     """
     key = (class_type, subclasses)
     _class_instantiators.pop(key, None)

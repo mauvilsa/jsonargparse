@@ -99,25 +99,32 @@ def find_parent_action(
 
 
 class ActionSubCommands(_SubParsersAction):
-    """Extension of argparse._SubParsersAction to modify subcommands functionality."""
+    """Extension of ``argparse._SubParsersAction`` for jsonargparse subcommands."""
 
     parent_parser: ArgumentParser
     env_prefix: str
 
     def add_parser(self, *args, **kwargs) -> NoReturn:
-        """Raises a ``NotImplementedError`` since jsonargparse uses ``add_subcommand``."""
+        """Raises ``NotImplementedError`` since jsonargparse uses ``add_subcommand``."""
         raise NotImplementedError("In jsonargparse subcommands are added using the add_subcommand method.")
 
     def add_subcommand(self, name: str, parser: ArgumentParser, **kwargs) -> ArgumentParser:
         """Adds a parser as a subcommand parser.
 
-        In contrast to `argparse.ArgumentParser.add_subparsers
-        <https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.add_subparsers>`_
-        add_parser requires to be given a parser as argument.
+        Unlike argparse's ``add_parser``, the parser is created beforehand and
+        given as argument. Settings like ``parser_mode``, ``default_env`` and
+        ``logger`` are taken from the parent parser.
 
         Args:
             name: The name for the subcommand.
             parser: The parser to use for the subcommand.
+            **kwargs: ``aliases`` and ``help`` of the subcommand.
+
+        Returns:
+            The given parser.
+
+        Raises:
+            ValueError: If the parser has subcommands, or the name is the same as the subcommands dest.
         """
         if parser._subparsers is not None:
             raise ValueError("Multiple levels of subcommands must be added in level order.")

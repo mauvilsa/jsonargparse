@@ -51,11 +51,10 @@ def capture_typing_extension_shadows(typehint, name: str, *collections) -> None:
 
 
 def final(cls):
-    """Decorator to make a class ``final``, i.e., it shouldn't be subclassed.
+    """Decorator to make a class final, i.e. it shouldn't be subclassed.
 
-    It is the same as ``typing.final`` or an equivalent implementation
-    depending on the python version and whether typing-extensions is
-    installed.
+    Same as ``typing.final``, but ensures that ``__final__`` is set, which is
+    what :func:`.is_final_class` checks.
     """
     setattr(cls, "__final__", True)
     return cls

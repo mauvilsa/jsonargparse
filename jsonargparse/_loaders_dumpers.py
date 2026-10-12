@@ -421,19 +421,16 @@ def set_loader(
     exceptions: tuple[type[Exception], ...] = (),
     json_superset: bool = True,
 ):
-    """Sets the value loader function to be used when parsing with a certain mode.
+    """Sets the loader function used when parsing with a given mode.
 
-    The ``loader_fn`` function must accept as input a single str type parameter
-    and return any of the basic types {str, bool, int, float, list, dict, None}.
-    If this function is not based on PyYAML for things to work correctly the
-    exceptions types that can be raised when parsing a value fails should be
-    provided.
+    The ``loader_fn`` function must accept a single ``str`` parameter and
+    return any of the basic types {str, bool, int, float, list, dict, None}.
 
     Args:
-        mode: The parser mode for which to set its loader function. Example: "yaml".
+        mode: The parser mode for which to set the loader. Example: ``yaml``.
         loader_fn: The loader function to set. Example: ``yaml.safe_load``.
-        exceptions: Exceptions that the loader can raise when load fails.
-            Example: (yaml.YAMLError,).
+        exceptions: Exceptions that the loader raises when loading fails, so that they are reported as
+            parsing errors. Example: ``(yaml.YAMLError,)``.
         json_superset: Whether the loader can load JSON data.
     """
     loaders[mode] = loader_fn
@@ -445,7 +442,14 @@ def set_loader(
 
 
 def get_loader(mode: str):
-    """Returns the current loader function for a given mode."""
+    """Returns the current loader function for a given mode.
+
+    Args:
+        mode: The parser mode, e.g. ``yaml``.
+
+    Raises:
+        KeyError: If there is no loader for the mode.
+    """
     return loaders[mode]
 
 

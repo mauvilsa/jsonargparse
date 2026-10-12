@@ -16,18 +16,18 @@ __all__ = ["ActionJsonSchema"]
 
 
 class ActionJsonSchema(Action):
-    """Action to parse option as JSON validated by a JSON Schema."""
+    """Action to parse an option as JSON validated against a JSON Schema."""
 
     def __init__(self, schema: str | dict | None = None, sub_config: bool = True, with_meta: bool = True, **kwargs):
         """Initializer for ActionJsonSchema instance.
 
         Args:
-            schema: Schema to validate values against.
-            sub_config: Whether to try to load JSON from path.
-            with_meta: Whether to include metadata.
+            schema: Schema to validate values against, as a dict or a JSON/YAML string.
+            sub_config: Whether a value can be given as a path to a file to load.
+            with_meta: Whether to keep metadata keys, e.g. ``__path__``, in the parsed value.
 
         Raises:
-            ValueError: If a parameter is invalid.
+            ValueError: If the schema is missing or fails to load.
             jsonschema.exceptions.SchemaError: If the schema is invalid.
         """
         if schema is not None:

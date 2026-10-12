@@ -20,7 +20,7 @@ __all__ = ["ActionJsonnet"]
 
 
 class ActionJsonnet(Action):
-    """Action to parse a Jsonnet, optionally validating against a JSON Schema."""
+    """Action to parse Jsonnet, optionally validating against a JSON Schema."""
 
     def __init__(
         self,
@@ -31,11 +31,11 @@ class ActionJsonnet(Action):
         """Initializer for ActionJsonnet instance.
 
         Args:
-            ext_vars: Key where to find the external variables required to parse the Jsonnet.
-            schema: Schema to validate values against.
+            ext_vars: Key of the argument with the external variables required to parse the Jsonnet.
+            schema: Schema to validate values against, as a dict or a JSON/YAML string.
 
         Raises:
-            ValueError: If a parameter is invalid.
+            ValueError: If ``ext_vars`` is not a string or the schema fails to load.
             jsonschema.exceptions.SchemaError: If the schema is invalid.
         """
         if "_validator" not in kwargs:
@@ -118,10 +118,13 @@ class ActionJsonnet(Action):
 
     @staticmethod
     def split_ext_vars(ext_vars: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Splits an ``ext_vars`` dict into the ``ext_codes`` and ``ext_vars`` required by Jsonnet.
+        """Splits an ``ext_vars`` dict into the ``ext_vars`` and ``ext_codes`` required by Jsonnet.
 
         Args:
             ext_vars: External variables. Values can be strings or any other basic type.
+
+        Returns:
+            The string values, and the other values JSON encoded.
         """
         if ext_vars is None:
             ext_vars = {}
@@ -137,18 +140,19 @@ class ActionJsonnet(Action):
         ext_vars: dict[str, Any] | None = None,
         with_meta: bool = False,
     ) -> dict:
-        """Method that can be used to parse Jsonnet independent from an :class:`.ArgumentParser`.
+        """Parses Jsonnet independently of an :class:`.ArgumentParser`.
 
         Args:
             jsonnet: Either a path to a Jsonnet file or the Jsonnet content.
             ext_vars: External variables. Values can be strings or any other basic type.
-            with_meta: Whether to include metadata in config object.
+            with_meta: Whether to include the ``__path__`` and ``__orig__`` metadata keys.
 
         Returns:
             The parsed Jsonnet object.
 
         Raises:
-            TypeError: If the input is neither a path to an existent file nor a Jsonnet.
+            ArgumentError: If the Jsonnet fails to evaluate.
+            jsonschema.exceptions.ValidationError: If the value is invalid according to the schema.
         """
         _jsonnet = import_jsonnet("ActionJsonnet")
         ext_vars, ext_codes = self.split_ext_vars(ext_vars)

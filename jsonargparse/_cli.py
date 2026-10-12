@@ -47,11 +47,10 @@ def auto_cli(
 ):
     """Simple creation of command line interfaces.
 
-    Previously called ``jsonargparse.CLI``, renamed to follow the standard of functions in lowercase.
+    Previously named ``jsonargparse.CLI``.
 
     Creates an argument parser from one or more functions/classes, parses
-    arguments and runs one of the functions or class methods depending on what
-    was parsed.
+    arguments and runs the function or class method selected by them.
 
     Inspired by `Fire <https://pypi.org/project/fire/>`__, though with
     fundamental differences: arguments are derived from type hints and
@@ -59,9 +58,10 @@ def auto_cli(
     return values are not printed, they are given back to the caller.
 
     Args:
-        components: One or more functions/classes to include in the command line interface.
+        components: One or more functions/classes to include in the command line interface, a dict for
+            subcommands with custom names, possibly nested.
         args: List of arguments to parse or ``None`` to use ``sys.argv``.
-        config_help: Help string for config file option in help.
+        config_help: Help of the ``--config`` option.
         set_defaults: Dictionary of values to override components defaults.
         as_positional: Whether to add required parameters as positional arguments.
         return_instance: Whether class components should be instantiated directly and returned,
@@ -74,6 +74,9 @@ def auto_cli(
 
     Returns:
         The value returned by the executed function or class method.
+
+    Raises:
+        ValueError: If ``components`` is empty or includes something that is not a class or function.
     """
     if isinstance(components, list) and len(components) == 1:
         components = components[0]
@@ -131,7 +134,7 @@ def auto_cli(
 
 
 def auto_parser(*args, **kwargs) -> ArgumentParser:
-    """Same as :func:`.auto_cli`, but returns the parser, doesn't parse arguments or run.
+    """Same as :func:`.auto_cli`, but returns the parser without parsing arguments or running.
 
     This is a shorthand for ``capture_parser(lambda: auto_cli(*args, **kwargs))``.
     """

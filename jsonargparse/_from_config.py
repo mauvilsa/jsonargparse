@@ -17,20 +17,18 @@ OVERRIDE_KINDS = {inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_O
 
 
 class FromConfigMixin:
-    """Mixin class that adds from config support to classes.
+    """Mixin class that adds support for instantiating from configs.
 
     This mixin does two things:
 
         1. Adds support for overriding ``__init__`` defaults by defining a
            ``__from_config_init_defaults__`` class attribute pointing to a
-           config file path. The overriding of defaults happens on subclass
-           creation time. Inspecting the signature will give the overridden
-           defaults.
+           config file path. The defaults are overridden at subclass creation
+           time, so inspecting the signature gives the overridden defaults.
 
-        2. Adds a ``from_config`` ``@classmethod``, that instantiates the class
-           based on a config file or dict. If
-           ``config_read_mode_fsspec_enabled=True`` is set, then config paths
-           can be URLs.
+        2. Adds a ``from_config`` ``@classmethod`` that instantiates the class
+           from a config file or dict. Config paths can be URLs or fsspec paths
+           if enabled with :func:`.set_parsing_settings`.
 
     Attributes:
         __from_config_init_defaults__: Optional path to a config file for
@@ -54,11 +52,18 @@ class FromConfigMixin:
         *,
         instantiators: InstantiatorsType | None = None,
     ) -> T:
-        """Instantiate current class based on a config file or dict.
+        """Instantiates the class from a config file or dict.
 
         Args:
             config: Path to a config file or a dict with config values.
             instantiators: Custom instantiators, see :meth:`.ArgumentParser.instantiate`.
+
+        Returns:
+            The instance of the class.
+
+        Raises:
+            ArgumentError: If the config is invalid.
+            TypeError: If the config path does not exist or is not readable.
         """
         parser = ArgumentParser(exit_on_error=False, **cls.__from_config_parser_kwargs__)  # type: ignore[attr-defined]
         parser.add_argument("--from_config", type=cls, required=True, sub_configs=True)

@@ -32,20 +32,20 @@ Breaking changes summary
 In addition to the deprecation removals below, note these other breaking
 changes:
 
-- **``pyyaml`` is no longer a required dependency.** Gives no deprecation
-  warning. If your code imports ``yaml``, or you want YAML configs, install with
-  the ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
-- **``parser_mode`` defaults to ``json_or_yaml``.** Gives no deprecation
-  warning. Config files and command line values are parsed as JSON, and only if
-  that fails as YAML, so with the ``yaml`` extra installed YAML keeps working.
-  Without it, YAML syntax, e.g. ``key: value`` configs or ``--list=[a, b]``,
-  fails. For strict JSON, give ``parser_mode="json"`` to the parser, which also
-  works in v4.
-- **``json`` dumps are now indented.** Gives no deprecation warning.
+- **pyyaml is no longer a required dependency.** Gives no deprecation warning.
+  If your code imports ``yaml``, or you want YAML configs, install with the
+  ``yaml`` extra (``pip install "jsonargparse[yaml]"``).
+- **parser_mode defaults to json_or_yaml.** Gives no deprecation warning. Config
+  files and command line values are parsed as JSON, and only if that fails as
+  YAML, so with the ``yaml`` extra installed YAML keeps working. Without it,
+  YAML syntax, e.g. ``key: value`` configs or ``--list=[a, b]``, fails. For
+  strict JSON, give ``parser_mode="json"`` to the parser, which also works in
+  v4.
+- **JSON dumps are now indented.** Gives no deprecation warning.
   ``dump(format="json")``, ``save`` and the print config argument produce
   indented JSON instead of a single line. Use ``format="json_compact"`` for the
   previous output.
-- **``--print_config`` renamed.** The print-config argument in v5 defaults to
+- **--print_config renamed.** The print-config argument in v5 defaults to
   ``--print_<config_arg_name>`` instead of always being ``--print_config``, so
   it only stays ``--print_config`` when the config argument is named ``config``.
   Set ``print_config="--print_config"`` in the ``ArgumentParser`` constructor to
@@ -101,7 +101,7 @@ an alias, so it keeps working, but prefer the new name:
    from jsonargparse import auto_cli
    auto_cli(MyComponent)
 
-The ``return_parser=True`` parameter was removed. Use :func:`.capture_parser`
+The ``return_parser=True`` parameter was removed. Use :func:`.auto_parser`
 instead:
 
 .. code-block:: python
@@ -110,8 +110,8 @@ instead:
    parser = CLI(MyComponent, return_parser=True)
 
    # after
-   from jsonargparse import auto_cli, capture_parser
-   parser = capture_parser(lambda: auto_cli(MyComponent))
+   from jsonargparse import auto_parser
+   parser = auto_parser(MyComponent)
 
 Implicit component discovery (calling ``auto_cli`` without a ``components``
 argument and relying on the local scope) is removed. Pass components explicitly:
@@ -189,15 +189,15 @@ calls that pass the parameter **by keyword**; positional usage is unaffected.
      - ``parse_path(path=...)``
    * - ``parse_string(cfg_str=..., cfg_path=...)``
      - ``parse_string(content=..., path=...)``
-   * - ``cfg=...`` in ``dump``, ``save``, ``validate``, ``instantiate``,
-       ``strip_unknown`` and ``get_config_files``
-     - ``namespace=...``
    * - ``add_class_arguments(theclass=...)``
      - ``add_class_arguments(class_type=...)``
    * - ``add_method_arguments(theclass=..., themethod=...)``
      - ``add_method_arguments(class_type=..., method_name=...)``
    * - ``register_type(type_class=...)``
      - ``register_type(class_type=...)``
+
+Also, ``cfg`` was renamed to ``namespace`` in ``dump``, ``save``, ``validate``,
+``instantiate``, ``strip_unknown`` and ``get_config_files``.
 
 
 Config objects (Namespace)
@@ -277,15 +277,15 @@ type hints:
 
 .. code-block:: python
 
-   from jsonargparse.typing import path_type
+   from jsonargparse.typing import Path_fr
 
    # before
    parser.add_argument("--file", action=ActionPath(mode="fr"))
    parser.add_argument("--files", action=ActionPathList(mode="fr"))
 
    # after
-   parser.add_argument("--file", type=path_type("fr"))
-   parser.add_argument("--files", type=list[path_type("fr")], sub_configs=True)
+   parser.add_argument("--file", type=Path_fr)
+   parser.add_argument("--files", type=list[Path_fr], sub_configs=True)
 
 **Path object API changes:**
 
@@ -332,12 +332,12 @@ Legacy action classes
 
    # before
    parser.add_argument("--color", action=ActionEnum(enum=Color))
-   parser.add_argument("--lr", action=ActionOperators(expr=(">=", 0.0), type=float))
+   parser.add_argument("--lr", action=ActionOperators(expr=[(">", 0.0), ("<=", 1.0)], type=float))
 
    # after
    parser.add_argument("--color", type=Color)
-   PositiveFloat = restricted_number_type("PositiveFloat", float, (">=", 0.0))
-   parser.add_argument("--lr", type=PositiveFloat)
+   LearningRate = restricted_number_type("LearningRate", float, [(">", 0.0), ("<=", 1.0)])
+   parser.add_argument("--lr", type=LearningRate)
 
 ``ActionJsonnetExtVars`` is removed. Use ``type=dict`` instead:
 
@@ -382,9 +382,9 @@ arbitrary code. Both give a deprecation warning in v4.
 **Subclass specs in types that accept any value** — A dict with ``class_path``
 and ``init_args`` given for a type that accepts any value, i.e. ``Any``,
 ``object``, ``Unvalidated<...>`` or an untyped parameter when
-``fail_untyped=False``, is currently imported and instantiated by
-``instantiate``. In v5 it is kept as is, so that the code that receives it
-decides whether to instantiate it. Get the v5 behavior in v4 with:
+``fail_untyped=False``, in v4 is imported and instantiated by ``instantiate``.
+In v5 it is kept as is, so that the code that receives it decides whether to
+instantiate it. Get the v5 behavior in v4 with:
 
 .. code-block:: python
 
@@ -449,17 +449,17 @@ and handle the raised ``ArgumentError``.
 Miscellaneous
 -------------
 
-- **``compose_dataclasses``** is removed. There is no replacement; copy the
-  helper into your own code if needed.
-- **``DefaultHelpFormatter.*_yaml*_comment*`` methods** are removed (this logic
-  is now internal).
-- **``ruyaml`` optional dependency** is replaced by ``ruamel``. Update your
+- ``compose_dataclasses`` is removed. There is no replacement; copy the helper
+  into your own code if needed.
+- ``DefaultHelpFormatter.*_yaml*_comment*`` methods are removed (this logic is
+  now internal).
+- The ``ruyaml`` optional dependency is replaced by ``ruamel``. Update your
   extras install: ``pip install "jsonargparse[ruyaml]"`` → ``pip install
   "jsonargparse[ruamel]"``.
-- **``ParserError``** is removed. It was an alias of ``argparse.ArgumentError``,
-  use that instead.
-- **``null_logger``** is removed. There is no replacement since it is a logging
+- ``ParserError`` is removed. It was an alias of ``argparse.ArgumentError``, use
+  that instead.
+- ``null_logger`` is removed. There is no replacement since it is a logging
   detail, use ``logging.getLogger`` with a ``NullHandler``.
-- **Importing from internal module paths** (e.g. ``jsonargparse.core``,
+- Importing from internal module paths (e.g. ``jsonargparse.core``,
   ``jsonargparse.actions``, ``jsonargparse.typehints``) no longer works. Import
   only from the public API (``jsonargparse`` and ``jsonargparse.typing``).

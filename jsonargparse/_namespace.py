@@ -104,10 +104,12 @@ class Namespace(argparse.Namespace):
     def __init__(self, *args, **kwargs):
         """Initializer for Namespace instance.
 
-        Instantiating a Namespace with initial values most commonly is done by
-        providing keyword arguments, e.g. ``Namespace(name1=value1,
-        name2=value2)``. Alternatively a single positional ``Namespace`` or
-        ``dict`` object can be given.
+        Initial values are given as keyword arguments, e.g.
+        ``Namespace(name1=value1, name2=value2)``, or as a single positional
+        ``Namespace`` or ``dict``.
+
+        Raises:
+            ValueError: If given positionals other than a single ``Namespace`` or ``dict``.
         """
         if len(args) == 0:
             super().__init__(**kwargs)
@@ -230,14 +232,19 @@ class Namespace(argparse.Namespace):
         return {del_clash_mark(key): _value_as_dict(val) for key, val in vars(self).items()}
 
     def as_flat(self) -> argparse.Namespace:
-        """Converts the nested namespaces into a single argparse flat namespace."""
+        """Converts the nested namespaces into a flat ``argparse.Namespace`` with dot-separated keys."""
         flat = argparse.Namespace()
         for key, val in self.items():
             setattr(flat, key, val)
         return flat
 
     def items(self, branches: bool = False, nested: bool = True) -> Iterator[tuple[str, Any]]:
-        """Returns a generator of all leaf (key, value) items, optionally including branches."""
+        """Returns a generator of all leaf (key, value) items, optionally including branches.
+
+        Args:
+            branches: Whether to also include the nested namespaces.
+            nested: Whether to include the items inside nested namespaces.
+        """
         for key, val in vars(self).items():
             key = del_clash_mark(key)
             if isinstance(val, Namespace):
@@ -251,17 +258,26 @@ class Namespace(argparse.Namespace):
                 yield key, val
 
     def keys(self, branches: bool = False, nested: bool = True) -> Iterator[str]:
-        """Returns a generator of all leaf keys, optionally including branches."""
+        """Returns a generator of all leaf keys, optionally including branches.
+
+        Args:
+            branches: Whether to also include the keys of nested namespaces.
+            nested: Whether to include the keys inside nested namespaces.
+        """
         for key, _ in self.items(branches=branches, nested=nested):
             yield key
 
     def values(self, branches: bool = False) -> Iterator[Any]:
-        """Returns a generator of all leaf values, optionally including branches."""
+        """Returns a generator of all leaf values, optionally including branches.
+
+        Args:
+            branches: Whether to also include the nested namespaces.
+        """
         for _, val in self.items(branches):
             yield val
 
     def clone(self, with_meta: bool = True) -> "Namespace":
-        """Creates an new copy of the nested namespace.
+        """Creates a new copy of the nested namespace.
 
         Args:
             with_meta: Whether to include metadata keys in the copy.
@@ -269,12 +285,18 @@ class Namespace(argparse.Namespace):
         return recreate_branches(self, skip_keys=None if with_meta else meta_keys)
 
     def update(self, value: "Namespace | Any", key: str | None = None, only_unset: bool = False) -> "Namespace":
-        """Sets or replaces all items from the given nested namespace.
+        """Sets or replaces the items of a given namespace, or a single value in a given key.
 
         Args:
             value: A namespace to update multiple values or other type to set in a single key.
-            key: Branch key where to set the value. Required if value is not namespace.
-            only_unset: Whether to only set the value if not set in namespace.
+            key: Branch key where to set the value. Required if value is not a namespace.
+            only_unset: Whether to only set values for keys not already in the namespace.
+
+        Returns:
+            The same namespace, updated.
+
+        Raises:
+            KeyError: If value is not a namespace and no key is given.
         """
         if not isinstance(value, Namespace):
             if not key:

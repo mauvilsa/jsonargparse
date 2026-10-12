@@ -1579,12 +1579,12 @@ as:
         return yaml.load(stream, Loader=CustomLoader)
 
 
-    set_loader("yaml_custom", custom_yaml_load)
+    set_loader("yaml_custom", custom_yaml_load, exceptions=(yaml.YAMLError,))
 
     parser = ArgumentParser(parser_mode="yaml_custom")
 
-When the loader is based on a library other than PyYAML, give the ``exceptions``
-that it raises on failure to :func:`.set_loader`.
+The ``exceptions`` that the loader raises on failure must be given, so that they
+are reported as parsing errors.
 
 
 .. _classes-methods-functions:
