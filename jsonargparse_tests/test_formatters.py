@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import sys
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -176,3 +178,20 @@ def test_format_usage(parser):
     parser.add_argument("--v1")
     with patch.dict(os.environ, {"COLUMNS": "200"}):
         assert parser.format_usage() == "usage: app [--v1 V1]\n"
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="color decided by the target file since python 3.15")
+def test_print_help_color_decided_by_target_file(parser):
+    import _colorize
+
+    calls = []
+
+    def can_colorize(*, file=None):
+        calls.append(file)
+        return file is None
+
+    out = StringIO()
+    with patch.object(_colorize, "can_colorize", can_colorize):
+        parser.print_help(out)
+    assert out in calls
+    assert "\x1b[" not in out.getvalue()
