@@ -65,6 +65,7 @@ class TestCategories:
             "test_argparse_color",  # subcommands
             "test_wrong_argument_subparsers_with_suggestions",  # subcommands
             "test_wrong_argument_subparsers_no_suggestions",  # subcommands
+            "test_backtick_markup_in_subparser",  # subcommands
         ],
         "class_patterns": [
             "TestFileType",  # deprecated
@@ -119,6 +120,7 @@ class TestCategories:
             "test_required_args_one_or_more_with_metavar",  # FIX! metavar shown in missing required
             "test_required_args_with_metavar",  # FIX! metavar shown in missing required
             "test_modified_invalid_action",  # raise ArgumentError/AssertionError instead of TypeError/ArgumentError
+            "test_help_with_format_specifiers",  # FIX! %(type)s expands to None, ActionTypeHint sets action.type=None
         ],
         "class_patterns": [],
         "function_patterns": [],
@@ -443,6 +445,18 @@ def replace_i18n_helper_import_in_ast(tree: ast.Module) -> ast.Module:
     return tree
 
 
+# Like CPython's regrtest, run each test from a temporary directory, since some tests create
+# files with fixed names in the working directory, e.g. TestProgName, which would otherwise
+# collide when several tox environments run in parallel from the same directory
+TEMP_CWD_FIXTURE = """
+
+
+@pytest.fixture(autouse=True)
+def _run_in_temp_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+"""
+
+
 def transform_test_file(source_code: str) -> tuple[str, ArgparseTestTransformer]:
     """Transform the test file to work with jsonargparse.
 
@@ -467,7 +481,7 @@ def transform_test_file(source_code: str) -> tuple[str, ArgparseTestTransformer]
     ast.fix_missing_locations(transformed_tree)
 
     # Generate code from transformed AST
-    final_code = ast.unparse(transformed_tree)
+    final_code = ast.unparse(transformed_tree) + TEMP_CWD_FIXTURE
 
     return final_code, transformer
 

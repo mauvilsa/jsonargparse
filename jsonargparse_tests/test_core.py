@@ -1135,6 +1135,17 @@ def test_exit_on_error():
     assert 'Parser key "val":' in err.getvalue()
 
 
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="colored error keyword added in python 3.15")
+def test_exit_on_error_colored(parser):
+    import _colorize
+
+    parser.add_argument("--val", type=int)
+    theme = _colorize.get_theme(force_color=True).argparse
+    with patch.object(_colorize, "can_colorize", return_value=True):
+        err = get_parse_args_stderr(parser, ["--val", "eight"])
+    assert f'{theme.error}error:{theme.reset} {theme.message}Parser key "val":' in err
+
+
 def test_version_print():
     parser = ArgumentParser(prog="app", version="1.2.3")
     out = get_parse_args_stdout(parser, ["--version"])

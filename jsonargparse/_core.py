@@ -1297,7 +1297,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             prog = parser.prog.replace(" [options]", "")
             sys.stderr.write(f"tip: For details of accepted options run: {prog} {help_action.option_strings[-1]}\n")
 
-        sys.stderr.write(f"error: {message}\n")
+        if sys.version_info >= (3, 15):
+            theme = parser._get_theme(file=sys.stderr)
+            sys.stderr.write(f"{theme.error}error:{theme.reset} {theme.message}{message}{theme.reset}\n")
+        else:
+            sys.stderr.write(f"error: {message}\n")
         self.exit(2)
 
     def validate(
@@ -1443,7 +1447,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 cfg_files.extend(p for p in namespace[action.dest] if p is not None)
         return cfg_files
 
-    def format_help(self) -> str:
+    def format_help(self, formatter: argparse.HelpFormatter | None = None) -> str:
         defaults = None
         if len(self._default_config_files) > 0:
             note = "no existing default config file found."
@@ -1459,7 +1463,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             group = self._default_config_files_group
             group.description = f"{self._default_config_files}, Note: {note}"
         with restore_suppressed_required(), parser_context(parent_parser=self, defaults_cache=defaults):
-            help_str = super().format_help()
+            # formatter is given by print_help since python 3.15
+            help_str = super().format_help() if formatter is None else super().format_help(formatter)  # type: ignore[call-arg]
         return help_str
 
     def print_usage(self, *args, **kwargs) -> None:
