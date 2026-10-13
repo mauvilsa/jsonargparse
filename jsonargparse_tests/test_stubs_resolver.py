@@ -180,7 +180,9 @@ def test_get_params_classmethod(parametrize_allow_py_files):
         "debug",
         "errorlevel",
     ]
-    if sys.version_info >= (3, 14):
+    if sys.version_info >= (3, 15):
+        expected = expected[:4] + ["compresslevel", "preset", "mtime"] + expected[4:]
+    elif sys.version_info >= (3, 14):
         expected = expected[:4] + ["compresslevel", "preset"] + expected[4:]
     elif sys.version_info >= (3, 12):
         expected = expected[:4] + ["compresslevel"] + expected[4:]
@@ -188,7 +190,7 @@ def test_get_params_classmethod(parametrize_allow_py_files):
     assert all(
         p.annotation is not inspect._empty
         for p in params
-        if p.name not in {"fileobj", "compresslevel", "stream", "preset"}
+        if p.name not in {"fileobj", "compresslevel", "stream", "preset", "mtime"}
     )
     with mock_stubs_missing_types():
         params = get_params(TarFile, "open")
