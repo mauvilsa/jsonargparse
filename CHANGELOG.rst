@@ -22,6 +22,8 @@ Added
   ``FromConfigMixin.from_config``, to use custom instantiators only in that
   call. Recommended over the global ``add_instantiator`` (`#994
   <https://github.com/mauvilsa/jsonargparse/pull/994>`__).
+- Support for Python 3.15 (`#1011
+  <https://github.com/mauvilsa/jsonargparse/pull/1011>`__).
 
 Fixed
 ^^^^^
