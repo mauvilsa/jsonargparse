@@ -83,7 +83,7 @@ def parser_schema_object(parser):
         },
         "additionalProperties": False,
     }
-    parser.add_argument("--op2", action=ActionJsonSchema(schema=schema_object, with_meta=False))
+    parser.add_argument("--op2", action=ActionJsonSchema(schema=schema_object))
     parser.add_argument("--cfg", action="config")
     return parser
 

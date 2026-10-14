@@ -19,19 +19,25 @@ __all__ = ["ActionJsonSchema"]
 class ActionJsonSchema(Action):
     """Action to parse option as JSON validated by a JSON Schema."""
 
-    def __init__(self, schema: str | dict | None = None, sub_config: bool = True, with_meta: bool = True, **kwargs):
+    def __init__(
+        self,
+        schema: str | dict | None = None,
+        sub_config: bool = True,
+        with_meta: bool | None = None,
+        **kwargs,
+    ):
         """Initializer for ActionJsonSchema instance.
 
         Args:
             schema: Schema to validate values against.
             sub_config: Whether to try to load JSON from path.
-            with_meta: Whether to include metadata.
+            with_meta: Deprecated, to remove metadata use ``.clone(with_meta=False)``.
 
         Raises:
             ValueError: If a parameter is invalid.
             jsonschema.exceptions.SchemaError: If the schema is invalid.
         """
-        from ._deprecated import action_json_schema_enable_path_deprecation
+        from ._deprecated import action_json_schema_enable_path_deprecation, action_json_schema_with_meta_deprecation
 
         deprecated_val = action_json_schema_enable_path_deprecation(kwargs)
         if deprecated_val is not None:
@@ -48,7 +54,7 @@ class ActionJsonSchema(Action):
             jsonvalidator.check_schema(schema)
             self._validator = self._extend_jsonvalidator_with_default(jsonvalidator)(schema)
             self._sub_config = sub_config
-            self._with_meta = with_meta
+            self._with_meta = action_json_schema_with_meta_deprecation(with_meta)
         elif "_validator" not in kwargs:
             raise ValueError("Expected schema keyword argument.")
         else:
