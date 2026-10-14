@@ -1133,6 +1133,23 @@ def test_action_json_schema_enable_path_deprecated(parser):
     assert cfg.obj == {"x": 1}
 
 
+@skip_if_jsonschema_unavailable
+def test_action_json_schema_with_meta_deprecated(parser, tmp_cwd):
+    schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+    pathlib.Path("data.json").write_text('{"x": 1}')
+
+    with catch_warnings(record=True) as w:
+        action = ActionJsonSchema(schema=schema, with_meta=False)
+    assert_deprecation_warn(
+        w,
+        message="``with_meta`` parameter of ``ActionJsonSchema`` was deprecated",
+        code="ActionJsonSchema(schema=schema, with_meta=False)",
+    )
+    parser.add_argument("--obj", action=action)
+    cfg = parser.parse_args(["--obj=data.json"])
+    assert cfg.obj == {"x": 1}
+
+
 # skip_none deprecation tests
 
 

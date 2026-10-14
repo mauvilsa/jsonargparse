@@ -51,6 +51,11 @@ _message_action_json_schema_enable_path = """
     Use ``sub_config`` instead.
 """
 
+_message_action_json_schema_with_meta = """
+    ``with_meta`` parameter of ``ActionJsonSchema`` was deprecated in v4.53.0 and will be removed in v5.0.0.
+    To remove metadata from a config object, do ``.clone(with_meta=False)``.
+"""
+
 
 shown_deprecation_warnings: Set[Any] = set()
 
@@ -138,6 +143,22 @@ def action_json_schema_enable_path_deprecation(kwargs: dict, stacklevel: int = 1
         )
         return kwargs.pop("enable_path")
     return None
+
+
+def action_json_schema_with_meta_deprecation(with_meta: Optional[bool], stacklevel: int = 1) -> bool:
+    """Handle deprecated ``with_meta`` parameter in ``ActionJsonSchema``.
+
+    If ``with_meta`` was given, emit a deprecation warning. Returns its value,
+    or ``True`` if not given.
+    """
+    if with_meta is None:
+        return True
+    deprecation_warning(
+        action_json_schema_with_meta_deprecation,
+        _message_action_json_schema_with_meta,
+        stacklevel=stacklevel + 1,
+    )
+    return with_meta
 
 
 def parse_as_dict_patch():
