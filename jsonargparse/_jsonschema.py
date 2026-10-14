@@ -5,7 +5,6 @@ import os
 from ._actions import _is_action_value_list
 from ._common import Action, parser_context
 from ._loaders_dumpers import get_loader_exceptions, load_value
-from ._namespace import remove_meta
 from ._optionals import (
     get_jsonschema_exceptions,
     import_jsonschema,
@@ -18,19 +17,20 @@ __all__ = ["ActionJsonSchema"]
 class ActionJsonSchema(Action):
     """Action to parse an option as JSON validated against a JSON Schema."""
 
-    def __init__(self, schema: str | dict | None = None, sub_config: bool = True, with_meta: bool = True, **kwargs):
+    def __init__(self, schema: str | dict | None = None, sub_config: bool = True, **kwargs):
         """Initializer for ActionJsonSchema instance.
 
         Args:
             schema: Schema to validate values against, as a dict or a JSON/YAML string.
             sub_config: Whether a value can be given as a path to a file to load.
-            with_meta: Whether to keep metadata keys, e.g. ``__path__``, in the parsed value.
 
         Raises:
             ValueError: If the schema is missing or fails to load.
             jsonschema.exceptions.SchemaError: If the schema is invalid.
         """
         if schema is not None:
+            if kwargs:
+                raise ValueError(f"ActionJsonSchema does not accept the following parameters: {set(kwargs)}")
             if isinstance(schema, str):
                 with parser_context(load_value_mode="json_or_yaml"):
                     try:
@@ -41,13 +41,11 @@ class ActionJsonSchema(Action):
             jsonvalidator.check_schema(schema)
             self._validator = self._extend_jsonvalidator_with_default(jsonvalidator)(schema)
             self._sub_config = sub_config
-            self._with_meta = with_meta
         elif "_validator" not in kwargs:
             raise ValueError("Expected schema keyword argument.")
         else:
             self._validator = kwargs.pop("_validator")
             self._sub_config = kwargs.pop("_sub_config")
-            self._with_meta = kwargs.pop("_with_meta")
             super().__init__(**kwargs)
 
     def __call__(self, *args, **kwargs):
@@ -59,17 +57,13 @@ class ActionJsonSchema(Action):
         if len(args) == 0:
             kwargs["_validator"] = self._validator
             kwargs["_sub_config"] = self._sub_config
-            kwargs["_with_meta"] = self._with_meta
             if "help" in kwargs and isinstance(kwargs["help"], str) and "%s" in kwargs["help"]:
                 import json
 
                 kwargs["help"] = kwargs["help"] % json.dumps(self._validator.schema, sort_keys=True)
             class_type = kwargs.pop("_class_type", ActionJsonSchema)
             return class_type(**kwargs)
-        val = self._check_type(args[2])
-        if not self._with_meta:
-            val = remove_meta(val)
-        setattr(args[1], self.dest, val)
+        setattr(args[1], self.dest, self._check_type(args[2]))
         return None
 
     def _check_type(self, value):

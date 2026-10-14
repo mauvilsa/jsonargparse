@@ -273,6 +273,9 @@ Changed
 - With ``parse_optionals_as_positionals=True``, giving a value both by name and
   as positional now fails, instead of the positional taking precedence (`#1009
   <https://github.com/mauvilsa/jsonargparse/pull/1009>`__).
+- ``ActionJsonSchema`` and ``ActionJsonnet`` now fail when given unexpected
+  parameters, instead of silently ignoring them (`#1014
+  <https://github.com/mauvilsa/jsonargparse/pull/1014>`__).
 
 Removed
 ^^^^^^^
@@ -326,6 +329,9 @@ Deprecated
   v5.0.0 ``allow_abbrev`` defaults to ``False``. Warns when an abbreviation is
   used and the parser was not given ``allow_abbrev=True`` (`#992
   <https://github.com/mauvilsa/jsonargparse/pull/992>`__).
+- ``with_meta`` parameter of ``ActionJsonSchema``, will be removed in v5.0.0.
+  Instead use ``.clone(with_meta=False)`` (`#1013
+  <https://github.com/mauvilsa/jsonargparse/pull/1013>`__).
 
 
 v4.52.0 (2026-09-01)
