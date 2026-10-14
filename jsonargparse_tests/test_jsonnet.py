@@ -302,6 +302,11 @@ def test_action_jsonnet_schema_dict_or_str():
     assert action1._validator.schema == action2._validator.schema
 
 
+def test_action_jsonnet_unexpected_parameters():
+    with pytest.raises(ValueError, match="does not accept the following parameters: {'unexpected'}"):
+        ActionJsonnet(unexpected=True)
+
+
 @skip_if_jsonschema_unavailable
 def test_action_jsonnet_init_failures():
     pytest.raises(ValueError, lambda: ActionJsonnet(ext_vars=2))

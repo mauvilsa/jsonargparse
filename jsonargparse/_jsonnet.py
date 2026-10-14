@@ -39,6 +39,8 @@ class ActionJsonnet(Action):
             jsonschema.exceptions.SchemaError: If the schema is invalid.
         """
         if "_validator" not in kwargs:
+            if kwargs:
+                raise ValueError(f"ActionJsonnet does not accept the following parameters: {set(kwargs)}")
             import_jsonnet("ActionJsonnet")
             if not isinstance(ext_vars, (str, NoneType)):
                 raise ValueError("ext_vars has to be either None or a string.")

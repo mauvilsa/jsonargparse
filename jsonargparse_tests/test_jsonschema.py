@@ -83,7 +83,7 @@ def parser_schema_object(parser):
         },
         "additionalProperties": False,
     }
-    parser.add_argument("--op2", action=ActionJsonSchema(schema=schema_object, with_meta=False))
+    parser.add_argument("--op2", action=ActionJsonSchema(schema=schema_object))
     parser.add_argument("--cfg", action="config")
     return parser
 
@@ -160,3 +160,5 @@ def test_action_jsonschema_init_failures():
 
     pytest.raises((ValueError, SchemaError), lambda: ActionJsonSchema(schema=":"))
     pytest.raises((ValueError, SchemaError), lambda: ActionJsonSchema(schema="."))
+    with pytest.raises(ValueError, match="does not accept the following parameters: {'unexpected'}"):
+        ActionJsonSchema(schema=schema_array, unexpected=True)

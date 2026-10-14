@@ -216,16 +216,19 @@ Config objects (Namespace)
    cfg = parser.parse_args().as_dict()
 
 **with_meta / default_meta** — The ``with_meta`` parameter of ``parse_*``
-methods and the ``default_meta`` property are removed. Config objects always
-contain metadata. Use ``.clone()`` to control metadata:
+methods and of ``ActionJsonSchema``, and the ``default_meta`` property are
+removed. Config objects always contain metadata. Use ``.clone()`` to control
+metadata:
 
 .. code-block:: python
 
    # before
    parser = ArgumentParser(default_meta=False)
+   parser.add_argument("--data", action=ActionJsonSchema(schema=s, with_meta=False))
    cfg = parser.parse_args(with_meta=False)
 
    # after
+   parser.add_argument("--data", action=ActionJsonSchema(schema=s))
    cfg = parser.parse_args().clone(with_meta=False)
 
 **Utility functions:**
