@@ -161,12 +161,12 @@ def test_parse_optionals_as_positionals_simple(parser, logger, subtests):
     with subtests.test("extra positionals invalid values"):
         with pytest.raises(ArgumentError) as ex:
             parser.parse_args(["p1", "o2", "5"])
-        assert re.match('Parser key "o1".*Given value: o2', ex.value.message, re.DOTALL)
+        assert re.match('Parser key "o1".*Got value: o2', ex.value.message, re.DOTALL)
         assert "Source: command line argument o1" in ex.value.message
 
         with pytest.raises(ArgumentError) as ex:
             parser.parse_args(["p1", "6", "invalid"])
-        assert re.match('Parser key "o2".*Given value: invalid', ex.value.message, re.DOTALL)
+        assert re.match('Parser key "o2".*Got value: invalid', ex.value.message, re.DOTALL)
 
     parser.logger = logger
     with subtests.test("unrecognized arguments"):
@@ -277,7 +277,7 @@ def test_parse_optionals_as_positionals_subcommands(parser, subparser, subtests)
     with subtests.test("extra positionals invalid values"):
         with pytest.raises(ArgumentError) as ex:
             parser.parse_args(["subcmd", "p1", "o2", "5"])
-        assert re.match('Parser key "o1".*Given value: o2', ex.value.message, re.DOTALL)
+        assert re.match('Parser key "o1".*Got value: o2', ex.value.message, re.DOTALL)
 
     with subtests.test("mixed unrecognized"):
         with pytest.raises(ArgumentError, match="unrecognized arguments: --unexpected=arg"):
@@ -474,7 +474,7 @@ def test_unset_sentinel_validate_skip_unset(parser):
 
     parser.validate(cfg, skip_unset=True)
 
-    with pytest.raises(TypeError, match="Expected a <class 'int'>"):
+    with pytest.raises(TypeError, match="Expected type: int"):
         parser.validate(cfg, skip_unset=False)
 
 
@@ -665,7 +665,7 @@ def test_validate_subclass_spec_in_any_enabled_union_object_fails(parser):
 
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args([f'--union={{"class_path": "{__name__}.AnySubclass", "init_args": {{"nope": 1}}}}'])
-    ctx.match("Does not validate against any of the Union subtypes")
+    ctx.match("Subtype errors:")
     ctx.match("Invalid subclass spec given as value for type object")
 
 
@@ -761,7 +761,7 @@ def test_validate_subclass_spec_in_any_enabled_union_dict_fails(parser, dict_typ
 
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args([f'--union={{"class_path": "{__name__}.AnySubclass", "init_args": {{"nope": 1}}}}'])
-    ctx.match("Does not validate against any of the Union subtypes")
+    ctx.match("Subtype errors:")
     ctx.match("Invalid subclass spec given as value for type Dict")
 
 

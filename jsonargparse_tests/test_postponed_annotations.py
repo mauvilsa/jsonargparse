@@ -441,7 +441,7 @@ def test_unresolvable_subtype_parse(parser):
     cfg = parser.parse_args(["--fn.p1=[1]", '--fn.p2=["a"]', f"--fn.p3={__name__}.function_unresolvable_subtype"])
     assert cfg.fn == Namespace(p1=[1], p2=["a"], p3=function_unresolvable_subtype)
     # the resolvable parts of the type hints are still validated
-    with pytest.raises(ArgumentError, match="Expected a <class 'list'>"):
+    with pytest.raises(ArgumentError, match=r"Expected type: List\[Unvalidated<MisspelledType>\]"):
         parser.parse_args(["--fn.p1=1", "--fn.p2=[]", f"--fn.p3={__name__}.function_unresolvable_subtype"])
     with pytest.raises(ArgumentError, match="Expected a dot import path string"):
         parser.parse_args(["--fn.p1=[]", "--fn.p2=[]", "--fn.p3=not_a_callable"])
@@ -462,6 +462,11 @@ def test_types_with_args_slot_descriptor_unchanged():
     assert replace_unvalidatable_typehints(UnionType) is UnionType
     assert replace_unvalidatable_typehints(GenericAlias) is GenericAlias
     assert replace_unvalidatable_typehints(Union[type, UnionType]) == Union[type, UnionType]
+
+
+def test_type_to_str_not_rebuildable():
+    # a type hint that can't be rebuilt with its subtypes as strings is shown as its str
+    assert type_to_str(UnrebuildableTypehint()) == "Unrebuildable[MisspelledType]"
 
 
 def test_unresolvable_subtype_not_rebuildable():
@@ -734,7 +739,7 @@ def test_get_types_class_scope_literal_values():
 def test_parse_class_scope_literal_values(parser):
     parser.add_class_arguments(ClassScopeLiteralValues, "s")
     assert parser.parse_args(["--s.example_set=train"]).s.example_set == "train"
-    with pytest.raises(ArgumentError, match=r"Expected a typing.Literal\['train', 'validation']"):
+    with pytest.raises(ArgumentError, match=r"Expected type: Literal\['train', 'validation']"):
         parser.parse_args(["--s.example_set=test"])
 
 

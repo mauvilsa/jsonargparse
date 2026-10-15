@@ -819,7 +819,7 @@ def test_sub_configs_dict(parser, tmp_cwd):
     assert data == cfg["data"]
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--data=does-not-exist.yaml"])
-    ctx.match("Expected a path but does-not-exist.yaml either not accessible or invalid")
+    ctx.match("Expected a path but does-not-exist.yaml is either not accessible or invalid")
 
 
 def test_sub_configs_subclass(parser, tmp_cwd):
@@ -1198,7 +1198,7 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
     with subtests.test("paths list nargs='+' list not exist"):
         with pytest.raises(ArgumentError) as ctx:
             parser.parse_args(["--lists", "no-such-file"])
-        ctx.match("Expected a path but no-such-file either not accessible or invalid")
+        ctx.match("Expected a path but no-such-file is either not accessible or invalid")
 
 
 @pytest.mark.parametrize("validate_defaults", [False, True])

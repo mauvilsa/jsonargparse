@@ -19,6 +19,7 @@ from jsonargparse._util import (
     CaptureParserException,
     get_import_path,
     import_object,
+    indent_text,
     merge_config,
     object_path_serializer,
     register_unresolvable_import_paths,
@@ -127,6 +128,11 @@ def test_jsonargparse_debug_invalid_value():
     with pytest.raises(ValueError) as ctx:
         debug_mode_active()
     ctx.match("Invalid boolean value for environment variable JSONARGPARSE_DEBUG: invalid")
+
+
+@patch("os.linesep", "\r\n")
+def test_indent_text_not_first_line_keeps_newlines():
+    assert indent_text("a\nb\nc", first_line=False) == "a\n  b\n  c"
 
 
 # import paths tests

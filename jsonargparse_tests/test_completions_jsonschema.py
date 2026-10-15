@@ -1493,7 +1493,7 @@ def test_none_default_null_not_accepted(parser, parsing_settings_patch):
     set_parsing_settings(unset_sentinel=True)
     unset_parser = ArgumentParser(exit_on_error=False)
     unset_parser.add_argument("--num", type=int)
-    with pytest.raises(argparse.ArgumentError, match="Expected a <class 'int'>"):
+    with pytest.raises(argparse.ArgumentError, match="Expected type: int"):
         unset_parser.parse_string('{"num": null}')
 
 

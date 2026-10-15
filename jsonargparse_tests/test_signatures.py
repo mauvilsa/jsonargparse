@@ -921,7 +921,7 @@ def test_add_function_fail_untyped_true_untyped_optional(parser):
     added_args = parser.add_function_arguments(func_untyped_optional, fail_untyped=True)
     assert ["a1", "a2"] == added_args
     assert parser.parse_args(["--a1=123"]) == Namespace(a1=123, a2=None)
-    with pytest.raises(ArgumentError, match="Expected a .*int.* Got value: x"):
+    with pytest.raises(ArgumentError, match="Expected type: int. Got value: x"):
         parser.parse_args(["--a1=x"])
 
 

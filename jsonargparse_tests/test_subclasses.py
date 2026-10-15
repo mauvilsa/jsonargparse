@@ -43,7 +43,12 @@ from jsonargparse import (
     set_parsing_settings,
 )
 from jsonargparse._instantiation import _class_instantiators
-from jsonargparse._typehints import _cached_class_parsers, implements_protocol, is_instance_or_supports_protocol
+from jsonargparse._typehints import (
+    _cached_class_parsers,
+    implements_protocol,
+    is_instance_or_supports_protocol,
+    type_to_str,
+)
 from jsonargparse.typing import final
 from jsonargparse_tests.conftest import (
     capture_logs,
@@ -138,7 +143,7 @@ def test_subclass_positional(parser):
     assert cfg.obj.class_path == f"{__name__}.SubA"
 
     help_str = get_parser_help(parser)
-    assert "required, type: <class 'BaseC'>" in help_str
+    assert "required, type: BaseC," in help_str
     assert "--obj.help" in help_str
 
 
@@ -2889,6 +2894,85 @@ def test_subclass_error_undefined_module(parser):
     ctx.match("No module named 'does_not_exist_module'")
 
 
+class KnownBase:
+    def __init__(self, p: int = 0):
+        pass  # pragma: no cover
+
+
+class KnownSubA(KnownBase):
+    pass
+
+
+class KnownAbstract(KnownBase, ABC):
+    @abstractmethod
+    def method(self):
+        pass  # pragma: no cover
+
+
+known_subclasses = f"Known subclasses: {__name__}.KnownBase, {__name__}.KnownSubA"
+
+
+@pytest.mark.parametrize(
+    ["value", "expected"],
+    [
+        ("NotAClass", "Expected a dot import path or the name of a known subclass of KnownBase. Got value: NotAClass"),
+        ("calendar.Calendar", "Import path calendar.Calendar does not correspond to a subclass of KnownBase"),
+        ("calendar.DoesNotExist", "module 'calendar' has no attribute 'DoesNotExist'"),
+        ("KnownAbstract", "Expected an instantiatable class, but KnownAbstract is abstract"),
+    ],
+)
+def test_subclass_error_shows_known_subclasses(parser, value, expected):
+    parser.add_argument("--op", type=KnownBase)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--op={value}"])
+    assert expected in str(ctx.value)
+    assert known_subclasses in str(ctx.value)
+
+
+def test_subclass_error_in_optional_shows_known_subclasses(parser):
+    parser.add_argument("--op", type=Optional[KnownBase])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--op=NotAClass"])
+    assert known_subclasses in str(ctx.value)
+
+
+def test_subclass_error_with_sub_configs_shows_known_subclasses(parser):
+    parser.add_argument("--op", type=KnownBase, sub_configs=True)
+    err = get_parse_args_stderr(parser, ["--op=NotAClass"])
+    expected = f"""
+    error: Parser key "op":
+      - Expected a path but NotAClass is either not accessible or invalid
+      - Expected a dot import path or the name of a known subclass of KnownBase. Got value: NotAClass
+        {known_subclasses}
+      Source: command line argument --op
+    """
+    assert textwrap.dedent(expected).strip() in err
+
+
+def test_subclass_error_invalid_init_arg_no_known_subclasses(parser):
+    parser.add_argument("--op", type=KnownBase)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--op=KnownSubA", "--op.p=x"])
+    ctx.match("Expected type: int. Got value: x")
+    assert "Known subclasses" not in str(ctx.value)
+
+
+class InitFails(BaseC):
+    exception: type[Exception] = RuntimeError
+
+    def __init__(self, p: int = 0):
+        raise self.exception("cannot init: missing GPU")
+
+
+@pytest.mark.parametrize("exception", [RuntimeError, AttributeError, ImportError, AssertionError])
+@pytest.mark.parametrize("typehint", [BaseC, Optional[BaseC], Union[int, BaseC]])
+def test_subclass_init_exception_not_reported_as_validation_error(parser, typehint, exception):
+    parser.add_argument("--op", type=typehint)
+    cfg = parser.parse_args(["--op=InitFails"])
+    with patch.object(InitFails, "exception", exception), pytest.raises(exception, match="^cannot init: missing GPU$"):
+        parser.instantiate(cfg)
+
+
 def test_subclass_error_unexpected_init_arg(parser):
     parser.add_argument("--op", type=BaseC)
     class_path = f'"class_path": "{__name__}.BaseC"'
@@ -3028,16 +3112,9 @@ class ErrorIndentation1:
 def test_subclass_error_indentation_invalid_init_arg(parser):
     parser.add_subclass_arguments(ErrorIndentation1, "cls")
     err = get_parse_args_stderr(parser, ["--cls=ErrorIndentation1", "--cls.init_args.val=abc"])
-    expected = textwrap.dedent("""
+    expected = textwrap.dedent(f"""
     Parser key "val":
-      Does not validate against any of the Union subtypes
-      Subtypes: [<class 'int'>, <class 'dict'>, <class 'NoneType'>]
-      Errors:
-        - Expected a <class 'int'>
-        - Expected a <class 'dict'>
-        - Expected a <class 'NoneType'>
-      Given value type: <class 'str'>
-      Given value: abc
+      Expected type: {type_to_str(Optional[Union[int, dict]])}. Got value: abc
     """).strip()
     expected = textwrap.indent(expected, "        ")
     assert "\n".join(expected.splitlines()) in "\n".join(err.splitlines())
@@ -3053,17 +3130,30 @@ def test_subclass_error_indentation_in_union_invalid_value(parser):
     parser.add_argument("--cfg", action="config")
     config = {"union": [{"class_path": "ErrorIndentation2", "init_args": {"val": "x"}}]}
     err = get_parse_args_stderr(parser, [f"--cfg={json.dumps(config)}"])
-    expected = textwrap.dedent("""
-    Errors:
-      - Expected a <class 'str'>
-      - Not a valid subclass of ErrorIndentation2
+    expected = textwrap.dedent(f"""
+    Expected type: {type_to_str(Union[str, ErrorIndentation2])}. Got value: {config["union"]}
+    Subtype errors:
+      - ErrorIndentation2: Not a valid subclass of ErrorIndentation2
         Subclass types expect one of:
         - a class path (str)
         - a dict with class_path entry
         - a dict without class_path but with init_args entry (class path given previously)
         - a dict with parameters accepted by the base class (implicit class_path)
-    Given value type: <class 'list'>
-    Given value: [{'class_path': 'ErrorIndentation2', 'init_args': {'val': 'x'}}]
+    """).strip()
+    expected = textwrap.indent(expected, "  ")
+    assert "\n".join(expected.splitlines()) in "\n".join(err.splitlines())
+
+
+def test_subclass_error_in_union_nested_arg(parser):
+    parser.add_argument("--union", type=Optional[ErrorIndentation2])
+    err = get_parse_args_stderr(parser, ["--union=ErrorIndentation2", "--union.val=x"])
+    expected = textwrap.dedent(f"""
+    Expected type: {type_to_str(Optional[ErrorIndentation2])}
+    Subtype errors:
+      - ErrorIndentation2: Problem with given class_path '{__name__}.ErrorIndentation2':
+          Parser key "val":
+            Expected type: int. Got value: x
+    Source: command line argument --union.val
     """).strip()
     expected = textwrap.indent(expected, "  ")
     assert "\n".join(expected.splitlines()) in "\n".join(err.splitlines())

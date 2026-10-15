@@ -786,8 +786,8 @@ class ActionTypeHint(Action):
                         ):
                             ex = None
                         elif self._enable_path and config_path is None and isinstance(orig_val, str):
-                            msg = f"\n- Expected a path but {orig_val} either not accessible or invalid\n- "
-                            raise type(ex)(msg + str(ex)) from ex
+                            msg = f"- Expected a path but {orig_val} is either not accessible or invalid\n- "
+                            raise type(ex)(msg + indent_text(str(ex), first_line=False)) from ex
                     if ex:
                         raise ex
 
@@ -986,20 +986,41 @@ def adapt_composed_config(val: ComposedConfig, typehint, adapt_kwargs: dict):
     return adapt_typehints(val.own, typehint, **{**adapt_kwargs, "prev_val": prev_val})
 
 
+def is_valid_value(val, typehint, adapt_kwargs: dict) -> bool:
+    """Whether a value validates against a type, i.e. it is adapted without instantiating classes."""
+    shared = {k: adapt_kwargs[k] for k in ("orig_val", "prev_val") if k in adapt_kwargs}
+    kwargs = {**deepcopy({k: v for k, v in adapt_kwargs.items() if k not in shared}), **shared}
+    try:
+        adapt_typehints(pristine_value(val), typehint, **{**kwargs, "instantiate_classes": False})
+    except Exception:
+        return False
+    return True
+
+
 def raise_unexpected_value(message: str, val: Any = inspect._empty, exception: Exception | None = None) -> NoReturn:
     if val is not inspect._empty:
         message += f". Got value: {val}"
     raise ValueError(message) from exception
 
 
-def raise_union_unexpected_value(subtypes, val: Any, exceptions: list[Exception]) -> NoReturn:
-    str_exceptions = [indent_text(str(e), first_line=False) for e in exceptions]
-    errors = indent_text("- " + "\n- ".join(str_exceptions))
-    errors = errors.replace(f". Got value: {val}", "").replace(f" {val} ", " ")
-    raise ValueError(
-        f"Does not validate against any of the Union subtypes\nSubtypes: {subtypes}"
-        f"\nErrors:\n{errors}\nGiven value type: {type(val)}\nGiven value: {val}"
-    ) from exceptions[0]
+def raise_union_unexpected_value(typehint, subtypes, val: Any, exceptions: list[Exception]) -> NoReturn:
+    """Raises the error of a value that no subtype accepts.
+
+    Only the subtype errors that say more than the value not being of that type are listed.
+    """
+    got_value = f". Got value: {val}"
+    errors = []
+    for subtype, exception in zip(subtypes, exceptions):
+        subtype_str = type_to_str(subtype)
+        error = str(exception).replace(got_value, "").replace(f" {val} ", " ")
+        if error != f"Expected type: {subtype_str}":
+            errors.append(f"- {subtype_str}: {indent_text(error, first_line=False)}")
+    message = f"Expected type: {type_to_str(typehint)}"
+    if not isinstance(val, NestedArg):  # the value of a nested key is shown by the subtype errors
+        message += got_value
+    if errors:
+        message += "\nSubtype errors:\n" + indent_text("\n".join(errors))
+    raise ValueError(message) from exceptions[0]
 
 
 def resolve_forward_ref(ref, global_vars=None):
@@ -1517,9 +1538,13 @@ def adapt_typehints(
         if val not in subtypehints and isinstance(val, str):
             subtypes = tuple(type(v) for v in subtypehints if type(v) is not str)
             if subtypes:
-                val = adapt_typehints(val, Union[subtypes], **adapt_kwargs)
+                try:
+                    val = adapt_typehints(val, Union[subtypes], **adapt_kwargs)
+                except ValueError:
+                    # the error is that of the literal
+                    pass
         if val not in subtypehints:
-            raise_unexpected_value(f"Expected a {typehint}", val)
+            raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
 
     # PEP 661 sentinel, which only accepts itself, given as its import path
     elif is_sentinel(typehint):
@@ -1538,7 +1563,7 @@ def adapt_typehints(
         if typehint is float and isinstance(val, int) and not isinstance(val, bool):
             val = float(val)
         if not isinstance(val, typehint) or (typehint in (int, float) and isinstance(val, bool)):
-            raise_unexpected_value(f"Expected a {typehint}", val)
+            raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
 
     # Annotated
     elif is_annotated(typehint):
@@ -1566,9 +1591,9 @@ def adapt_typehints(
         elif not isinstance(val, typehint):
             try:
                 val = typehint[val]
-            except KeyError as ex:
+            except (KeyError, TypeError) as ex:  # TypeError for unhashable values, e.g. a list
                 raise_unexpected_value(
-                    f"Expected a member of {typehint}: {iter_to_set_str(typehint.__members__)}", val, ex
+                    f"Expected a member of {type_to_str(typehint)}: {iter_to_set_str(typehint.__members__)}", val, ex
                 )
 
     # Type
@@ -1585,7 +1610,7 @@ def adapt_typehints(
             else:
                 valid = is_subclass(val, subtypehints[0])
             if not valid:
-                raise_unexpected_value(f"Expected an import path corresponding to a {typehint}", path)
+                raise_unexpected_value(f"Expected type: {type_to_str(typehint)}, given as an import path", path)
 
     # Module
     elif typehint is ModuleType:
@@ -1630,6 +1655,8 @@ def adapt_typehints(
                     # a pristine value, since adapting can modify it in place
                     subtype_val = adapt_typehints(pristine_value(val), subtype, **adapt_kwargs)
                 except Exception as ex:
+                    if instantiate_classes and is_valid_value(val, subtype, adapt_kwargs):
+                        raise  # an exception of the instantiated code, not of the value being of another subtype
                     if subtype is str and not isinstance(val, str) and isinstance(orig_val, str):
                         vals.append(orig_val)
                         continue
@@ -1639,13 +1666,13 @@ def adapt_typehints(
                 if not sub_defaults_invalidate_value(subtype_val, subtype, sorted_subtypes, adapt_kwargs):
                     break
         if all(isinstance(v, Exception) for v in vals):
-            raise_union_unexpected_value(sorted_subtypes, val, vals)
+            raise_union_unexpected_value(typehint, sorted_subtypes, val, vals)
         val = next((v for v in reversed(vals) if not isinstance(v, Exception)))
 
     # Tuple or Set
     elif typehint_origin in tuple_set_origin_types:
         if not isinstance(val, (list, tuple, set, frozenset)):
-            raise_unexpected_value(f"Expected a {typehint_origin}", val)
+            raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
         val = list(val)
         if subtypehints is not None:
             is_tuple = typehint_origin in {Tuple, tuple}
@@ -1691,7 +1718,7 @@ def adapt_typehints(
         elif isinstance(val, Iterable) and not isinstance(val, (list, str)) and type(val) not in mapping_origin_types:
             val = list(val)
         elif not isinstance(val, list):
-            raise_unexpected_value(f"Expected a {typehint_origin}", val)
+            raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
         if subtypehints is not None:
             # orig_val is only read and prev_val is replaced, so they are not copied, which per item is quadratic
             shared = {k: adapt_kwargs[k] for k in ("orig_val", "prev_val") if k in adapt_kwargs}
@@ -1726,7 +1753,7 @@ def adapt_typehints(
         elif isinstance(val, (MappingProxyType, ChainMap)):
             val = dict(val)
         elif not isinstance(val, dict):
-            raise_unexpected_value(f"Expected a {typehint_origin}", val)
+            raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
         if typehint_origin is Counter:
             # a Counter is subscripted only with the type of its keys, and its values are always int
             subtypehints = (subtypehints[0] if subtypehints else Any, int)
@@ -1816,7 +1843,7 @@ def adapt_typehints(
         if typehint_origin is abc.Sized and isinstance(val, dict) and "class_path" in val:
             raise_unexpected_value("Subclass specs are not supported for Sized", val)
         if not is_structural_instance(val, typehint_origin):
-            raise_unexpected_value(f"Expected a {typehint_origin}", val)
+            raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
 
     # Callable
     elif (
@@ -1877,7 +1904,7 @@ def adapt_typehints(
                         if not callable_instances(val_class):
                             raise ImportError(
                                 f"Expected '{val['class_path']}' to be a class that instantiates into callable "
-                                f"or a subclass of {return_type or typehint}."
+                                f"or a subclass of {type_to_str(return_type or typehint)}."
                             )
                     val["class_path"] = get_import_path(val_class)
                     val = adapt_class_type(
@@ -1893,7 +1920,9 @@ def adapt_typehints(
                     # preventing the resolution by other subtypes when part of a union
                     raise ImportError(f"Expected an import path or a subclass spec, but got {val_input}")
             except (ImportError, AttributeError, ArgumentError) as ex:
-                raise_unexpected_value(f"Type {typehint} expects a function or a callable class: {ex}", val, ex)
+                raise_unexpected_value(
+                    f"Type {type_to_str(typehint)} expects a function or a callable class: {ex}", val, ex
+                )
 
     # Subclass
     elif inspect.isclass(typehint_origin):
@@ -1948,13 +1977,20 @@ def adapt_typehints(
 
         try:
             class_path = resolve_class_path_by_name(typehint, val["class_path"])
+            if "." not in class_path:  # not resolved to a subclass
+                raise_unexpected_value(
+                    f"Expected a dot import path or the name of a known subclass of {typehint.__name__}. "
+                    f"Got value: {class_path}{known_subclasses_suffix(typehint)}"
+                )
             val_class = import_object(class_path)
             if not val.get("init_args") and is_instance_or_supports_protocol(val_class, typehint):
                 return val_class  # importable instance
-            if is_protocol(val_class):
-                raise_unexpected_value(f"Expected an instantiatable class, but {val['class_path']} is a protocol")
-            if inspect.isabstract(val_class):
-                raise_unexpected_value(f"Expected an instantiatable class, but {val['class_path']} is abstract")
+            if is_protocol(val_class) or inspect.isabstract(val_class):
+                kind = "a protocol" if is_protocol(val_class) else "abstract"
+                raise_unexpected_value(
+                    f"Expected an instantiatable class, but {val['class_path']} is {kind}"
+                    f"{known_subclasses_suffix(typehint)}"
+                )
             if (
                 is_subclasses_disabled(typehint)
                 and inspect.isclass(val_class)
@@ -1979,7 +2015,10 @@ def adapt_typehints(
                         prev_val.init_args.pop(key, None)
             if not subclass:
                 msg = "implement protocol" if is_protocol(typehint) else "correspond to a subclass of"
-                raise_unexpected_value(f"Import path {val['class_path']} does not {msg} {typehint.__name__}")
+                raise_unexpected_value(
+                    f"Import path {val['class_path']} does not {msg} {typehint.__name__}"
+                    f"{known_subclasses_suffix(typehint)}"
+                )
             val["class_path"] = class_path
             val = adapt_class_type(
                 val,
@@ -1990,9 +2029,13 @@ def adapt_typehints(
                 typehint=typehint,
             )
         except (ImportError, AttributeError, AssertionError, ArgumentError) as ex:
+            if instantiate_classes and is_valid_value(val_input, typehint, adapt_kwargs):
+                raise  # an exception of the instantiated code, not of the given value
             class_path = val if isinstance(val, str) else val["class_path"]
             error = indent_text(str(ex))
-            raise_unexpected_value(f"Problem with given class_path {class_path!r}:\n{error}", exception=ex)
+            # an ArgumentError is of the init_args, thus not related to which the subclasses are
+            suffix = "" if isinstance(ex, ArgumentError) else known_subclasses_suffix(typehint)
+            raise_unexpected_value(f"Problem with given class_path {class_path!r}:\n{error}{suffix}", exception=ex)
 
     # TypeAliasType -- 3.12 `type x = y` or manually via typing_extensions
     elif is_alias_type(typehint):
@@ -2555,6 +2598,12 @@ def get_all_subclass_paths(cls: type, include_abstract: bool = False, closed_typ
     return subclass_list
 
 
+def known_subclasses_suffix(typehint) -> str:
+    """Line for an error, listing the class paths that could have been given, the same as the help."""
+    class_paths = get_all_subclass_paths(typehint, closed_types=False)
+    return "\nKnown subclasses: " + ", ".join(class_paths) if class_paths else ""
+
+
 def get_class_types(typehint, closed_types: bool = True) -> tuple:
     """Classes in a type hint for which a class path is accepted as value.
 
@@ -3078,10 +3127,7 @@ def type_to_str(obj):
         return "ModuleType"
     if obj in type_expression_types:
         return type_expression_types[obj]
-    # is_subclass not used, since in python<3.12 it considers an Annotated a subclass of its origin type
-    if obj in {bool, tuple, object} or (isinstance(obj, type) and issubclass(obj, (int, float, str, Path, Enum))):
-        return obj.__name__
-    return typehint_to_str(obj)
+    return subtypehint_to_str(obj)
 
 
 def typehint_to_str(typehint) -> str:
@@ -3117,7 +3163,10 @@ def typehint_to_str(typehint) -> str:
 
 
 def subtypehint_to_str(typehint) -> str:
-    if isinstance(typehint, type) and not getattr(typehint, "__args__", None):
+    if typehint is NoneType:
+        return "null"
+    # a GenericAlias, e.g. list[int], is excluded since in python 3.10 it is considered a class
+    if isinstance(typehint, type) and not isinstance(typehint, GenericAlias):
         return typehint.__name__  # the str of a class has a <class ...> wrap and the module name
     return typehint_to_str(typehint)
 
@@ -3140,6 +3189,8 @@ def replace_typehint_args(typehint, args):
 
 
 def repr_to_str(val):
+    if isinstance(val, Enum):
+        return f"{type(val).__name__}.{val.name}"  # the repr of a member also has its value
     return "null" if val is None else repr(val)
 
 

@@ -76,7 +76,7 @@ def test_on_parse_compute_fn_invalid_return_type(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args([])
     ctx.match(r"Invalid value for link '<lambda>\(a\) --> b'")
-    assert "Expected a <class 'str'>. Got value: 1" in str(ctx.value)
+    assert "Expected type: str. Got value: 1" in str(ctx.value)
 
 
 def test_on_parse_compute_fn_invalid_subclass(parser):
@@ -709,7 +709,7 @@ def test_on_instantiate_compute_fn_invalid_return_type(parser):
     cfg = parser.parse_args([])
     with pytest.raises(ValueError) as ctx:
         parser.instantiate(cfg)
-    ctx.match(r"Invalid value for link '<lambda>\(c1.a\) --> c2.b': Expected a <class 'str'>")
+    ctx.match(r"Invalid value for link '<lambda>\(c1.a\) --> c2.b': Expected type: str")
 
 
 class StrAttributeSource:
@@ -725,7 +725,7 @@ def test_on_instantiate_link_invalid_source_attribute_type(parser):
     cfg = parser.parse_args([])
     with pytest.raises(ValueError) as ctx:
         parser.instantiate(cfg)
-    ctx.match(r"Invalid value for link 'c1.a --> c2.a': Expected a <class 'int'>")
+    ctx.match(r"Invalid value for link 'c1.a --> c2.a': Expected type: int")
 
 
 def test_on_instantiate_link_invalid_subclass(parser):
