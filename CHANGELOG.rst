@@ -177,6 +177,13 @@ Fixed
   failing with a type error of that optional, and values after ``--`` that
   look like options rejected as unrecognized (`#1009
   <https://github.com/mauvilsa/jsonargparse/pull/1009>`__).
+- An exception raised by the ``__init__`` of a class in a union type, e.g. of a
+  parameter ``opt: Base = None``, reported on instantiation as the value not
+  validating against any of the union subtypes, instead of being raised as is
+  (`#1015 <https://github.com/mauvilsa/jsonargparse/pull/1015>`__).
+- ``Enum`` types given a list value failing with ``unhashable type`` instead of
+  saying which are the members (`#1015
+  <https://github.com/mauvilsa/jsonargparse/pull/1015>`__).
 
 Changed
 ^^^^^^^
@@ -276,6 +283,12 @@ Changed
 - ``ActionJsonSchema`` and ``ActionJsonnet`` now fail when given unexpected
   parameters, instead of silently ignoring them (`#1014
   <https://github.com/mauvilsa/jsonargparse/pull/1014>`__).
+- Type errors now name the declared type, e.g. ``Expected type: List[int]``
+  instead of ``Expected a <class 'list'>``, and the help shows classes without
+  the ``<class '...'>`` wrap. Union errors start with the expected type and only
+  list the subtype errors that say more than that, each with its subtype.
+  Errors of invalid class paths for subclass types list the known subclasses
+  (`#1015 <https://github.com/mauvilsa/jsonargparse/pull/1015>`__).
 
 Removed
 ^^^^^^^

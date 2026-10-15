@@ -16,7 +16,7 @@ from enum import Enum
 from functools import partialmethod
 from pathlib import Path
 from textwrap import dedent
-from types import GenericAlias, MappingProxyType, ModuleType, UnionType
+from types import GenericAlias, MappingProxyType, ModuleType, NoneType, UnionType
 from typing import (
     AbstractSet,
     Annotated,
@@ -138,7 +138,7 @@ def test_str_no_strip(parser):
 def test_empty_str_not_loaded_as_null(parser, value):
     # an empty string must not be loaded as null, otherwise it would be accepted by the None subtype
     parser.add_argument("--op", type=Optional[int])
-    with pytest.raises(ArgumentError, match="Does not validate against any of the Union subtypes"):
+    with pytest.raises(ArgumentError, match=r"Expected type: .*\. Got value: \s*\n  Source"):
         parser.parse_args([f"--op={value}"])
 
 
@@ -214,7 +214,7 @@ def test_float_implicit_leading_zero(parser):
 @pytest.mark.parametrize(["typehint", "value"], [(bool, "yes"), (int, "0x10"), (int, "1_000")])
 def test_basic_types_json_mode_rejects_yaml_values(parser, typehint, value):
     parser.add_argument("--val", type=typehint)
-    with pytest.raises(ArgumentError, match=f"Expected a {typehint}"):
+    with pytest.raises(ArgumentError, match=f"Expected type: {typehint.__name__}"):
         parser.parse_args([f"--val={value}"])
 
 
@@ -258,8 +258,10 @@ def test_union_of_literals(parser):
     parser.add_argument("--literal", type=Union[Literal[1, 2], Literal["a", "b"]])
     assert "a" == parser.parse_args(["--literal=a"]).literal
     assert 2 == parser.parse_args(["--literal=2"]).literal
-    with pytest.raises(ArgumentError, match=r"Expected a typing.Literal\['a', 'b']"):
+    with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--literal=x"])
+    assert "Expected type: " + type_to_str(Union[Literal[1, 2], Literal["a", "b"]]) in str(ctx.value)
+    assert "Subtype errors" not in str(ctx.value)
 
 
 @parser_modes
@@ -744,8 +746,58 @@ def test_literal_enum_values(parser):
     assert EnumABC.A == parser.parse_args(["--enum=A"]).enum
     assert EnumABC.C == parser.parse_args(["--enum=C"]).enum
     assert "X" == parser.parse_args(["--enum=X"]).enum
-    with pytest.raises(ArgumentError, match="Expected a typing.*.Literal"):
+    with pytest.raises(ArgumentError, match=r"Expected type: Literal\[EnumABC.A, EnumABC.C, 'X'\]"):
         parser.parse_args(["--enum=B"])
+
+
+# error messages tests
+
+
+@pytest.mark.parametrize(
+    ["typehint", "value", "expected"],
+    [
+        (int, "oops", "Expected type: int. Got value: oops"),
+        (List[int], "oops", "Expected type: List[int]. Got value: oops"),
+        (List[int], '[1, "x"]', "Expected type: int. Got value: x"),
+        (Dict[str, int], "oops", "Expected type: Dict[str, int]. Got value: oops"),
+        (Tuple[int, int], "oops", "Expected type: Tuple[int, int]. Got value: oops"),
+        (Literal["a", "b"], "c", "Expected type: Literal['a', 'b']. Got value: c"),
+        (EnumABC, "D", "Expected a member of EnumABC: {A,B,C}. Got value: D"),
+        (Type[calendar.Calendar], "uuid.UUID", "Expected type: Type[Calendar], given as an import path"),
+    ],
+)
+def test_error_shows_declared_type(parser, typehint, value, expected):
+    parser.add_argument("--op", type=typehint)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args([f"--op={value}"])
+    assert expected in str(ctx.value)
+
+
+def test_union_error_without_informative_subtype_errors(parser):
+    parser.add_argument("--op", type=Optional[int])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--op=oops"])
+    expected = f"""
+    Parser key "op":
+      Expected type: {type_to_str(Optional[int])}. Got value: oops
+      Source: command line argument --op
+    """
+    assert str(ctx.value) == dedent(expected).strip()
+
+
+def test_union_error_with_informative_subtype_errors(parser):
+    parser.add_argument("--op", type=Union[int, List[int], EnumABC])
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(['--op=[1, "x"]'])
+    expected = f"""
+    Parser key "op":
+      Expected type: {type_to_str(Union[int, List[int], EnumABC])}. Got value: [1, 'x']
+      Subtype errors:
+        - List[int]: Expected type: int. Got value: x
+        - EnumABC: Expected a member of EnumABC: {{A,B,C}}
+      Source: command line argument --op
+    """
+    assert str(ctx.value) == dedent(expected).strip()
 
 
 # set tests
@@ -755,9 +807,8 @@ def test_literal_enum_values(parser):
 def test_set(parser):
     parser.add_argument("--set", type=Set[int])
     assert {1, 2} == parser.parse_args(["--set=[1, 2]"]).set
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--set=["a", "b"]'])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_frozenset(parser):
@@ -765,9 +816,8 @@ def test_frozenset(parser):
     cfg = parser.parse_args(["--frozen=[1, 2]"])
     assert frozenset([1, 2]) == cfg.frozen
     assert parser.dump(cfg, format="json_compact") == '{"frozen":[1,2]}'
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--frozen=["a", "b"]'])
-    ctx.match("Expected a <class 'int'>")
 
 
 @pytest.mark.parametrize("set_type", [AbstractSet, abc.Set], ids=str)
@@ -776,9 +826,8 @@ def test_abstract_set(parser, set_type):
     cfg = parser.parse_args(["--set=[1, 2]"])
     assert {1, 2} == cfg.set
     assert parser.dump(cfg, format="json_compact") == '{"set":[1,2]}'
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--set=["a", "b"]'])
-    ctx.match("Expected a <class 'int'>")
 
 
 # tuple tests
@@ -886,9 +935,8 @@ def test_list_variants(parser, list_type):
     parser.add_argument("--list", type=list_type[int])
     cfg = parser.parse_args(["--list=[1, 2]"])
     assert [1, 2] == cfg.list
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--list=["a"]'])
-    ctx.match("Expected a <class 'int'>")
 
 
 class WithCollection:
@@ -902,9 +950,8 @@ def test_collection_signature_parameter(parser):
     assert f"(type: {expected}, default: null)" in get_parser_help(parser)
     cfg = parser.parse_args(['--t.allowed=["a", "b"]'])
     assert cfg.t.allowed == ["a", "b"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: str"):
         parser.parse_args(["--t.allowed=[1]"])
-    ctx.match("Expected a <class 'str'>")
 
 
 def test_deque(parser):
@@ -1168,45 +1215,36 @@ def test_mapping_nested_without_args(parser):
 def test_typeddict_without_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {}))
     assert {} == parser.parse_args(["--typeddict={}"])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1}'])
-    ctx.match("Unexpected keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: MyDict. Got value: 1"):
         parser.parse_args(["--typeddict=1"])
-    ctx.match("Expected a <class 'dict'>")
 
 
 def test_typeddict_with_args(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": int}))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2}'])
-    ctx.match("Unexpected keys")
     pytest.raises(ArgumentError, lambda: parser.parse_args(['--typeddict={"a":1, "b":2}']))
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--typeddict={}"])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a":"x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: MyDict. Got value: 1"):
         parser.parse_args(["--typeddict=1"])
-    ctx.match("Expected a <class 'dict'>")
 
 
 def test_typeddict_with_args_ntotal(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": int}, total=False))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
     assert {} == parser.parse_args(["--typeddict={}"])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2}'])
-    ctx.match("Unexpected keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a":"x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: MyDict. Got value: 1"):
         parser.parse_args(["--typeddict=1"])
-    ctx.match("Expected a <class 'dict'>")
 
 
 @pytest.mark.skipif(not NotRequired, reason="NotRequired introduced in python 3.11 or backported in typing_extensions")
@@ -1219,21 +1257,16 @@ def test_typeddict_with_not_required_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": int, "b": NotRequired[int]}))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
     assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2, "c": 3}'])
-    ctx.match("Unexpected keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--typeddict={"b":2}'])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--typeddict={}"])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a":"x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a":1, "b":"x"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 @pytest.mark.skipif(not Required, reason="Required introduced in python 3.11 or backported in typing_extensions")
@@ -1262,12 +1295,10 @@ def test_read_only_support():
 def test_typeddict_with_read_only_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": ReadOnly[int], "b": int}))
     assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": "x", "b": 2}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--typeddict={"b": 2}'])
-    ctx.match("Missing required keys")
 
 
 @skip_if_no_read_only
@@ -1276,9 +1307,8 @@ def test_typeddict_read_only_not_required(parser, annotation):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": annotation, "b": int}))
     assert {"b": 2} == parser.parse_args(['--typeddict={"b": 2}'])["typeddict"]
     assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": "x", "b": 2}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 @skip_if_no_read_only
@@ -1286,9 +1316,8 @@ def test_typeddict_read_only_not_required(parser, annotation):
 def test_typeddict_read_only_required(parser, annotation):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": annotation}, total=False))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--typeddict={}"])
-    ctx.match("Missing required keys")
 
 
 @skip_if_no_read_only
@@ -1296,9 +1325,8 @@ def test_typeddict_read_only_add_class_arguments(parser):
     parser.add_class_arguments(TypedDict("MyDict", {"a": ReadOnly[int]}), "data")
     assert "--data.a A     (required, type: int)" in get_parser_help(parser)
     assert {"a": 1} == parser.instantiate(parser.parse_args(["--data.a=1"])).data
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(["--data.a=x"])
-    ctx.match("Expected a <class 'int'>")
 
 
 @skip_if_no_read_only
@@ -1322,12 +1350,10 @@ def test_typeddict_extra_items(parser):
     parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, extra_items=int))
     assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
     assert {"a": 1, "b": 2} == parser.parse_args(["--typeddict.a=1", "--typeddict.b=2"])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": 1, "b": "x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--typeddict={"b": 2}'])
-    ctx.match("Missing required keys")
 
 
 @skip_if_no_extra_items
@@ -1337,9 +1363,8 @@ def test_typeddict_extra_items_none_and_read_only(parser):
     cfg = parser.parse_args(['--none={"a": null}', '--read_only={"a": 1}'])
     assert {"a": None} == cfg.none
     assert {"a": 1} == cfg.read_only
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--read_only={"a": "x"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 @skip_if_no_extra_items
@@ -1352,9 +1377,8 @@ def test_typeddict_extra_items_inherited(parser):
 
     parser.add_argument("--typeddict", type=Child)
     assert {"a": 1, "b": "x", "c": 3} == parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": 3}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": "y"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 @skip_if_no_extra_items
@@ -1373,18 +1397,16 @@ def test_typeddict_extra_items_generic(parser):
     parser.add_argument("--inherits_generic", type=InheritsGeneric[int])
     for key in ["subscripted", "inherits_subscripted", "inherits_generic"]:
         assert {"a": 1, "b": 2} == parser.parse_args([f'--{key}={{"a": 1, "b": 2}}'])[key]
-        with pytest.raises(ArgumentError) as ctx:
+        with pytest.raises(ArgumentError, match="Expected type: int"):
             parser.parse_args([f'--{key}={{"a": 1, "b": "x"}}'])
-        ctx.match("Expected a <class 'int'>")
 
 
 @skip_if_no_extra_items
 def test_typeddict_closed(parser):
     parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, closed=True))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a": 1, "b": 2}'])
-    ctx.match("Unexpected keys")
 
 
 # NamedTuple tests
@@ -1449,7 +1471,7 @@ def test_namedtuple_invalid_values(parser):
         parser.parse_args(['--coord={"x": 1, "z": 2}'])
     with pytest.raises(ArgumentError, match="Expected at most 3 values"):
         parser.parse_args(['--coord=[1, 2, "a", 4]'])
-    with pytest.raises(ArgumentError, match="Expected a <class 'int'>"):
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--coord={"x": "not an int"}'])
     with pytest.raises(ArgumentError, match="Expected a NamedTuple Coord"):
         parser.parse_args(["--coord=1"])
@@ -1485,9 +1507,8 @@ def test_namedtuple_in_union(parser):
 def test_namedtuple_untyped_fields_accept_any(parser):
     parser.add_argument("--coord", type=UntypedCoord)
     assert parser.parse_args(['--coord={"x": "a", "y": 2}']).coord == UntypedCoord("a", 2)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required fields: {'y'}"):
         parser.parse_args(['--coord={"x": 1}'])
-    ctx.match("Missing required fields: {'y'}")
 
 
 def test_namedtuple_signature_parameter(parser):
@@ -1545,43 +1566,38 @@ def test_new_type(parser):
     parser.add_argument("--x", type=UserId)
     assert "(type: UserId, default: null)" in get_parser_help(parser)
     assert parser.parse_args(["--x=1"]).x == 1
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(["--x=abc"])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_new_type_of_container(parser):
     parser.add_argument("--x", type=Vector)
     assert parser.parse_args(["--x=[1.0, 2.0]"]).x == [1.0, 2.0]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: float"):
         parser.parse_args(['--x=["a"]'])
-    ctx.match("Expected a <class 'float'>")
 
 
 def test_new_type_of_new_type(parser):
     parser.add_argument("--x", type=NestedUserId)
     assert "(type: NestedUserId, default: null)" in get_parser_help(parser)
     assert parser.parse_args(["--x=1"]).x == 1
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(["--x=abc"])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_new_type_nested_in_container(parser):
     parser.add_argument("--x", type=Dict[str, UserId])
     assert parser.parse_args(['--x={"a": 1}']).x == {"a": 1}
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--x={"a": "b"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_optional_new_type(parser):
     parser.add_argument("--x", type=Optional[UserId])
     assert parser.parse_args(["--x=1"]).x == 1
     assert parser.parse_args(["--x=null"]).x is None
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(["--x=abc"])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_new_type_of_class(parser):
@@ -1598,9 +1614,8 @@ def test_new_type_signature_parameter(parser):
     parser.add_function_arguments(func)
     assert "(type: UserId, default: 1)" in get_parser_help(parser)
     assert parser.parse_args(["--x=2"]).x == 2
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(["--x=abc"])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_new_type_dump(parser):
@@ -1650,9 +1665,8 @@ if sys.version_info >= (3, 11):
 def test_subscripted_generic_namedtuple(parser):
     parser.add_argument("--coord", type=GenericCoord[int])
     assert parser.parse_args(['--coord={"item": 5}']).coord == GenericCoord(5, 1)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--coord={"item": "x"}'])
-    ctx.match("Expected a <class 'int'>")
     help_str = get_parse_args_stdout(parser, ["--coord.help"])
     assert "--coord.item ITEM  (required, type: int)" in help_str
 
@@ -1754,9 +1768,8 @@ def test_hashable_list_to_tuple(parser, hashable):
 @pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
 def test_hashable_unhashable_value(parser, hashable, value):
     parser.add_argument("--x", type=hashable)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: Hashable"):
         parser.parse_object({"x": value})
-    ctx.match("Expected a <class 'collections.abc.Hashable'>")
 
 
 @pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
@@ -1770,17 +1783,15 @@ def test_sized(parser, sized):
 def test_sized_subclass_spec_rejected(parser, sized):
     # reserved, so that supporting subclass specs in the future is not a breaking change
     parser.add_argument("--x", type=sized)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Subclass specs are not supported for Sized"):
         parser.parse_object({"x": {"class_path": "collections.UserList", "init_args": {"initlist": [1]}}})
-    ctx.match("Subclass specs are not supported for Sized")
 
 
 @pytest.mark.parametrize("sized", [Sized, abc.Sized], ids=str)
 def test_sized_unsized_value(parser, sized):
     parser.add_argument("--x", type=sized)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: Sized"):
         parser.parse_object({"x": 1})
-    ctx.match("Expected a <class 'collections.abc.Sized'>")
 
 
 @pytest.mark.parametrize("hashable", [Hashable, abc.Hashable], ids=str)
@@ -1801,9 +1812,8 @@ def test_optional_sized(parser, sized):
 def test_list_hashable(parser, hashable):
     parser.add_argument("--x", type=List[hashable])
     assert parser.parse_args(['--x=["a", "b"]']).x == ["a", "b"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match=r"Expected type: List\[Hashable\]"):
         parser.parse_args(["--x=abc"])
-    ctx.match("Expected a <class 'list'>")
 
 
 # subscripted generic TypedDict tests
@@ -1818,15 +1828,12 @@ def test_subscripted_generic_typeddict(parser):
         "extra": 1,
         "extras": [2],
     }
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--options={"unknown": 1}'])
-    ctx.match("Unexpected keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--options={"extra": "x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--options={"extras": ["x"]}'])
-    ctx.match("Expected a <class 'int'>")
     assert f"(type: {type_to_str(Optional[GenericTypedDict[int]])}, default: null)" in get_parser_help(parser)
 
 
@@ -1857,9 +1864,8 @@ def test_unsubscripted_generic_typeddict(parser):
     # an unbound TypeVar stands for nothing, so the key accepts any value
     assert parser.parse_args(['--options={"extra": [1, "x"]}']).options == {"extra": [1, "x"]}
     assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--options={"unknown": 1}'])
-    ctx.match("Unexpected keys")
     help_str = get_parse_args_stdout(parser, ["--options.help"])
     assert "--options.extra EXTRA" in help_str
     assert "(type: Unvalidated<GenericVar>)" in help_str
@@ -1878,9 +1884,8 @@ def test_typeddict_inherits_subscripted_generic(parser):
     parser.add_argument("--options", type=Optional[InheritsSubscriptedTypedDict])
     # the key inherited from GenericTypedDict[int] is validated as an int
     assert parser.parse_args(['--options={"extra": 1, "name": "x"}']).options == {"extra": 1, "name": "x"}
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--options={"extra": "x"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 @skip_if_no_generic_typed_dict
@@ -1888,12 +1893,10 @@ def test_typeddict_inherits_generic_subscripted(parser):
     parser.add_argument("--options", type=Optional[InheritsGenericTypedDict[str]])
     # the TypeVar of the base and of the subclass both stand for str
     assert parser.parse_args(['--options={"extra": "x", "other": "y"}']).options == {"extra": "x", "other": "y"}
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: str"):
         parser.parse_args(['--options={"extra": 1}'])
-    ctx.match("Expected a <class 'str'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: str"):
         parser.parse_args(['--options={"other": 1}'])
-    ctx.match("Expected a <class 'str'>")
 
 
 IntBoundVar = TypeVar("IntBoundVar", bound=int)
@@ -1909,9 +1912,8 @@ def test_typeddict_key_bound_typevar(parser):
     parser.add_argument("--options", type=Optional[BoundVarOptions])
     # not subscripted, so the TypeVar stands for its bound
     assert parser.parse_args(['--options={"value": 1}']).options == {"value": 1}
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--options={"value": "x"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 class UnsupportedKeyOptions(TypedDict, total=False):
@@ -1932,9 +1934,8 @@ def test_typeddict_key_unsupported_type(parser):
 def test_subscripted_non_generic_typeddict(parser):
     parser.add_argument("--options", type=Optional[TypeVarTypedDict[None]])
     assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--options={"unknown": 1}'])
-    ctx.match("Unexpected keys")
     assert f"(type: {type_to_str(Optional[TypeVarTypedDict[None]])}, default: null)" in get_parser_help(parser)
 
 
@@ -1957,21 +1958,16 @@ def test_typeddict_with_required_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": Required[int], "b": int}, total=False))
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
     assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2, "c": 3}'])
-    ctx.match("Unexpected keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--typeddict={"b":2}'])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--typeddict={}"])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a":"x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a":1, "b":"x"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 # TypedDict --*.help tests
@@ -2073,9 +2069,8 @@ def test_typeddict_union_class_help(parser):
 
 def test_typeddict_union_help_unexpected_name(parser):
     parser.add_argument("--val", type=Union[HelpTypedDict, HelpNotTotalTypedDict])
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match='"Unexpected" is not a typed dict'):
         parser.parse_args(["--val.help=Unexpected"])
-    ctx.match('"Unexpected" is not a typed dict')
 
 
 # NamedTuple --*.help tests
@@ -2086,7 +2081,7 @@ def test_namedtuple_help(parser):
     help_str = get_parser_help(parser)
     assert "Show the help for Coord and exit" in help_str
     assert "CLASS_PATH_OR_NAME" not in help_str  # a named tuple is a value, not a subclass type
-    assert "(type: <class 'Coord'>, default: null)" in help_str
+    assert "(type: Coord, default: null)" in help_str
     help_str = get_parse_args_stdout(parser, ["--coord.help"])
     assert f"Help for --coord.help={__name__}.Coord" in help_str
     assert "--coord.x X" in help_str
@@ -2128,9 +2123,8 @@ def test_namedtuple_union_named_types_help(parser, typehint, kind):
     help_str = get_parse_args_stdout(parser, ["--val.help=Coord"])
     assert f"Help for --val.help={__name__}.Coord" in help_str
     assert "--val.x X" in help_str
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match=f'"Unexpected" is not a {kind}'):
         parser.parse_args(["--val.help=Unexpected"])
-    ctx.match(f'"Unexpected" is not a {kind}')
 
 
 def test_namedtuple_union_class_help(parser):
@@ -2189,12 +2183,10 @@ def test_type_typeddict_accepts_structurally_equivalent(parser):
 def test_type_typeddict_rejects_incompatible(parser):
     parser.add_argument("--cls", type=Type[StateDict])
     for name in ["DifferentTypeDict", "MissingKeyDict", "NotTotalStateDict"]:
-        with pytest.raises(ArgumentError) as ctx:
+        with pytest.raises(ArgumentError, match=r"Expected type: Type\[StateDict\], given as an import path"):
             parser.parse_args([f"--cls={__name__}.{name}"])
-        ctx.match("Expected an import path corresponding to a")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match=r"Expected type: Type\[StateDict\], given as an import path"):
         parser.parse_args(["--cls=uuid.UUID"])
-    ctx.match("Expected an import path corresponding to a")
 
 
 def test_type_typeddict_optional(parser):
@@ -2269,9 +2261,8 @@ def test_module_type_instantiate_imports_module(parser, unimported_module):
 @pytest.mark.parametrize("value", ["not_a_module", "uuid.UUID", "json.not_a_submodule", "not.a.module", "", "1json"])
 def test_module_type_invalid_import_path(parser, value):
     parser.add_argument("--mod", type=ModuleType)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected an import path corresponding to a module"):
         parser.parse_args([f"--mod={value}"])
-    ctx.match("Expected an import path corresponding to a module")
 
 
 def test_module_type_optional(parser):
@@ -2389,9 +2380,8 @@ def test_union_type_parse_subscripted_subtype(parser):
 @pytest.mark.parametrize("value", ["int", "list[int]", "not_a_type | int", "int |", "1 + 2", "print('x')", ""])
 def test_union_type_invalid(parser, value):
     parser.add_argument("--type", type=UnionType)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected a string with a UnionType type expression"):
         parser.parse_args([f"--type={value}"])
-    ctx.match("Expected a string with a UnionType type expression")
 
 
 def test_union_type_dump(parser):
@@ -2446,9 +2436,8 @@ def test_generic_alias_parse(parser):
 @pytest.mark.parametrize("value", ["int", "int | str", "List[int]", "list[not_a_type]", "list[", ""])
 def test_generic_alias_invalid(parser, value):
     parser.add_argument("--type", type=GenericAlias)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected a string with a GenericAlias type expression"):
         parser.parse_args([f"--type={value}"])
-    ctx.match("Expected a string with a GenericAlias type expression")
 
 
 def test_generic_alias_dump(parser):
@@ -2755,20 +2744,16 @@ def test_typeddict_totality_inheritance(parser):
     parser.add_argument("--topdict", type=TopDict, required=False)
     assert {"a": 1} == parser.parse_args(['--middledict={"a": 1}'])["middledict"]
     assert {"a": 1, "b": 2} == parser.parse_args(['--middledict={"a": 1, "b": 2}'])["middledict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--middledict={}"])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--middledict={"b": 2}'])
-    ctx.match("Missing required keys")
     assert {"a": 1, "c": 2} == parser.parse_args(['--topdict={"a": 1, "c": 2}'])["topdict"]
     assert {"a": 1, "b": 2, "c": 3} == parser.parse_args(['--topdict={"a": 1, "b": 2, "c": 3}'])["topdict"]
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--topdict={"a": 1, "b": 2}'])
-    ctx.match("Missing required keys")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--topdict={"b":2, "c": 3}'])
-    ctx.match("Missing required keys")
 
 
 if Unpack:
@@ -2868,9 +2853,8 @@ def test_ordered_dict(parser):
     cfg = parser.parse_args(['--odict={"a":1, "b":2}'])
     assert isinstance(cfg.odict, OrderedDict)
     assert OrderedDict([("a", 1), ("b", 2)]) == cfg.odict
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--odict={"x":"-"}'])
-    ctx.match("Expected a <class 'int'>")
     assert parser.dump(cfg, format="json_compact") == '{"odict":{"a":1,"b":2}}'
     if pyyaml_available:
         assert parser.dump(cfg, format="yaml") == "odict:\n  a: 1\n  b: 2\n"
@@ -2882,12 +2866,10 @@ def test_counter(parser):
     cfg = parser.parse_args(['--counter={"a":2, "b":1}'])
     assert isinstance(cfg.counter, Counter)
     assert cfg.counter == Counter({"a": 2, "b": 1})
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--counter={"a":"x"}'])
-    ctx.match("Expected a <class 'int'>")
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match=r"Expected type: Counter\[str\]"):
         parser.parse_args(["--counter=[a, a]"])
-    ctx.match("Expected a <class 'collections.Counter'>")
     assert parser.dump(cfg, format="json_compact") == '{"counter":{"a":2,"b":1}}'
 
 
@@ -2895,9 +2877,8 @@ def test_counter_unsubscripted(parser):
     parser.add_argument("--counter", type=Counter)
     cfg = parser.parse_args(['--counter={"a":2}'])
     assert cfg.counter == Counter({"a": 2})
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--counter={"a":"x"}'])
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_chain_map(parser):
@@ -2907,9 +2888,8 @@ def test_chain_map(parser):
     cfg = parser.parse_args(['--chain={"c":3}'])
     assert isinstance(cfg.chain, ChainMap)
     assert cfg.chain == ChainMap({"c": 3})
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--chain={"c":"x"}'])
-    ctx.match("Expected a <class 'int'>")
     assert parser.dump(cfg, format="json_compact") == '{"chain":{"c":3}}'
 
 
@@ -2927,9 +2907,8 @@ def test_iterator(parser, iterator):
     # kept as a list, since an iterator would be exhausted by e.g. a dump
     assert cfg.iter == [1, 2]
     assert parser.dump(cfg, format="json_compact") == '{"iter":[1,2]}'
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--iter=["x"]'])
-    ctx.match("Expected a <class 'int'>")
     init = parser.instantiate(cfg)
     assert isinstance(init.iter, abc.Iterator)
     assert list(init.iter) == [1, 2]
@@ -3109,9 +3088,8 @@ def test_callable_function_path(parser):
     help_str = get_parser_help(parser)
     assert "(type: Callable, default: time.time)" in help_str
 
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Callable expects a function or a callable class"):
         parser.parse_args(["--callable=calendar.not_exist"])
-    ctx.match("Callable expects a function or a callable class")
 
 
 class WithPartialMethod:
@@ -3165,9 +3143,8 @@ def test_callable_list_of_function_paths(parser):
     cfg = parser.parse_args(['--callables=["random.randint", "time.time"]'])
     assert [random.randint, time.time] == cfg.callables
 
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match="Callable expects a function or a callable class"):
         parser.parse_args(['--callables=["calendar.not_exist"]'])
-    ctx.match("Callable expects a function or a callable class")
 
 
 def test_callable_not_a_function_path(parser):
@@ -3448,9 +3425,8 @@ def test_callable_protocol_instance_factory(parser, subtests):
 )
 def test_callable_return_type_bounds_the_accepted_class(parser, typehint):
     parser.add_argument("--optimizer", type=typehint)
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match=f"Expected '{__name__}.CallableClassPath' to be a subclass of .*Optimizer"):
         parser.parse_args([f"--optimizer={__name__}.CallableClassPath"])
-    ctx.match(f"Expected '{__name__}.CallableClassPath' to be a subclass of .*Optimizer")
 
 
 class NoArgsOptimizerFactory(Protocol):
@@ -3496,9 +3472,8 @@ def test_callable_return_type_bounds_the_accepted_function(parser):
 )
 def test_callable_return_type_rejects_function(parser, path):
     parser.add_argument("--optimizer", type=Callable[[List[float]], Optimizer])
-    with pytest.raises(ArgumentError) as ctx:
+    with pytest.raises(ArgumentError, match=f"Expected '{path}' to be a function that returns .*Optimizer"):
         parser.parse_args([f"--optimizer={path}"])
-    ctx.match(f"Expected '{path}' to be a function that returns .*Optimizer")
 
 
 def test_callable_without_return_type_accepts_any_function(parser):
@@ -3922,9 +3897,8 @@ class TestSentinel:
     @pytest.mark.parametrize("value", ["x", f"{__name__}.Sentinel"])
     def test_invalid(self, parser, value):
         parser.add_function_arguments(function_sentinel_default, "f")
-        with pytest.raises(ArgumentError) as ctx:
+        with pytest.raises(ArgumentError, match=f"Expected the sentinel {self.import_path}"):
             parser.parse_args([f"--f.a={value}"])
-        ctx.match(f"Expected the sentinel {self.import_path}")
 
 
 # lazy_instance tests
@@ -3952,9 +3926,8 @@ class IntParam:
 
 
 def test_lazy_instance_invalid_init_value():
-    with pytest.raises(ValueError) as ctx:
+    with pytest.raises(ValueError, match="Expected type: int"):
         lazy_instance(IntParam, param="not an int")
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_lazy_instance_pickleable():
@@ -4066,7 +4039,7 @@ def test_unsupported_subtypes_parameters_added(parser):
     assert cfg.fn.p2 == "x"
     # the supported parts are still validated
     assert parser.parse_args(["--fn.p2=3"]).fn.p2 == 3
-    with pytest.raises(ArgumentError, match="Expected a <class 'list'>"):
+    with pytest.raises(ArgumentError, match=r"Expected type: List\[Unvalidated<UnsupportedVar>\]"):
         parser.parse_args(["--fn.p1=1"])
 
 
@@ -4171,8 +4144,9 @@ class ConstrainedListValue(list):
     ["typehint", "expected", "expected_py314"],
     [
         (int, "int", None),
-        (date, "<class 'date'>", None),
-        (ConstrainedListValue, "<class 'ConstrainedListValue'>", None),
+        (date, "date", None),
+        (ConstrainedListValue, "ConstrainedListValue", None),
+        (NoneType, "null", None),
         (Optional[date], "Optional[date]", "date | null"),
         (date | None, "date | null", None),
         (Optional[Path_fr], "Optional[Path_fr]", "Path_fr | null"),
@@ -4238,9 +4212,8 @@ def test_action_typehint_unsupported_type(typehint):
 
 
 def test_action_typehint_none_type_error():
-    with pytest.raises(ValueError) as ctx:
+    with pytest.raises(ValueError, match="Expected typehint keyword argument"):
         ActionTypeHint(typehint=None)
-    ctx.match("Expected typehint keyword argument")
 
 
 @pytest.mark.parametrize(

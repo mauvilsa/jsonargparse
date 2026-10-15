@@ -1098,18 +1098,16 @@ def test_validate_skip_unset(parser):
     parser.add_argument("--op2", type=float)
     cfg = parser.parse_args(["--op2=2.2"])
     parser.validate(cfg, skip_unset=True)
-    with pytest.raises(TypeError) as ctx:
+    with pytest.raises(TypeError, match="Expected type: int"):
         parser.validate(cfg, skip_unset=False)
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_validate_branch(example_parser):
     cfg = example_parser.get_defaults()
     example_parser.validate(cfg.nums, branch="nums")
     cfg.nums.val1 = "invalid"
-    with pytest.raises(TypeError) as ctx:
+    with pytest.raises(TypeError, match="Expected type: int"):
         example_parser.validate(cfg.nums, branch="nums")
-    ctx.match("Expected a <class 'int'>")
 
 
 def test_strip_unknown(parser, example_parser):
