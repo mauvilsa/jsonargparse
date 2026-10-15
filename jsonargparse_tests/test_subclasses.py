@@ -2958,15 +2958,18 @@ def test_subclass_error_invalid_init_arg_no_known_subclasses(parser):
 
 
 class InitFails(BaseC):
+    exception: type[Exception] = RuntimeError
+
     def __init__(self, p: int = 0):
-        raise RuntimeError("cannot init: missing GPU")
+        raise self.exception("cannot init: missing GPU")
 
 
+@pytest.mark.parametrize("exception", [RuntimeError, AttributeError, ImportError, AssertionError])
 @pytest.mark.parametrize("typehint", [BaseC, Optional[BaseC], Union[int, BaseC]])
-def test_subclass_init_exception_not_reported_as_validation_error(parser, typehint):
+def test_subclass_init_exception_not_reported_as_validation_error(parser, typehint, exception):
     parser.add_argument("--op", type=typehint)
     cfg = parser.parse_args(["--op=InitFails"])
-    with pytest.raises(RuntimeError, match="^cannot init: missing GPU$"):
+    with patch.object(InitFails, "exception", exception), pytest.raises(exception, match="^cannot init: missing GPU$"):
         parser.instantiate(cfg)
 
 

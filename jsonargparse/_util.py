@@ -583,7 +583,7 @@ def indent_text(text: str, first_line: bool = True) -> str:
     lines = text.splitlines()
     if len(lines) == 1:
         return text
-    return lines[0] + os.linesep + textwrap.indent(os.linesep.join(lines[1:]), "  ")
+    return lines[0] + "\n" + textwrap.indent("\n".join(lines[1:]), "  ")
 
 
 def get_private_kwargs(data, **kwargs):

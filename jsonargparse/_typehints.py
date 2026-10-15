@@ -2029,6 +2029,8 @@ def adapt_typehints(
                 typehint=typehint,
             )
         except (ImportError, AttributeError, AssertionError, ArgumentError) as ex:
+            if instantiate_classes and is_valid_value(val_input, typehint, adapt_kwargs):
+                raise  # an exception of the instantiated code, not of the given value
             class_path = val if isinstance(val, str) else val["class_path"]
             error = indent_text(str(ex))
             # an ArgumentError is of the init_args, thus not related to which the subclasses are
