@@ -489,10 +489,10 @@ def set_parsing_settings(
     elif unset_sentinel is not None:
         raise ValueError(f"unset_sentinel must be a boolean, but got {unset_sentinel}.")
     # config_read_mode
-    if config_read_mode_urls_enabled is not None:
-        _set_config_read_mode(urls_enabled=config_read_mode_urls_enabled)
-    if config_read_mode_fsspec_enabled is not None:
-        _set_config_read_mode(fsspec_enabled=config_read_mode_fsspec_enabled)
+    _set_config_read_mode(
+        urls_enabled=config_read_mode_urls_enabled,
+        fsspec_enabled=config_read_mode_fsspec_enabled,
+    )
     # docstring_parse
     if docstring_parse_style is not None:
         _set_docstring_parse_options(style=docstring_parse_style)

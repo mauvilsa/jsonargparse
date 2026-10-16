@@ -16,6 +16,7 @@ import pytest
 from jsonargparse import SUPPRESS, ActionParser, ArgumentParser, set_parsing_settings
 from jsonargparse._loaders_dumpers import json_compact_dump, json_load, yaml_dump, yaml_load
 from jsonargparse._optionals import (
+    _get_config_read_mode,
     docstring_parser_support,
     fsspec_support,
     jsonnet_support,
@@ -233,7 +234,10 @@ def logger() -> logging.Logger:
 def patch_parsing_settings(fn):
     @wraps(fn)
     def _patch_parsing_settings(*args, **kwargs):
-        with patch.dict("jsonargparse._common.parsing_settings"):
+        with (
+            patch.dict("jsonargparse._common.parsing_settings"),
+            patch("jsonargparse._optionals._config_read_mode", _get_config_read_mode()),
+        ):
             return fn(*args, **kwargs)
 
     return _patch_parsing_settings

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import jsonargparse
 from jsonargparse import (
     ActionJsonnet,
     ActionJsonSchema,
@@ -263,6 +264,16 @@ def test_action_jsonnet_parse_method():
     assert 9 == len(parsed["records"])
     assert "#8" == parsed["records"][-2]["ref"]
     assert 15.5 == parsed["records"][-2]["val"]
+
+
+def test_action_jsonnet_parse_method_path(tmp_cwd):
+    Path("example.jsonnet").write_text(example_2_jsonnet)
+    path = jsonargparse.Path("example.jsonnet", mode="fr")
+    parsed = ActionJsonnet().parse(path, ext_vars={"param": 123}, with_meta=True)
+    assert 123 == parsed["param"]
+    assert path == parsed["__path__"]
+    with pytest.raises(ArgumentError, match="Problems evaluating Jsonnet 'example.jsonnet'"):
+        ActionJsonnet().parse(path)
 
 
 def test_action_jsonnet_ext_vars_default(parser):

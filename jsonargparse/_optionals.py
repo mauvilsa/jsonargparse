@@ -162,14 +162,14 @@ def import_ruamel(importer):
 
 
 def _set_config_read_mode(
-    urls_enabled: bool = False,
-    fsspec_enabled: bool = False,
+    urls_enabled: bool | None = None,
+    fsspec_enabled: bool | None = None,
 ):
     """Enables/disables optional config read modes.
 
     Args:
-        urls_enabled: Whether to read config files from URLs using requests package.
-        fsspec_enabled: Whether to read config files from fsspec supported file systems.
+        urls_enabled: Whether to read config files from URLs using requests package. ``None`` keeps it unchanged.
+        fsspec_enabled: Whether to read config files from fsspec supported file systems. ``None`` keeps it unchanged.
     """
     imports = {
         "u": import_requests,
@@ -178,6 +178,8 @@ def _set_config_read_mode(
 
     def update_mode(flag, enabled):
         global _config_read_mode
+        if enabled is None:
+            return
         if enabled:
             imports[flag]("_set_config_read_mode")
             if flag not in _config_read_mode:

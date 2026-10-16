@@ -186,6 +186,13 @@ Fixed
 - ``Enum`` types given a list value failing with ``unhashable type`` instead of
   saying which are the members (`#1015
   <https://github.com/mauvilsa/jsonargparse/pull/1015>`__).
+- ``set_parsing_settings`` with only one of ``config_read_mode_urls_enabled`` or
+  ``config_read_mode_fsspec_enabled`` silently disabling the other mode if
+  enabled earlier (`#1017
+  <https://github.com/mauvilsa/jsonargparse/pull/1017>`__).
+- ``ActionJsonnet.parse`` given a ``Path`` failing with ``TypeError: 'Path'
+  object is not callable`` (`#1017
+  <https://github.com/mauvilsa/jsonargparse/pull/1017>`__).
 
 Changed
 ^^^^^^^
