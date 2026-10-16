@@ -485,7 +485,8 @@ def fsspec_secrets_config():
     config_path = "memory://secrets/item/config.yaml"
     with fsspec.open(config_path, "w") as f:
         f.write(json_or_yaml_dump({"password": "PASSWORD"}))
-    return config_path
+    yield config_path
+    set_parsing_settings(config_read_mode_fsspec_enabled=False)
 
 
 @skip_if_fsspec_unavailable

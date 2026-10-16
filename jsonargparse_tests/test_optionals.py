@@ -201,6 +201,19 @@ def test_config_read_mode_fsspec_support_true():
     assert "fr" == _get_config_read_mode()
 
 
+@skip_if_requests_unavailable
+@skip_if_fsspec_unavailable
+def test_config_read_mode_urls_and_fsspec_independent():
+    assert "fr" == _get_config_read_mode()
+    set_parsing_settings(config_read_mode_urls_enabled=True)
+    set_parsing_settings(config_read_mode_fsspec_enabled=True)
+    assert "fsur" == _get_config_read_mode()
+    set_parsing_settings(config_read_mode_urls_enabled=False)
+    assert "fsr" == _get_config_read_mode()
+    set_parsing_settings(config_read_mode_fsspec_enabled=False)
+    assert "fr" == _get_config_read_mode()
+
+
 @pytest.mark.skipif(fsspec_support, reason="fsspec package should not be installed")
 def test_config_read_mode_fsspec_support_false():
     assert "fr" == _get_config_read_mode()

@@ -166,7 +166,7 @@ class ActionJsonnet(Action):
         except TypeError:
             pass
         else:
-            fname = jsonnet(absolute=False) if isinstance(jsonnet, Path) else jsonnet  # type: ignore[operator]
+            fname = jsonnet.relative if isinstance(jsonnet, Path) else jsonnet
             snippet = fpath.read_text()
         try:
             with parser_context(load_value_mode="json_or_yaml"):
