@@ -59,7 +59,8 @@ _message_action_json_schema_with_meta = """
 _message_config_files_as_paths = """
     Config file paths as ``Path`` objects in ``get_config_files`` and the config argument were deprecated
     in v4.53.0. From v5.0.0 they are strings, relative to the working directory if given relative. To work
-    with both versions, use ``os.path.abspath(os.path.expanduser(path))``.
+    with both versions, use ``os.fspath(path)``, and only for local files also
+    ``os.path.abspath(os.path.expanduser(...))``, since it breaks URLs.
 """
 
 

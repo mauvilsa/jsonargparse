@@ -88,7 +88,8 @@ changes:
   :class:`.Path` objects. A path given relative is relative to the working
   directory, e.g. ``config: other.yaml`` inside ``configs/main.yaml`` gives
   ``configs/other.yaml``, and a path given absolute stays absolute. To work with
-  both versions, use ``os.path.abspath(os.path.expanduser(path))``.
+  both versions, use ``os.fspath(path)``, and only for local files also
+  ``os.path.abspath(os.path.expanduser(...))``, since it breaks URLs.
   ``get_config_files`` warns in v4.
 
 
