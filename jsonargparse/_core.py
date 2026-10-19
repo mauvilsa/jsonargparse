@@ -1312,8 +1312,11 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, argparse.ArgumentPars
             namespace: The configuration object.
 
         Returns:
-            Paths to loaded config files.
+            Paths to loaded config files. As ``Path`` objects, which is deprecated, from v5.0.0 they are strings.
         """
+        from ._deprecated import deprecation_warning_config_files_as_paths
+
+        deprecation_warning_config_files_as_paths(stacklevel=2)
         cfg_files = []
         if "__default_config__" in namespace:
             cfg_files.append(namespace["__default_config__"])

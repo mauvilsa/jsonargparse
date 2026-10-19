@@ -56,6 +56,13 @@ _message_action_json_schema_with_meta = """
     To remove metadata from a config object, do ``.clone(with_meta=False)``.
 """
 
+_message_config_files_as_paths = """
+    Config file paths as ``Path`` objects in ``get_config_files`` and the config argument were deprecated
+    in v4.53.0. From v5.0.0 they are strings, relative to the working directory if given relative. To work
+    with both versions, use ``os.fspath(path)``, and only for local files also
+    ``os.path.abspath(os.path.expanduser(...))``, since it breaks URLs.
+"""
+
 
 shown_deprecation_warnings: Set[Any] = set()
 
@@ -649,6 +656,10 @@ error_handler_message = """
 
 def deprecation_warning_error_handler(stacklevel):
     deprecation_warning("ArgumentParser.error_handler", error_handler_message, stacklevel=stacklevel)
+
+
+def deprecation_warning_config_files_as_paths(stacklevel):
+    deprecation_warning("ArgumentParser.get_config_files", _message_config_files_as_paths, stacklevel=stacklevel + 1)
 
 
 def mark_group_instantiated_in_v5(container, nested_key: Optional[str], as_group: bool, method: str) -> None:
