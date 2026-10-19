@@ -267,6 +267,14 @@ def no_color():
         yield
 
 
+@pytest.fixture(autouse=True, scope="session")
+def isolated_home(tmp_path_factory):
+    """A home directory that doesn't contain the test paths, which would otherwise be shown with ``~``."""
+    home = str(tmp_path_factory.mktemp("home"))
+    with patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}):
+        yield
+
+
 def get_parser_help(parser: ArgumentParser, strip=False, columns=columns) -> str:
     out = StringIO()
     with patch.dict(os.environ, {"COLUMNS": columns}):

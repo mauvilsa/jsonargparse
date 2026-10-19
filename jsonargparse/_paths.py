@@ -383,6 +383,30 @@ def disable_remote_relative_paths(disable: bool = True) -> Iterator[None]:
         _remote_relative_disabled.reset(token)
 
 
+def cwd_relative_path(path: Path) -> str:
+    """Returns a path as a string, relative to the working directory if it was given relative.
+
+    An absolute path is returned with ``~`` for the home directory if inside it, a URL or fsspec path as
+    absolute, and ``-`` as given.
+    """
+    if path._std_io:
+        return path.relative
+    if path.is_url or path.is_fsspec:
+        return path.absolute
+    given = os.path.expanduser(path.relative)
+    if os.path.isabs(given):
+        home = os.path.expanduser("~")
+        if given.startswith(home) and given[len(home) : len(home) + 1] in {os.sep, os.altsep or os.sep}:
+            return "~" + given[len(home) :]
+        return given
+    try:
+        if path.cwd == os.getcwd():  # as given, since normalizing would change the file with symlinks and '..'
+            return path.relative
+        return os.path.relpath(path.absolute)
+    except (OSError, ValueError):  # the working directory was removed, or on Windows a different drive
+        return path.absolute
+
+
 @contextmanager
 def path_dir_context(path: Path | None) -> Iterator[str | None]:
     """A context manager to resolve relative paths with respect to the directory of a path.

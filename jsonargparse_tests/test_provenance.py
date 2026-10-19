@@ -221,6 +221,31 @@ def test_config_file_path_outside_working_directory(parser, tmp_path, monkeypatc
     assert get_sources(parser.parse_args([])) == {"val": f"default config file {defaults}"}
 
 
+def test_config_file_path_relative_outside_working_directory(parser, tmp_path, monkeypatch):
+    (tmp_path / "defaults.json").write_text('{"val": 9}')
+    (tmp_path / "work").mkdir()
+    monkeypatch.chdir(tmp_path / "work")
+    parser.add_argument("--val", type=int, default=3)
+    parser.default_config_files = [os.path.join("..", "defaults.json")]
+    assert get_sources(parser.parse_args([])) == {"val": f"default config file {Path('..', 'defaults.json')}"}
+
+
+def test_config_file_path_home_shorthand(parser, tmp_path, monkeypatch):
+    (tmp_path / "defaults.json").write_text('{"val": 9}')
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    parser.add_argument("--val", type=int, default=3)
+    parser.default_config_files = ["~/defaults.json"]
+    assert get_sources(parser.parse_args([])) == {"val": "default config file ~/defaults.json"}
+
+
+def test_config_file_path_absolute_inside_working_directory(parser, tmp_cwd):
+    parser.add_argument("--val", type=int, default=3)
+    Path("cfg.json").write_text('{"val": 5}')
+    cfg_path = str(tmp_cwd / "cfg.json")
+    assert get_sources(parser.parse_args(["--config=" + cfg_path])) == {"val": f"config file {cfg_path}"}
+
+
 # precedence between sources
 
 
@@ -677,6 +702,28 @@ def test_error_config_file_path_working_directory_removed(parser, tmp_cwd):
     finally:
         os.chdir(tmp_cwd)
     assert error.endswith(f"\n  Source: config file {tmp_cwd / 'cfgs' / 'cfg.json'}")
+
+
+@pytest.mark.skipif(not is_posix, reason="the working directory can't be removed in windows")
+def test_error_relative_config_file_path_working_directory_removed(parser, tmp_cwd):
+    """A path relative to a config file is shown absolute when the working directory was removed."""
+    removed_dir = tmp_cwd / "removed"
+    removed_dir.mkdir()
+    Path("cfgs").mkdir()
+    Path("cfgs", "outer.json").write_text('{"config": "inner.json"}')
+    Path("cfgs", "inner.json").write_text('{"val": "abc"}')
+
+    def scratch_int(value):
+        shutil.rmtree(removed_dir)
+        return int(value)
+
+    parser.add_argument("--val", type=scratch_int, default=0)
+    os.chdir(removed_dir)
+    try:
+        error = get_error(parser, ["--config=" + str(tmp_cwd / "cfgs" / "outer.json")])
+    finally:
+        os.chdir(tmp_cwd)
+    assert error.endswith(f"\n  Source: config file {tmp_cwd / 'cfgs' / 'inner.json'}")
 
 
 def test_error_subconfig_file_path_relative_to_working_directory(parser, tmp_cwd):

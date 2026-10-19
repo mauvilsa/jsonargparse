@@ -298,6 +298,12 @@ Changed
   list the subtype errors that say more than that, each with its subtype.
   Errors of invalid class paths for subclass types list the known subclasses
   (`#1015 <https://github.com/mauvilsa/jsonargparse/pull/1015>`__).
+- Config file paths in the config argument and ``get_config_files`` are now
+  strings instead of ``Path`` objects, relative to the working directory if
+  given relative, otherwise with ``~`` if inside the home directory, and
+  ``get_config_files`` gives a flat list. Config file paths in value sources
+  follow the same rule, instead of being relative only when inside the working
+  directory (`#1019 <https://github.com/mauvilsa/jsonargparse/pull/1019>`__).
 
 Removed
 ^^^^^^^
@@ -354,6 +360,10 @@ Deprecated
 - ``with_meta`` parameter of ``ActionJsonSchema``, will be removed in v5.0.0.
   Instead use ``.clone(with_meta=False)`` (`#1013
   <https://github.com/mauvilsa/jsonargparse/pull/1013>`__).
+- Config file paths as ``Path`` objects in ``get_config_files`` and the config
+  argument. From v5.0.0 they are strings, relative to the working directory if
+  given relative. Warns when ``get_config_files`` is used (`#1018
+  <https://github.com/mauvilsa/jsonargparse/pull/1018>`__).
 
 
 v4.52.0 (2026-09-01)

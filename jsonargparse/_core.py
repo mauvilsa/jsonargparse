@@ -78,7 +78,7 @@ from ._optionals import (
     pydantic_support,
 )
 from ._parameter_resolvers import UnknownDefault
-from ._paths import path_dir_context
+from ._paths import cwd_relative_path, path_dir_context
 from ._required import (
     iter_required_keys,
     restore_suppressed_required,
@@ -1212,12 +1212,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                         default_config_file=str(default_config_file),
                     ) from ex
             meta = cfg.get("__default_config__")
+            config_path = cwd_relative_path(default_config_file)
             if isinstance(meta, list):
-                meta.append(default_config_file)
-            elif isinstance(meta, Path):
-                cfg["__default_config__"] = [meta, default_config_file]
+                meta.append(config_path)
+            elif isinstance(meta, str):
+                cfg["__default_config__"] = [meta, config_path]
             else:
-                cfg["__default_config__"] = default_config_file
+                cfg["__default_config__"] = config_path
             self._logger.debug("Parsed default configuration from path: %s", default_config_file)
 
         with parser_context(validating_defaults=True):
@@ -1432,11 +1433,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             namespace: The configuration object.
 
         Returns:
-            Paths to loaded config files.
+            Paths to loaded config files, relative to the working directory if given relative.
         """
         cfg_files = []
         if "__default_config__" in namespace:
-            cfg_files.append(namespace["__default_config__"])
+            default_config = namespace["__default_config__"]
+            cfg_files.extend(default_config if isinstance(default_config, list) else [default_config])
         unset_sentinel = get_parsing_setting("unset_sentinel")
         for action in filter_non_parsing_actions(self._actions):
             if (

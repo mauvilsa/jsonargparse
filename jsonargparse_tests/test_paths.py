@@ -496,6 +496,7 @@ def test_secret_in_union_relative_path_not_resolved_as_remote(fsspec_secrets_con
     cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
     assert isinstance(cfg.password, SecretStr)
     assert "PASSWORD" == cfg.password.get_secret_value()
+    assert cfg.cfg == [fsspec_secrets_config]
 
 
 @skip_if_fsspec_unavailable
