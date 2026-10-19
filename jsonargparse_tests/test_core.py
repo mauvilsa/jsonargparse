@@ -241,7 +241,7 @@ def test_parse_object_config(parser, tmp_cwd):
     path.write_text('{"a": 1, "b": 2}')
     cfg = parser.parse_object({"b": 0, "cfg": str(path), "a": 3})
     popped_cfg = cfg.pop("cfg")
-    assert popped_cfg[0].relative == "config.json"
+    assert popped_cfg == ["config.json"]
     assert cfg == Namespace(a=3, b=2)
 
 
@@ -516,6 +516,54 @@ def test_precedence_of_sources(tmp_cwd, subtests):
     assert str(default_config_file) == str(config_paths[0])
     assert str(input2_config_file) == str(config_paths[1])  # APP_CFG
     assert str(input1_config_file) == str(config_paths[2])  # --cfg
+
+
+def test_config_files_as_strings_relative_to_cwd(parser, tmp_path, monkeypatch):
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "work").mkdir()
+    (tmp_path / "configs" / "main.json").write_text('{"a": 1, "config": "other.json"}')
+    (tmp_path / "configs" / "other.json").write_text('{"b": 2}')
+    (tmp_path / "one.json").write_text('{"a": 3}')
+    (tmp_path / "two.json").write_text('{"b": 4}')
+    monkeypatch.chdir(tmp_path / "work")
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int)
+    parser.add_argument("--b", type=int)
+    parser.default_config_files = ["../one.json", str(tmp_path / "two.json")]
+    cfg = parser.parse_args(["--config=../configs/main.json"])
+    assert cfg.config == [os.path.join("..", "configs", "other.json"), os.path.join("..", "configs", "main.json")]
+    assert cfg.__default_config__ == ["../one.json", str(tmp_path / "two.json")]
+    assert parser.get_config_files(cfg) == cfg.__default_config__ + cfg.config
+    assert all(type(p) is str for p in parser.get_config_files(cfg))
+
+
+def test_config_files_home_shorthand_kept(parser, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".myapp").mkdir(parents=True)
+    (home / ".myapp" / "config.json").write_text('{"a": 1}')
+    (home / ".myapp" / "other.json").write_text('{"b": 2}')
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.chdir(tmp_path)
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int)
+    parser.add_argument("--b", type=int)
+    parser.default_config_files = ["~/.myapp/c*.json"]
+    cfg = parser.parse_args(["--config=~/.myapp/other.json"])
+    assert (cfg.a, cfg.b) == (1, 2)
+    assert os.path.normpath(cfg.__default_config__) == os.path.normpath("~/.myapp/config.json")
+    assert cfg.config == ["~/.myapp/other.json"]
+    cfg = parser.parse_args([f"--config={home / '.myapp' / 'other.json'}"])
+    assert cfg.config == [os.path.join("~", ".myapp", "other.json")]
+
+
+def test_config_file_from_stdin_as_string(parser, mock_stdin):
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int)
+    with mock_stdin('{"a": 1}'):
+        cfg = parser.parse_args(["--config=-"])
+    assert cfg.a == 1
+    assert cfg.config == ["-"]
 
 
 def test_non_positional_required(parser, subtests):

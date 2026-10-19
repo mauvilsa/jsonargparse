@@ -30,8 +30,8 @@ def test_action_config_file(parser, tmp_cwd):
     cfg = parser.parse_args([f"--cfg={abs_yaml_file}", f"--cfg={rel_yaml_file}", "--cfg", '{"val": "arg"}'])
     assert 3 == len(cfg.cfg)
     assert "arg" == cfg.val
-    assert str(abs_yaml_file) == cfg.cfg[0].absolute
-    assert str(rel_yaml_file) == cfg.cfg[1].relative
+    assert str(abs_yaml_file) == cfg.cfg[0]
+    assert str(rel_yaml_file) == cfg.cfg[1]
     assert None is cfg.cfg[2]
 
 

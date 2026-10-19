@@ -83,6 +83,14 @@ changes:
   works in v4, or in v5 globally with
   ``set_parsing_settings(allow_abbrev=True)`` or the
   ``JSONARGPARSE_ALLOW_ABBREV=true`` environment variable.
+- **Config file paths are strings.** The values of the config argument and
+  :meth:`.ArgumentParser.get_config_files` give ``str`` instead of
+  :class:`.Path` objects. A path given relative is relative to the working
+  directory, e.g. ``config: other.yaml`` inside ``configs/main.yaml`` gives
+  ``configs/other.yaml``, and a path given absolute stays absolute. To work with
+  both versions, use ``os.fspath(path)``, and only for local files also
+  ``os.path.abspath(os.path.expanduser(...))``, since it breaks URLs.
+  ``get_config_files`` warns in v4.
 
 
 CLI / auto_cli

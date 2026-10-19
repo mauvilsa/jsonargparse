@@ -21,6 +21,7 @@ from ._common import (
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._namespace import Namespace, copy_provenance
 from ._optionals import _get_config_read_mode, ruamel_support
+from ._paths import cwd_relative_path
 from ._type_checking import ArgumentParser
 from ._util import (
     ComposedConfig,
@@ -150,7 +151,7 @@ class ActionConfigFile(Action):
             copy_provenance(cfg_merged, cfg)
             if cfg.get(dest) is get_parsing_setting("unset_sentinel"):
                 cfg[dest] = []
-            cfg[dest].append(cfg_path)
+            cfg[dest].append(None if cfg_path is None else cwd_relative_path(cfg_path))
 
     def completer(self, prefix, **kwargs):
         from ._completions import get_files_completer

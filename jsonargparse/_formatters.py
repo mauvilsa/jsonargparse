@@ -364,19 +364,10 @@ def get_source_snippet(source, cache: dict) -> str | None:
 
 
 def _describe_origin(origin) -> str:
-    """For config files, the path relative to the working directory if inside it, so that it can be opened."""
-    import pathlib
+    """For config files, the path relative to the working directory if given relative, so that it can be opened."""
+    from ._paths import Path, cwd_relative_path
 
-    from ._paths import Path
-
-    if not isinstance(origin, Path) or origin.is_url or origin.is_fsspec:
-        return str(origin)
-    absolute = pathlib.Path(origin.absolute)
-    try:
-        cwd = pathlib.Path.cwd()
-    except OSError:  # the working directory was removed, so the error must not be masked
-        return str(absolute)
-    return str(absolute.relative_to(cwd) if absolute.is_relative_to(cwd) else absolute)
+    return cwd_relative_path(origin) if isinstance(origin, Path) else str(origin)
 
 
 def _find_position(source, cache: dict) -> tuple[int, int, str] | None:
