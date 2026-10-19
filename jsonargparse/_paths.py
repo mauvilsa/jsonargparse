@@ -396,8 +396,12 @@ def cwd_relative_path(path: Path) -> str:
     given = os.path.expanduser(path.relative)
     if os.path.isabs(given):
         home = os.path.expanduser("~")
-        return "~" + given[len(home) :] if given.startswith(home + os.sep) else given
+        if given.startswith(home) and given[len(home) : len(home) + 1] in {os.sep, os.altsep or os.sep}:
+            return "~" + given[len(home) :]
+        return given
     try:
+        if path.cwd == os.getcwd():  # as given, since normalizing would change the file with symlinks and '..'
+            return path.relative
         return os.path.relpath(path.absolute)
     except (OSError, ValueError):  # the working directory was removed, or on Windows a different drive
         return path.absolute

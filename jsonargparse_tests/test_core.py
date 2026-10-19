@@ -531,10 +531,23 @@ def test_config_files_as_strings_relative_to_cwd(parser, tmp_path, monkeypatch):
     parser.add_argument("--b", type=int)
     parser.default_config_files = ["../one.json", str(tmp_path / "two.json")]
     cfg = parser.parse_args(["--config=../configs/main.json"])
-    assert cfg.config == [os.path.join("..", "configs", "other.json"), os.path.join("..", "configs", "main.json")]
+    assert cfg.config == [os.path.join("..", "configs", "other.json"), "../configs/main.json"]
     assert cfg.__default_config__ == ["../one.json", str(tmp_path / "two.json")]
     assert parser.get_config_files(cfg) == cfg.__default_config__ + cfg.config
     assert all(type(p) is str for p in parser.get_config_files(cfg))
+
+
+@skip_if_not_posix
+def test_config_file_relative_through_symlink_kept(parser, tmp_cwd):
+    (tmp_cwd / "other" / "child").mkdir(parents=True)
+    (tmp_cwd / "link").symlink_to(tmp_cwd / "other" / "child")
+    (tmp_cwd / "other" / "config.json").write_text('{"a": 1}')
+    (tmp_cwd / "config.json").write_text('{"a": 2}')
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int)
+    cfg = parser.parse_args(["--config=link/../config.json"])
+    assert cfg.a == 1
+    assert parser.get_config_files(cfg) == ["link/../config.json"]
 
 
 def test_config_files_home_shorthand_kept(parser, tmp_path, monkeypatch):
