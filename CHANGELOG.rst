@@ -54,6 +54,10 @@ Deprecated
 - ``with_meta`` parameter of ``ActionJsonSchema``, will be removed in v5.0.0.
   Instead use ``.clone(with_meta=False)`` (`#1013
   <https://github.com/mauvilsa/jsonargparse/pull/1013>`__).
+- Config file paths as ``Path`` objects in ``get_config_files`` and the config
+  argument. From v5.0.0 they are strings, relative to the working directory if
+  given relative. Warns when ``get_config_files`` is used (`#1018
+  <https://github.com/mauvilsa/jsonargparse/pull/1018>`__).
 
 
 v4.52.0 (2026-09-01)

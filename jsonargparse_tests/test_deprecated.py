@@ -1150,6 +1150,28 @@ def test_action_json_schema_with_meta_deprecated(parser, tmp_cwd):
     assert cfg.obj == {"x": 1}
 
 
+def test_get_config_files_paths_deprecated(parser, tmp_cwd):
+    parser.env_prefix = "APP"
+    parser.default_env = True
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--op1")
+    pathlib.Path("defaults.json").write_text('{"op1": "a"}')
+    pathlib.Path("env.json").write_text('{"op1": "b"}')
+    pathlib.Path("arg.json").write_text('{"op1": "c"}')
+    parser.default_config_files = ["defaults.json"]
+    with patch.dict(os.environ, {"APP_CFG": "env.json"}):
+        cfg = parser.parse_args(["--cfg=arg.json"])
+
+    with catch_warnings(record=True) as w:
+        config_paths = parser.get_config_files(cfg)
+    assert_deprecation_warn(
+        w,
+        message="Config file paths as ``Path`` objects in ``get_config_files``",
+        code="parser.get_config_files(cfg)",
+    )
+    assert [str(p) for p in config_paths] == ["defaults.json", "env.json", "arg.json"]
+
+
 # skip_none deprecation tests
 
 

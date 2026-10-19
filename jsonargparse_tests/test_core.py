@@ -501,13 +501,6 @@ def test_precedence_of_sources(tmp_cwd, subtests):
     with subtests.test("parse_args config override argument"), patch.dict(os.environ, env):
         assert "from input config file" == parser.parse_args(["--op1=from arg", f"--cfg={input1_config_file}"]).op1
 
-    with subtests.test("parse_args config paths"), patch.dict(os.environ, env):
-        cfg = parser.parse_args([f"--cfg={input1_config_file}"])
-    config_paths = parser.get_config_files(cfg)
-    assert str(default_config_file) == str(config_paths[0])
-    assert str(input2_config_file) == str(config_paths[1])  # APP_CFG
-    assert str(input1_config_file) == str(config_paths[2])  # --cfg
-
 
 def test_non_positional_required(parser, subtests):
     group = parser.add_argument_group("Group 1")
