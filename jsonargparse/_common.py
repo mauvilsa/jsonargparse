@@ -337,14 +337,19 @@ def denying_import_path_entry(path: str) -> str | None:
     return "*" if "*" in verdicts else None  # '*' is only accepted as a denylist entry
 
 
-def check_import_path(path: str) -> None:
-    """Fails or warns when an import path given as a value is denied."""
+def check_import_path(path: str, given: str | None = None) -> None:
+    """Fails when an import path given as a value is denied.
+
+    ``given`` is the path from the value when ``path`` is instead where the
+    resolved object is defined, so that the error names both.
+    """
     entry = denying_import_path_entry(path)
     if entry is None:
         return
+    subject = f"'{given}' resolves to '{path}', which" if given else f"Importing '{path}'"
     message = (
-        f"Importing '{path}' is not allowed, denied by the {entry!r} entry of the import path denylist. "
-        "Add the import path to import_path_allowlist in set_parsing_settings to allow it."
+        f"{subject} is not allowed, denied by the {entry!r} entry of the import path denylist. "
+        f"Add '{path}' to import_path_allowlist in set_parsing_settings to allow it."
     )
     raise ImportDenied(message)
 

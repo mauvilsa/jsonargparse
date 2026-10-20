@@ -193,6 +193,10 @@ Fixed
 - ``ActionJsonnet.parse`` given a ``Path`` failing with ``TypeError: 'Path'
   object is not callable`` (`#1017
   <https://github.com/mauvilsa/jsonargparse/pull/1017>`__).
+- Denied import path errors for objects defined elsewhere, e.g. ``io.StringIO``
+  defined in ``_io``, only showing the defining path, as if it was the one
+  imported, and not saying which path to allow (`#1020
+  <https://github.com/mauvilsa/jsonargparse/pull/1020>`__).
 
 Changed
 ^^^^^^^
