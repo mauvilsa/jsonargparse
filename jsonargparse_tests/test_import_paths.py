@@ -244,8 +244,12 @@ def test_denied_module_reexported_by_another_module():
     set_parsing_settings(import_path_denylist=[])
     with pytest.raises(ImportDenied, match="'os'"):
         import_object(f"{__name__}.os")
-    with pytest.raises(ImportDenied, match=f"'{os.system.__module__}'"):
+    with pytest.raises(ImportDenied) as ctx:
         import_object(f"{__name__}.os.system")  # os.system is defined in posix, nt on Windows
+    defining = f"{os.system.__module__}.system"
+    assert str(ctx.value).startswith(f"'{__name__}.os.system' resolves to '{defining}', which is not allowed")
+    assert f"denied by the '{os.system.__module__}' entry" in str(ctx.value)
+    assert f"Add '{defining}' to import_path_allowlist" in str(ctx.value)
 
 
 def test_denied_object_reexported_under_another_name():

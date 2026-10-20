@@ -335,7 +335,7 @@ def import_object(name: str, check_path: bool = True):
     if check_path:
         for canonical in canonical_import_paths(obj):
             if canonical != name:
-                check_import_path(canonical)
+                check_import_path(canonical, given=name)
     if not (inspect.isclass(obj) or inspect.ismodule(obj)):
         # an instance doesn't know where it was imported from, so it is remembered to make it serializable
         resolved_import_paths.add(obj, name)

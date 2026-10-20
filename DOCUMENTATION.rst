@@ -2416,13 +2416,16 @@ default. An entry given in both lists is allowed, so naming a default entry in
 An object is denied by where it is defined, not only by the path used to reach
 it. Modules commonly import others, e.g. ``import os``, so without this
 ``some.module.os.system`` would give the same object as the denied
-``os.system``. This second check can only happen once the object is resolved, so
-it prevents the object from being used, unlike the check on the given path,
-which prevents the import from happening at all. An object that has no defining
-path of its own is denied by the callable it reaches, i.e. the bound function
-for a ``functools.partial`` or ``partialmethod`` and the defining class for an
-instance, e.g. ``builtins.help`` is an instance of the ``_sitebuiltins._Helper``
-class.
+``os.system``. This check happens once the object is resolved, so it prevents
+its use, not its import. The defining path is
+``f"{obj.__module__}.{obj.__qualname__}"``, e.g. ``_io.StringIO`` for
+``io.StringIO``, and errors name it. It is normally under the top-level package,
+so prefer entries for packages over entries for modules that re-export, e.g.
+denying ``mypackage.tools`` doesn't deny the ``mypackage._impl`` that defines its
+objects. An object without a defining path is denied by the callable it reaches,
+i.e. the bound function for a ``functools.partial`` or ``partialmethod`` and the
+class for an instance, e.g. ``builtins.help`` is an instance of
+``_sitebuiltins._Helper``.
 
 Entries given are added to the ones denied by default, they don't replace them.
 For configs that are entirely untrusted, prefer denying everything and allowing
