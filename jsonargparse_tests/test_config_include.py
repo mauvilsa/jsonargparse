@@ -642,6 +642,18 @@ def test_include_toml_mode(tmp_cwd):
     assert (cfg.a, cfg.b) == (1, 2)
 
 
+@pytest.mark.skipif(not toml_load_available, reason="toml package is required")
+def test_include_extension_or_mode_mixed_formats(tmp_cwd):
+    parser = ArgumentParser(exit_on_error=False, parser_mode="extension_or_json")
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int, default=0)
+    parser.add_argument("--b", type=int, default=0)
+    write("base.toml", "a = 1\nb = 1\n")
+    write("main.json", {"__include__": "base.toml", "b": 2})
+    cfg = parser.parse_args(["--config=main.json"])
+    assert (cfg.a, cfg.b) == (1, 2)
+
+
 @skip_if_omegaconf_unavailable
 def test_include_omegaconf_plus_interpolation(tmp_cwd):
     parser = ArgumentParser(exit_on_error=False, parser_mode="omegaconf+")

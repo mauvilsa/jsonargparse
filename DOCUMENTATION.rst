@@ -1364,6 +1364,13 @@ timestamps and base 60 numbers, e.g. ``10:30``, are loaded as strings. To change
 the mode, use the ``parser_mode`` parameter of the parser, e.g.
 ``ArgumentParser(parser_mode="json")``.
 
+With the ``extension_or_`` prefix, e.g. ``parser_mode="extension_or_yaml"``,
+each config file is loaded in the format given by its extension: ``.json``,
+``.yaml``, ``.yml``, ``.toml``, ``.jsonnet`` or ``.libsonnet``. Files with
+other extensions, values that are not config files, and dumping use the mode
+after the prefix. That mode is also used when it can load the detected format,
+e.g. ``extension_or_omegaconf`` loads YAML files with omegaconf.
+
 The :py:attr:`.ArgumentParser.default_config_files` property holds patterns of
 config files to search for, e.g.
 ``ArgumentParser(default_config_files=['~/.myapp.yaml', '/etc/myapp.yaml'])``.

@@ -8,8 +8,9 @@ from argparse import HelpFormatter
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
+from urllib.parse import urlsplit
 
-from ._common import Unset, get_parsing_setting, load_value_mode, parent_parser
+from ._common import Unset, get_parsing_setting, load_value_mode, parent_parser, parser_context
 from ._optionals import (
     import_jsonnet,
     import_pyyaml,
@@ -196,13 +197,64 @@ format_names = {
 }
 
 
-def get_load_value_mode() -> str:
+extension_mode_prefix = "extension_or_"
+extension_formats = {
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".jsonnet": "jsonnet",
+    ".libsonnet": "jsonnet",
+}
+yaml_modes = {"yaml", "json_or_yaml", "omegaconf", "omegaconf+"}
+
+
+def is_extension_mode(mode) -> bool:
+    return isinstance(mode, str) and mode.startswith(extension_mode_prefix)
+
+
+def base_parser_mode(mode):
+    """Returns the mode without the ``extension_or_`` prefix, which is used for everything except config files."""
+    return mode[len(extension_mode_prefix) :] if is_extension_mode(mode) else mode
+
+
+def get_parser_mode() -> str:
+    """Returns the current parser mode, which can have the ``extension_or_`` prefix."""
     mode = load_value_mode.get()
     if mode is None:
         parser = parent_parser.get()
         assert parser is not None
         mode = parser.parser_mode
     return mode
+
+
+def get_load_value_mode() -> str:
+    return base_parser_mode(get_parser_mode())
+
+
+def get_config_mode(file_path: Any, mode: str | None = None) -> str:
+    """Returns the mode for loading a config, for ``extension_or_*`` modes detected from its file extension.
+
+    The default mode is kept if the extension is unknown or if it can load the detected format, e.g.
+    ``omegaconf`` for YAML.
+    """
+    if mode is None:
+        mode = get_parser_mode()
+    base = base_parser_mode(mode)
+    if mode == base:
+        return mode
+    file_path = str(file_path)
+    if "://" in file_path:  # ignore URL query and fragment
+        file_path = urlsplit(file_path).path
+    detected = extension_formats.get(os.path.splitext(file_path)[1].lower())
+    if (
+        detected is None
+        or detected == base
+        or (detected == "json" and loader_json_superset.get(base, True))
+        or (detected == "yaml" and base in yaml_modes)
+    ):
+        return base
+    return detected
 
 
 def get_loader_exceptions(mode: str | None = None) -> tuple[type[Exception], ...]:
@@ -276,6 +328,12 @@ def load_value(value: str, simple_types: bool = False, **kwargs):
         loaded_value = value
 
     return loaded_value
+
+
+def load_config_value(content: str, file_path: Any, **kwargs):
+    """Loads the content of a config file with the mode given by :func:`get_config_mode`."""
+    with parser_context(load_value_mode=get_config_mode(file_path)):
+        return load_value(content, **kwargs)
 
 
 def load_basic_type_value(value: str):
@@ -393,7 +451,7 @@ def dump_using_format(
     provenance: dict | None = None,
 ) -> str:
     if dump_format == "parser_mode":
-        mode = parser.parser_mode
+        mode = base_parser_mode(parser.parser_mode)
         is_yaml = mode.startswith("omegaconf") or (mode == "json_or_yaml" and pyyaml_available)
         dump_format = mode if mode in dumpers else ("yaml" if is_yaml else "json")
     if with_comments or provenance is not None:

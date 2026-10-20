@@ -79,9 +79,11 @@ from ._common import (
 )
 from ._instantiation import bind_call, get_class_instantiator
 from ._loaders_dumpers import (
-    get_load_value_mode,
+    base_parser_mode,
     get_loader_exceptions,
+    get_parser_mode,
     load_basic_type_value,
+    load_config_value,
     load_value,
 )
 from ._namespace import (
@@ -780,7 +782,7 @@ class ActionTypeHint(Action):
                     except ValueError:
                         if (
                             lenient_check.get()
-                            and mode == "omegaconf+"
+                            and base_parser_mode(mode) == "omegaconf+"
                             and isinstance(orig_val, str)
                             and "${" in orig_val
                         ):
@@ -959,12 +961,12 @@ def adapt_subconfig_path(val, typehint, adapt_kwargs):
         return not_a_subconfig_path
     try:
         with load_config_path_context(path), path.relative_path_context():
-            subconfig = resolve_config_includes(load_value(path.read_text()))
+            subconfig = resolve_config_includes(load_config_value(path.read_text(), path))
     except get_loader_exceptions() as ex:
         raise_unexpected_value(f"Invalid content in sub-config file {val}: {ex}", exception=ex)
     with load_config_path_context(path), path_dir_context(path):
         val = adapt_typehints(subconfig, typehint, **adapt_kwargs)
-    fill_provenance(val, ValueSource("config file", path, get_load_value_mode()))
+    fill_provenance(val, ValueSource("config file", path, get_parser_mode()))
     if isinstance(val, (Namespace, dict)):
         val["__path__"] = path
     return val
@@ -979,7 +981,7 @@ def adapt_composed_config(val: ComposedConfig, typehint, adapt_kwargs: dict):
     prev_val = adapt_kwargs["prev_val"]
     for included, path in val.includes:
         kwargs = {**adapt_kwargs, "prev_val": prev_val, "orig_val": included, "append": False}
-        with config_file_context(path, get_load_value_mode()):
+        with config_file_context(path, get_parser_mode()):
             prev_val = adapt_typehints(included, typehint, **kwargs)
     if not val.own:  # e.g. a dict would be replaced by an empty one
         return prev_val
