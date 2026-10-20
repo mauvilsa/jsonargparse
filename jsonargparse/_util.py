@@ -28,7 +28,7 @@ from ._common import (
     parser_capture,
     parser_context,
 )
-from ._loaders_dumpers import json_compact_dump, load_value
+from ._loaders_dumpers import json_compact_dump, load_config_value, load_value
 from ._namespace import Namespace, ValueSource, value_source_context
 from ._optionals import _get_config_read_mode, is_sentinel
 from ._paths import Path, path_dir_context
@@ -237,7 +237,7 @@ def _load_included(path_str: str) -> tuple[Any, Path]:
         raise TypeError(f'"{config_include_key}" value "{path_str}": {ex}') from ex
     with load_config_path_context(path), path.relative_path_context():
         try:
-            value = load_value(path.read_text())
+            value = load_config_value(path.read_text(), path)
         except get_loader_exceptions() as ex:
             raise TypeError(f'Problems parsing config included from "{path_str}": {ex}') from ex
         if not isinstance(value, dict):
@@ -274,7 +274,7 @@ def parse_value_or_config(value: Any, enable_path: bool = True, simple_types: bo
             pass
         else:
             with load_config_path_context(cfg_path), cfg_path.relative_path_context():
-                value = load_value(cfg_path.read_text(), simple_types=simple_types)
+                value = load_config_value(cfg_path.read_text(), cfg_path, simple_types=simple_types)
                 value = resolve_config_includes(value)
     if type(value) is str and value.strip() != "":
         parsed_val = load_value(value, simple_types=simple_types)

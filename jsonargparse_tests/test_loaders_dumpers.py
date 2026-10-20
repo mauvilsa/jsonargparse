@@ -19,6 +19,7 @@ from jsonargparse_tests.conftest import (
     json_or_yaml_dump,
     json_or_yaml_load,
     skip_if_no_pyyaml,
+    skip_if_omegaconf_unavailable,
 )
 
 if pyyaml_available:
@@ -377,3 +378,99 @@ def test_toml_parse_error(parser):
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--cfg=a = "])
     ctx.match("Failed to parse as TOML")
+
+
+# extension_or_* parser modes
+
+
+@skip_if_no_pyyaml
+def test_extension_or_mode_detects_extension(parser, tmp_cwd):
+    parser.parser_mode = "extension_or_json"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=List[int])
+    Path("config.yaml").write_text("list:\n  - 1\n  - 2\n")
+    assert parser.parse_args(["--cfg=config.yaml"]).list == [1, 2]
+    assert parser.parse_string("list: [3]", path="other.yml").list == [3]
+
+
+@pytest.mark.skipif(not toml_load_available, reason="tomllib or tomli package is required")
+def test_extension_or_mode_falls_back_to_default(parser, tmp_cwd):
+    parser.parser_mode = "extension_or_toml"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=List[int])
+    Path("config.cfg").write_text("list = [1, 2]\n")
+    Path("config.json").write_text('{"list": [3]}')
+    assert parser.parse_args(["--cfg=config.cfg"]).list == [1, 2]
+    assert parser.parse_args(["--cfg=config.json"]).list == [3]
+
+
+@skip_if_no_pyyaml
+def test_extension_or_mode_only_for_config_files(parser):
+    parser.parser_mode = "extension_or_json"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=List[int])
+    assert parser.parse_args(["--list=[1, 2]"]).list == [1, 2]
+    assert parser.dump(parser.parse_args(["--list=[1]"])) == '{\n  "list": [\n    1\n  ]\n}\n'
+    with pytest.raises(ArgumentError, match="Failed to parse as JSON"):
+        parser.parse_args(["--cfg=list: [1]"])
+
+
+@skip_if_no_pyyaml
+def test_extension_or_mode_default_config_files(tmp_cwd):
+    Path("defaults.yaml").write_text("val: 1\n")
+    parser = ArgumentParser(
+        exit_on_error=False, parser_mode="extension_or_json", default_config_files=["defaults.yaml"]
+    )
+    parser.add_argument("--val", type=int, default=0)
+    assert parser.parse_args([]).val == 1
+
+
+@dataclass
+class SubconfData:
+    val: int = 0
+
+
+class SubconfBase:
+    def __init__(self, val: int = 0):
+        pass  # pragma: no cover
+
+
+@skip_if_no_pyyaml
+def test_extension_or_mode_sub_configs(parser, tmp_cwd):
+    parser.parser_mode = "extension_or_json"
+    parser.add_argument("--data", type=SubconfData)
+    parser.add_argument("--objects", type=List[SubconfBase], sub_configs=True)
+    Path("data.yaml").write_text("val: 1\n")
+    Path("item.yaml").write_text(f"class_path: {__name__}.SubconfBase\ninit_args:\n  val: 2\n")
+    cfg = parser.parse_args(["--data=data.yaml", '--objects=["item.yaml"]'])
+    assert cfg.data.val == 1
+    assert cfg.objects[0].init_args.val == 2
+
+
+@skip_if_omegaconf_unavailable
+def test_extension_or_mode_keeps_default_variant(parser, tmp_cwd):
+    parser.parser_mode = "extension_or_omegaconf"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--a", type=int)
+    parser.add_argument("--b", type=int)
+    Path("config.yaml").write_text("a: 1\nb: ${a}\n")
+    Path("config.json").write_text('{"a": 2, "b": "${a}"}')
+    assert parser.parse_args(["--cfg=config.yaml"]).b == 1
+    assert parser.parse_args(["--cfg=config.json"]).b == 2
+
+
+@skip_if_omegaconf_unavailable
+def test_extension_or_mode_omegaconf_plus(parser, tmp_cwd):
+    parser.parser_mode = "extension_or_omegaconf+"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--a", type=int)
+    parser.add_argument("--b", type=int)
+    Path("config.yaml").write_text("b: ${a}\n")
+    assert parser.parse_args(["--a=3", "--cfg=config.yaml"]).b == 3
+
+
+def test_extension_or_mode_invalid():
+    with pytest.raises(ValueError, match="accepted values for parser_mode"):
+        ArgumentParser(parser_mode="extension_or_invalid")
+    with pytest.raises(ValueError, match="accepted values for parser_mode"):
+        ArgumentParser(parser_mode="extension_or_extension_or_json")

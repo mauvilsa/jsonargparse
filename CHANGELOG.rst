@@ -65,6 +65,9 @@ Added
   instantiation) types, and for fields of dataclass-like types typed
   ``Final[X]`` or ``InitVar[X]``, parsed as ``X``. Previously these were not
   validated (`#1007 <https://github.com/mauvilsa/jsonargparse/pull/1007>`__).
+- New ``extension_or_*`` parser modes, e.g. ``extension_or_yaml``, which load
+  each config file in the format given by its extension, and otherwise as the
+  given mode (`#1021 <https://github.com/mauvilsa/jsonargparse/pull/1021>`__).
 
 Fixed
 ^^^^^

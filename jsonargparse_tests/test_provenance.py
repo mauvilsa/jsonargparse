@@ -561,6 +561,21 @@ def test_json_or_yaml_line_numbers(tmp_cwd):
     }
 
 
+@skip_if_no_pyyaml
+def test_extension_or_mode_line_numbers(tmp_cwd):
+    parser = ArgumentParser(exit_on_error=False, parser_mode="extension_or_json")
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--a", type=int)
+    parser.add_argument("--b", type=int)
+    Path("cfg.yaml").write_text("a: 1\nb: 2\n")
+    Path("cfg.json").write_text('{"a": 1}')
+    assert get_sources(parser.parse_args(["--config=cfg.yaml"])) == {
+        "a": "config file cfg.yaml:1",
+        "b": "config file cfg.yaml:2",
+    }
+    assert get_sources(parser.parse_args(["--config=cfg.json"])) == {"a": "config file cfg.json", "b": "default"}
+
+
 @pytest.mark.skipif(not omegaconf_support, reason="omegaconf package is required")
 def test_omegaconf_interpolation(tmp_cwd):
     parser = ArgumentParser(exit_on_error=False, parser_mode="omegaconf+")

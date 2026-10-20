@@ -46,9 +46,11 @@ from ._jsonnet import ActionJsonnet
 from ._jsonschema import ActionJsonSchema
 from ._link_arguments import ActionLink, ArgumentLinking
 from ._loaders_dumpers import (
+    base_parser_mode,
     check_valid_dump_format,
     dump_using_format,
     get_loader_exceptions,
+    load_config_value,
     load_value,
     loaders,
 )
@@ -332,7 +334,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             print_config: Name of the print config argument, ``%s`` is replaced by the config dest, ``None`` to
                 not add it.
             parser_mode: Mode for loading config files and values, e.g. ``json_or_yaml``, ``yaml``, ``toml``,
-                ``jsonnet``, ``omegaconf`` or one added via :func:`.set_loader`.
+                ``jsonnet``, ``omegaconf`` or one added via :func:`.set_loader`. With an ``extension_or_``
+                prefix, config files are loaded in the format given by their extension.
             dump_header: Header to include as comment when dumping a config object.
             default_config_files: Default config file locations, e.g. ``['~/.config/myapp/*.yaml']``.
             default_env: Whether to parse environment variables by default.
@@ -476,7 +479,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     ActionTypeHint.add_sub_defaults(self, cfg)
 
             with parser_context(parent_parser=self):
-                if not lenient_check.get() and self.parser_mode == "omegaconf+":
+                if not lenient_check.get() and base_parser_mode(self.parser_mode) == "omegaconf+":
                     cfg = omegaconf_apply(self, cfg)
 
                 _ActionPrintConfig.print_config_if_requested(self, cfg)
@@ -829,7 +832,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             TypeError: If there is an invalid value according to the parser.
         """
         try:
-            cfg_dict = load_value(content, path=path, ext_vars=ext_vars)
+            cfg_dict = load_config_value(content, path, path=path, ext_vars=ext_vars)
         except get_loader_exceptions() as ex:
             raise TypeError(f"Problems parsing config:\n{indent_text(str(ex))}") from ex
         if not isinstance(cfg_dict, dict):
@@ -1194,7 +1197,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     continue
                 source = ValueSource("default config file", default_config_file, self.parser_mode)
                 with value_source_context(source):
-                    cfg_file = self._load_config_parser_mode(default_config_file_content, prev_cfg=cfg)
+                    cfg_file = self._load_config_parser_mode(
+                        default_config_file_content, os.path.basename(default_config_file), prev_cfg=cfg
+                    )
                 cfg = merge_config(self, cfg_file, cfg)
                 try:
                     with _ActionPrintConfig.skip_print_config():
@@ -1787,11 +1792,14 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
     @parser_mode.setter
     def parser_mode(self, parser_mode: str):
         accepted = set(loaders).union({"omegaconf", "omegaconf+"})
-        if parser_mode not in accepted:
-            raise ValueError(f"The only accepted values for parser_mode are {accepted}.")
-        if parser_mode == "jsonnet":
+        base_mode = base_parser_mode(parser_mode)
+        if base_mode not in accepted:
+            raise ValueError(
+                f"The only accepted values for parser_mode are {accepted}, optionally with an 'extension_or_' prefix."
+            )
+        if base_mode == "jsonnet":
             import_jsonnet("parser_mode=jsonnet")
-        elif parser_mode == "yaml":
+        elif base_mode == "yaml":
             import_pyyaml("parser_mode=yaml")
         self._parser_mode = parser_mode
         if self._subcommands_action:
