@@ -8,6 +8,7 @@ from argparse import HelpFormatter
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
+from urllib.parse import urlsplit
 
 from ._common import Unset, get_parsing_setting, load_value_mode, parent_parser, parser_context
 from ._optionals import (
@@ -242,7 +243,10 @@ def get_config_mode(file_path: Any, mode: str | None = None) -> str:
     base = base_parser_mode(mode)
     if mode == base:
         return mode
-    detected = extension_formats.get(os.path.splitext(str(file_path))[1].lower())
+    file_path = str(file_path)
+    if "://" in file_path:  # ignore URL query and fragment
+        file_path = urlsplit(file_path).path
+    detected = extension_formats.get(os.path.splitext(file_path)[1].lower())
     if (
         detected is None
         or detected == base

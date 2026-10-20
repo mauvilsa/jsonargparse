@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jsonargparse import ArgumentError, ArgumentParser, get_loader, set_dumper, set_loader
+from jsonargparse import ArgumentError, ArgumentParser, get_loader, set_dumper, set_loader, set_parsing_settings
 from jsonargparse._common import parser_context
 from jsonargparse._loaders_dumpers import load_value
 from jsonargparse._optionals import pyyaml_available, toml_dump_available, toml_load_available
@@ -18,8 +18,11 @@ from jsonargparse_tests.conftest import (
     get_parse_args_stdout,
     json_or_yaml_dump,
     json_or_yaml_load,
+    patch_parsing_settings,
+    responses_activate,
     skip_if_no_pyyaml,
     skip_if_omegaconf_unavailable,
+    skip_if_responses_unavailable,
 )
 
 if pyyaml_available:
@@ -445,6 +448,26 @@ def test_extension_or_mode_sub_configs(parser, tmp_cwd):
     cfg = parser.parse_args(["--data=data.yaml", '--objects=["item.yaml"]'])
     assert cfg.data.val == 1
     assert cfg.objects[0].init_args.val == 2
+
+
+@skip_if_no_pyyaml
+@skip_if_responses_unavailable
+@responses_activate
+@patch_parsing_settings
+def test_extension_or_mode_url_with_query(parser):
+    import responses
+
+    set_parsing_settings(config_read_mode_urls_enabled=True)
+    parser.parser_mode = "extension_or_json"
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=SubconfData)
+    for name in ["config", "data"]:
+        url = f"http://example.com/{name}.yaml?download=1#top"
+        body = "data:\n  val: 1\n" if name == "config" else "val: 2\n"
+        responses.add(responses.GET, url, status=200, body=body)
+        responses.add(responses.HEAD, url, status=200)
+    assert parser.parse_args(["--cfg=http://example.com/config.yaml?download=1#top"]).data.val == 1
+    assert parser.parse_args(["--data=http://example.com/data.yaml?download=1#top"]).data.val == 2
 
 
 @skip_if_omegaconf_unavailable

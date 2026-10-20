@@ -1366,10 +1366,10 @@ the mode, use the ``parser_mode`` parameter of the parser, e.g.
 
 With the ``extension_or_`` prefix, e.g. ``parser_mode="extension_or_yaml"``,
 each config file is loaded in the format given by its extension: ``.json``,
-``.yaml``, ``.yml``, ``.toml``, ``.jsonnet`` or ``.libsonnet``. Other values,
-files with other extensions and dumping use the mode after the prefix, which is
-also kept for formats it can load, e.g. ``extension_or_omegaconf`` for YAML
-files.
+``.yaml``, ``.yml``, ``.toml``, ``.jsonnet`` or ``.libsonnet``. Files with
+other extensions, values that are not config files, and dumping use the mode
+after the prefix. That mode is also used when it can load the detected format,
+e.g. ``extension_or_omegaconf`` loads YAML files with omegaconf.
 
 The :py:attr:`.ArgumentParser.default_config_files` property holds patterns of
 config files to search for, e.g.

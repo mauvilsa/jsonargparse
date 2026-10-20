@@ -13,6 +13,7 @@ from typing import (
     Any,
     NoReturn,
 )
+from urllib.parse import urlsplit
 
 from ._actions import (
     ActionConfigFile,
@@ -753,7 +754,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             content = fpath.read_text()
             parsed_cfg = self.parse_string(
                 content=content,
-                path=os.path.basename(path),
+                path=os.path.basename(urlsplit(fpath.absolute).path if fpath.is_url else path),
                 ext_vars=ext_vars,
                 env=env,
                 defaults=defaults,
