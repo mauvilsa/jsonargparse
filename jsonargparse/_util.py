@@ -76,6 +76,43 @@ def merge_config(parser, source: Namespace, target: Namespace) -> Namespace:
     return target
 
 
+class ConfigKeyNotFoundError(TypeError):
+    """Raised when the key selected in a config with ``path#key`` is not in it."""
+
+
+def get_config_path(value: str | os.PathLike) -> tuple[Path, str | None]:
+    """Returns the path of a config file and the key selected in it with ``path#key.path``, if any.
+
+    The value is split on the last ``#`` only if it is not a path itself but the part before is.
+
+    Raises:
+        TypeError: If the value is not a path to a config file.
+    """
+    mode = _get_config_read_mode()
+    try:
+        return Path(value, mode=mode), None
+    except TypeError as ex:
+        path, _, selector = os.fspath(value).rpartition("#")
+        if not path or not selector:
+            raise
+        try:
+            return Path(path, mode=mode), selector
+        except TypeError:
+            raise ex from None
+
+
+def select_config_key(cfg: dict, selector: str) -> dict:
+    """Returns the mapping at a ``key.path`` selected in a loaded config."""
+    value: Any = cfg
+    for key in selector.split("."):
+        if not isinstance(value, dict) or key not in value:
+            raise ConfigKeyNotFoundError(f'Key "{selector}" not found in the config')
+        value = value[key]
+    if not isinstance(value, dict):
+        raise TypeError(f'Expected a mapping at key "{selector}". Got value: {value}')
+    return value
+
+
 def _config_path_id(cfg_path: Path) -> tuple[str, str]:
     path_id = cfg_path.absolute
     if not (cfg_path.is_url or cfg_path.is_fsspec):
