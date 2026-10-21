@@ -108,11 +108,13 @@ from ._typehints import (
 )
 from ._util import (
     ComposedConfig,
+    ConfigKeyNotFoundError,
     Path,
     argument_error,
     check_no_composed_config,
     config_file_context,
     get_argument_group_class,
+    get_config_path,
     get_private_kwargs,
     identity,
     indent_text,
@@ -120,6 +122,7 @@ from ._util import (
     merge_config,
     resolve_config_includes,
     return_parser_if_captured,
+    select_config_key,
 )
 
 __all__ = ["ArgumentParser"]
@@ -338,7 +341,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 ``jsonnet``, ``omegaconf`` or one added via :func:`.set_loader`. With an ``extension_or_``
                 prefix, config files are loaded in the format given by their extension.
             dump_header: Header to include as comment when dumping a config object.
-            default_config_files: Default config file locations, e.g. ``['~/.config/myapp/*.yaml']``.
+            default_config_files: Default config file locations, e.g. ``['~/.config/myapp/*.yaml']``, optionally
+                with a ``#key.path`` to parse only that part, e.g. ``pyproject.toml#tool.myapp``.
             default_env: Whether to parse environment variables by default.
             allow_abbrev: Whether to accept abbreviated long options, ``None`` to use the global setting.
         """
@@ -737,7 +741,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         """Parses a configuration file given its path.
 
         Args:
-            path: Path to the configuration file to parse.
+            path: Path to the configuration file to parse, optionally with a ``#key.path`` to parse only that
+                part, e.g. ``pyproject.toml#tool.myapp``.
             ext_vars: External variables for parsing Jsonnet.
             env: Whether to merge with the parsed environment, ``None`` to use the parser's default.
             defaults: Whether to merge with the parser's defaults.
@@ -749,16 +754,16 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
             TypeError: If the path does not exist or is not readable.
         """
-        fpath = Path(path, mode=_get_config_read_mode())
-        with load_config_path_context(fpath), path_dir_context(fpath):
+        fpath, selector = get_config_path(path)
+        with load_config_path_context(fpath, selector), path_dir_context(fpath):
             content = fpath.read_text()
             parsed_cfg = self.parse_string(
                 content=content,
-                path=os.path.basename(urlsplit(fpath.absolute).path if fpath.is_url else path),
+                path=os.path.basename(urlsplit(fpath.absolute).path if fpath.is_url else fpath.relative),
                 ext_vars=ext_vars,
                 env=env,
                 defaults=defaults,
-                _source=ValueSource("config file", fpath, self.parser_mode),
+                _source=ValueSource("config file", fpath, self.parser_mode, selector=selector),
                 **kwargs,
             )
 
@@ -795,7 +800,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
         try:
             with parser_context(load_value_mode=self.parser_mode), value_source_context(source):
-                cfg = self._load_config_parser_mode(content, path, ext_vars, previous_config.get())
+                cfg = self._load_config_parser_mode(
+                    content, path, ext_vars, previous_config.get(), selector=source.selector
+                )
 
             if defaults or env:
                 cfg_base = self._parse_defaults_and_environ(defaults, env)
@@ -821,6 +828,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         path: str | os.PathLike = "",
         ext_vars: dict | None = None,
         prev_cfg: Namespace | None = None,
+        selector: str | None = None,
     ) -> Namespace:
         """Loads a configuration string into a namespace.
 
@@ -828,9 +836,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             content: The configuration content.
             path: Optional path to original config path, just for error printing.
             ext_vars: Optional external variables used for parsing jsonnet.
+            selector: Optional ``key.path`` of the part of the config to load.
 
         Raises:
             TypeError: If there is an invalid value according to the parser.
+            ConfigKeyNotFoundError: If the selected key is not in the config.
         """
         try:
             cfg_dict = load_config_value(content, path, path=path, ext_vars=ext_vars)
@@ -838,6 +848,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             raise TypeError(f"Problems parsing config:\n{indent_text(str(ex))}") from ex
         if not isinstance(cfg_dict, dict):
             raise TypeError(f"Unexpected config: {content}")
+        if selector is not None:
+            cfg_dict = select_config_key(cfg_dict, selector)
         return self._apply_actions(resolve_config_includes(cfg_dict), prev_cfg=prev_cfg)
 
     ## Methods for adding to the parser ##
@@ -1124,18 +1136,24 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
 
     ## Methods related to defaults ##
 
-    def _get_default_config_files(self) -> list[Path]:
+    def _get_default_config_files(self) -> list[tuple[Path, str | None]]:
+        """Returns the existing default config files, each with the key selected in it with ``path#key``."""
         if getattr(self, "_inner_parser", False):
             return []
 
-        default_config_files = []
+        default_config_files: list[tuple[str, str | None]] = []
 
         for pattern in self.default_config_files:
-            default_config_files += sorted(glob.glob(os.path.expanduser(pattern)))
+            matches = sorted(glob.glob(os.path.expanduser(pattern)))
+            file_pattern, _, selector = pattern.rpartition("#")
+            if matches or not (file_pattern and selector):
+                default_config_files += [(m, None) for m in matches]
+            else:
+                default_config_files += [(m, selector) for m in sorted(glob.glob(os.path.expanduser(file_pattern)))]
 
         if len(default_config_files) > 0:
             with suppress(TypeError):
-                return [Path(v, mode=_get_config_read_mode()) for v in default_config_files]
+                return [(Path(v, mode=_get_config_read_mode()), s) for v, s in default_config_files]
         return []
 
     def get_default(self, dest: str) -> Any:
@@ -1187,20 +1205,28 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         self._logger.debug("Loaded parser defaults: %s", cfg)
 
         default_config_files = self._get_default_config_files()
-        for default_config_file in default_config_files:
+        for default_config_file, selector in default_config_files:
+            name = cwd_relative_path(default_config_file) + (f"#{selector}" if selector else "")
             with (
-                load_config_path_context(default_config_file),
+                load_config_path_context(default_config_file, selector),
                 path_dir_context(default_config_file),
                 parser_context(parent_parser=self, parsing_defaults=True),
             ):
                 default_config_file_content = default_config_file.read_text()
                 if not default_config_file_content.strip():
                     continue
-                source = ValueSource("default config file", default_config_file, self.parser_mode)
+                source = ValueSource("default config file", default_config_file, self.parser_mode, selector=selector)
                 with value_source_context(source):
-                    cfg_file = self._load_config_parser_mode(
-                        default_config_file_content, os.path.basename(default_config_file), prev_cfg=cfg
-                    )
+                    try:
+                        cfg_file = self._load_config_parser_mode(
+                            default_config_file_content,
+                            os.path.basename(default_config_file),
+                            prev_cfg=cfg,
+                            selector=selector,
+                        )
+                    except ConfigKeyNotFoundError as ex:
+                        self._logger.debug("Skipped default config file %s: %s", name, ex)
+                        continue
                 cfg = merge_config(self, cfg_file, cfg)
                 try:
                     with _ActionPrintConfig.skip_print_config():
@@ -1214,18 +1240,17 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                         )
                 except (TypeError, KeyError, argparse.ArgumentError) as ex:
                     raise argument_error(
-                        f"Problem in default config file '{default_config_file}': {ex.args[0]}",
-                        default_config_file=str(default_config_file),
+                        f"Problem in default config file '{name}': {ex.args[0]}",
+                        default_config_file=str(name),
                     ) from ex
             meta = cfg.get("__default_config__")
-            config_path = cwd_relative_path(default_config_file)
             if isinstance(meta, list):
-                meta.append(config_path)
+                meta.append(name)
             elif isinstance(meta, str):
-                cfg["__default_config__"] = [meta, config_path]
+                cfg["__default_config__"] = [meta, name]
             else:
-                cfg["__default_config__"] = config_path
-            self._logger.debug("Parsed default configuration from path: %s", default_config_file)
+                cfg["__default_config__"] = name
+            self._logger.debug("Parsed default configuration from path: %s", name)
 
         with parser_context(validating_defaults=True):
             ActionTypeHint.add_sub_defaults(self, cfg)

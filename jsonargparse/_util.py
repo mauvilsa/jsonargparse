@@ -44,7 +44,7 @@ NoneType = type(None)
 
 
 default_config_option_help = "Path to a configuration file."
-config_load_stack: ContextVar[tuple[tuple[str, str], ...]] = ContextVar("config_load_stack", default=())
+config_load_stack: ContextVar[tuple[tuple[str, str, str | None], ...]] = ContextVar("config_load_stack", default=())
 
 
 def argument_error(message: str, default_config_file: str | None = None) -> ArgumentError:
@@ -76,32 +76,74 @@ def merge_config(parser, source: Namespace, target: Namespace) -> Namespace:
     return target
 
 
-def _config_path_id(cfg_path: Path) -> tuple[str, str]:
+class ConfigKeyNotFoundError(TypeError):
+    """Raised when the key selected in a config with ``path#key`` is not in it."""
+
+
+def get_config_path(value: str | os.PathLike) -> tuple[Path, str | None]:
+    """Returns the path of a config file and the key selected in it with ``path#key.path``, if any.
+
+    The value is split on the last ``#`` only if it is not a path itself but the part before is.
+
+    Raises:
+        TypeError: If the value is not a path to a config file.
+    """
+    mode = _get_config_read_mode()
+    try:
+        return Path(value, mode=mode), None
+    except TypeError as ex:
+        path, _, selector = os.fspath(value).rpartition("#")
+        if not path or not selector:
+            raise
+        try:
+            return Path(path, mode=mode), selector
+        except TypeError:
+            raise ex from None
+
+
+def select_config_key(cfg: dict, selector: str) -> dict:
+    """Returns the mapping at a ``key.path`` selected in a loaded config."""
+    value: Any = cfg
+    for key in selector.split("."):
+        if not isinstance(value, dict) or key not in value:
+            raise ConfigKeyNotFoundError(f'Key "{selector}" not found in the config')
+        value = value[key]
+    if not isinstance(value, dict):
+        raise TypeError(f'Expected a mapping at key "{selector}". Got value: {value}')
+    return value
+
+
+def _config_path_id(cfg_path: Path, selector: str | None) -> tuple[str, str, str | None]:
     path_id = cfg_path.absolute
     if not (cfg_path.is_url or cfg_path.is_fsspec):
         path_id = os.path.realpath(path_id)
-    return path_id, str(cfg_path)
+    return path_id, str(cfg_path) + (f"#{selector}" if selector else ""), selector
 
 
-def _format_config_load_chain(stack: tuple[tuple[str, str], ...], path_id: tuple[str, str]) -> str:
+def _format_config_load_chain(
+    stack: tuple[tuple[str, str, str | None], ...], path_id: tuple[str, str, str | None]
+) -> str:
     chain = list(stack) + [path_id]
-    for num, (stack_path, _) in enumerate(chain):
+    for num, (stack_path, _, _) in enumerate(chain):
         if stack_path == path_id[0]:
             chain = chain[num:]
             break
-    return " -> ".join(display for _, display in chain)
+    return " -> ".join(display for _, display, _ in chain)
 
 
 @contextmanager
-def load_config_path_context(cfg_path: Path | None) -> Iterator[None]:
+def load_config_path_context(cfg_path: Path | None, selector: str | None = None) -> Iterator[None]:
     if cfg_path is None:
         yield
         return
-    path_id = _config_path_id(cfg_path)
+    path_id = _config_path_id(cfg_path, selector)
     stack = config_load_stack.get()
-    if path_id[0] in {path for path, _ in stack}:
+    selectors = {sel for path, _, sel in stack if path == path_id[0]}
+    if selectors:
         chain = _format_config_load_chain(stack, path_id)
-        raise TypeError(f"Config file loop detected: {chain}")
+        if selector in selectors:
+            raise TypeError(f"Config file loop detected: {chain}")
+        raise TypeError(f"Loading another section of the same config file is not supported: {chain}")
     token = config_load_stack.set(stack + (path_id,))
     try:
         yield

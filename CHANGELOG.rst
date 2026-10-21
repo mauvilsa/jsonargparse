@@ -68,6 +68,10 @@ Added
 - New ``extension_or_*`` parser modes, e.g. ``extension_or_yaml``, which load
   each config file in the format given by its extension, and otherwise as the
   given mode (`#1021 <https://github.com/mauvilsa/jsonargparse/pull/1021>`__).
+- Config file paths accept a ``#key.path`` suffix to parse only that part of the
+  file, e.g. ``pyproject.toml#tool.myapp``, in default config files, the config
+  argument and ``parse_path``. Default config files without the key are skipped
+  (`#1022 <https://github.com/mauvilsa/jsonargparse/pull/1022>`__).
 
 Fixed
 ^^^^^

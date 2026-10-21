@@ -23,6 +23,7 @@ class ValueSource(NamedTuple):
     mode: str | None = None  # the parser mode of a config file, required to find line numbers
     key: str | None = None  # the key in a config file that the value corresponds to
     implied_by: "ValueSource | None" = None  # for implicit values, e.g. a class_path, the source of what implied it
+    selector: str | None = None  # the key selected in a config file with path#key, of which key is relative
 
     def __deepcopy__(self, memo):
         return self  # immutable, so copies of namespaces can share it, which is much faster, e.g. for list items

@@ -20,7 +20,7 @@ from ._common import (
 )
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._namespace import Namespace, copy_provenance
-from ._optionals import _get_config_read_mode, ruamel_support
+from ._optionals import ruamel_support
 from ._paths import cwd_relative_path
 from ._type_checking import ArgumentParser
 from ._util import (
@@ -29,6 +29,7 @@ from ._util import (
     argument_error,
     config_file_context,
     default_config_option_help,
+    get_config_path,
     get_import_path,
     import_object,
     indent_text,
@@ -127,8 +128,10 @@ class ActionConfigFile(Action):
 
         with parser_context(single_subcommand=False), previous_config_context(cfg), skip_apply_links():
             kwargs = {"env": False, "defaults": False, "_skip_validation": True, "_fail_no_subcommand": False}
+            cfg_path: Path | None
+            selector: str | None = None
             try:
-                cfg_path: Path | None = Path(value, mode=_get_config_read_mode())
+                cfg_path, selector = get_config_path(value)
             except TypeError as ex_path:
                 try:
                     try:
@@ -151,7 +154,8 @@ class ActionConfigFile(Action):
             copy_provenance(cfg_merged, cfg)
             if cfg.get(dest) is get_parsing_setting("unset_sentinel"):
                 cfg[dest] = []
-            cfg[dest].append(None if cfg_path is None else cwd_relative_path(cfg_path))
+            config_path = None if cfg_path is None else cwd_relative_path(cfg_path)
+            cfg[dest].append(f"{config_path}#{selector}" if selector else config_path)
 
     def completer(self, prefix, **kwargs):
         from ._completions import get_files_completer

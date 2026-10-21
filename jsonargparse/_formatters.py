@@ -346,6 +346,8 @@ def describe_source(source, cache: dict | None = None) -> str:
     if source.implied_by is not None:
         return f"{source.description}, from {describe_source(source.implied_by, cache)}"
     text = source.description if source.origin is None else f"{source.description} {_describe_origin(source.origin)}"
+    if source.selector:
+        text += f"#{source.selector}"
     position = _find_position(source, {} if cache is None else cache)
     return text if position is None else f"{text}:{position[0]}"
 
@@ -380,7 +382,7 @@ def _find_position(source, cache: dict) -> tuple[int, int, str] | None:
         content = source.origin.read_text()
         cache[id(source.origin)] = (_get_config_key_positions(content), content.splitlines())
     positions, lines = cache[id(source.origin)]
-    key = source.key
+    key = f"{source.selector}.{source.key}" if source.selector else source.key
     while key:
         for candidate in [key, ("." + key).replace(".init_args.", ".")[1:]]:  # init_args can be implicit
             if candidate in positions:
