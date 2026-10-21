@@ -755,7 +755,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             TypeError: If the path does not exist or is not readable.
         """
         fpath, selector = get_config_path(path)
-        with load_config_path_context(fpath), path_dir_context(fpath):
+        with load_config_path_context(fpath, selector), path_dir_context(fpath):
             content = fpath.read_text()
             parsed_cfg = self.parse_string(
                 content=content,
@@ -1208,7 +1208,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         for default_config_file, selector in default_config_files:
             name = cwd_relative_path(default_config_file) + (f"#{selector}" if selector else "")
             with (
-                load_config_path_context(default_config_file),
+                load_config_path_context(default_config_file, selector),
                 path_dir_context(default_config_file),
                 parser_context(parent_parser=self, parsing_defaults=True),
             ):

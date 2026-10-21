@@ -59,10 +59,7 @@ def test_selector_config_path_relative_to_cwd(config_parser, tmp_path, monkeypat
     monkeypatch.chdir(tmp_path / "work")
     cfg = config_parser.parse_args(["--config=../configs/main.json"])
     assert cfg.a == 1
-    assert cfg.config == [
-        os.path.join("..", "configs", "package.json") + "#myapp",
-        os.path.join("..", "configs", "main.json"),
-    ]
+    assert cfg.config == [os.path.join("..", "configs", "package.json") + "#myapp", "../configs/main.json"]
 
 
 def test_selector_nested_key(config_parser, tmp_cwd):
@@ -100,6 +97,35 @@ def test_selector_file_not_found(config_parser, tmp_cwd):
     error = get_error(config_parser, ["--config=missing.json#myapp"])
     assert "Not a valid path nor a config string" in error
     assert "missing.json#myapp" in error
+
+
+def test_selector_section_of_other_file(config_parser, tmp_cwd):
+    write("shared.json", {"base": {"a": 1, "b": 2}})
+    write("main.json", {"app": {"config": "shared.json#base", "b": 3}})
+    cfg = config_parser.parse_args(["--config=main.json#app"])
+    assert (cfg.a, cfg.b) == (1, 3)
+    assert cfg.config == ["shared.json#base", "main.json#app"]
+
+
+def test_selector_same_file_other_section_error(config_parser, tmp_cwd):
+    write("shared.json", {"base": {"a": 1}, "app": {"config": "shared.json#base"}})
+    error = get_error(config_parser, ["--config=shared.json#app"])
+    assert "Loading another section of the same config file is not supported" in error
+    assert "shared.json#app -> shared.json#base" in error
+
+
+def test_selector_whole_file_to_own_section_error(config_parser, tmp_cwd):
+    write("shared.json", {"config": "shared.json#base", "base": {"a": 1}})
+    error = get_error(config_parser, ["--config=shared.json"])
+    assert "Loading another section of the same config file is not supported" in error
+    assert "shared.json -> shared.json#base" in error
+
+
+def test_selector_same_section_loop_error(config_parser, tmp_cwd):
+    write("one.json", {"app": {"config": "two.json"}})
+    write("two.json", {"config": "one.json#app"})
+    error = get_error(config_parser, ["--config=one.json#app"])
+    assert "Config file loop detected: one.json#app -> two.json -> one.json#app" in error
 
 
 def test_selector_empty_key(config_parser, tmp_cwd):

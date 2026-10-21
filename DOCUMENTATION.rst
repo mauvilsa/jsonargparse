@@ -1382,9 +1382,10 @@ Only part of a config file can be parsed by appending ``#`` and a dot separated
 key, e.g. ``pyproject.toml#tool.myapp`` or ``package.json#myapp``, for files
 shared with other tools. This works for default config files, the config
 argument and :py:meth:`.ArgumentParser.parse_path`. A default config file that
-does not have the key is skipped, otherwise it is an error. Combined with an
-``extension_or_`` parser mode, an app can read ``pyproject.toml`` and also its
-own YAML config, e.g.
+does not have the key is skipped, otherwise it is an error. A selected part
+cannot load another part of the same file. Combined with an ``extension_or_``
+parser mode, an app can read ``pyproject.toml`` and also its own YAML config,
+e.g.
 ``default_config_files=['pyproject.toml#tool.myapp', '.myapp.yaml']``.
 
 An argument can also be added to give a config file path explicitly. This does
