@@ -837,8 +837,9 @@ The content of the file is read with the :py:meth:`.Path.read_text` method, e.g.
 
 An argument with a path type can be given ``nargs='+'`` to accept multiple
 paths, i.e. ``--files file1 file2``. To instead read a list of paths from a
-plain text file or from stdin, add the argument with type ``list[<path_type>]``
-and ``sub_configs=True``. The special string ``'-'`` means stdin:
+plain text file or from stdin, add the argument with type ``list[<path_type>]``,
+optionally ``Optional``, and ``sub_configs=True``. Relative paths in the file
+are relative to its location. The special string ``'-'`` means stdin:
 
 .. testsetup:: path_list
 
@@ -2499,7 +2500,8 @@ Instead of writing a subclass spec inline, a path to a config file that holds it
 can be given. This splits a large config into smaller reusable files. It
 requires the argument to be added with ``sub_configs=True``, which is the
 default in :func:`.auto_cli` and is accepted by :meth:`add_argument
-<.ArgumentParser.add_argument>` and the ``add_*_arguments`` methods.
+<.ArgumentParser.add_argument>` and the ``add_*_arguments`` methods. It also
+applies to the parameters of nested classes.
 
 This also works for the items of a list of classes and for the values of a dict
 of classes, useful when each component has its own config file. For example,

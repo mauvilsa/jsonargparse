@@ -748,6 +748,9 @@ class ActionTypeHint(Action):
                     config_path = None
                     if isinstance(val, str) and val.strip()[:1] in {"[", "{"}:
                         load_error = ex  # included in the error, since it seems intended as a list or dict
+                list_file = config_path is not None and isinstance(val, str) and is_list_pathlike(self._typehint)
+                if list_file:  # a plain text list of paths, read when adapting, relative to the current directory
+                    val, config_path = orig_val, None
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 # a single sub-config appended to a list becomes one more list item
                 appended_subconfig = append and config_path is not None and not isinstance(val, list)
@@ -773,8 +776,11 @@ class ActionTypeHint(Action):
                 except ValueError as ex:
                     if orig_val == "-" and isinstance(getattr(ex, "parent", None), PathError):
                         raise ex
+                    if config_path is not None and not append and isinstance(val, list) and hasattr(ex, "list_index"):
+                        source = ValueSource("config file", config_path, mode, key=f"[{ex.list_index}]")
+                        ex.value_source = getattr(ex, "value_source", source)
                     try:
-                        if isinstance(orig_val, str):
+                        if isinstance(orig_val, str) and not list_file:
                             # without load_config_path_context, since orig_val could be the path it would load
                             with path_dir_context(config_path):
                                 val = adapt_typehints(orig_val, self._typehint, default=self.default, **kwargs)
@@ -915,6 +921,8 @@ def is_pathlike(typehint) -> bool:
 
 
 def is_list_pathlike(typehint) -> bool:
+    if is_optional(typehint):
+        typehint = next(a for a in typehint.__args__ if a is not NoneType)
     typehint_origin = get_typehint_origin(typehint)
     if typehint_origin in sequence_origin_types and hasattr(typehint, "__args__"):
         return is_pathlike(typehint.__args__[0])
@@ -1730,8 +1738,14 @@ def adapt_typehints(
                     adapt_kwargs_n = {**deepcopy(copied), **shared, "prev_val": prev_val[n]}
                 else:
                     adapt_kwargs_n = {**deepcopy(copied), **shared}
-                with path_dir_context(list_path):
-                    val[n] = adapt_typehints(v, subtypehints[0], **adapt_kwargs_n)
+                try:
+                    with path_dir_context(list_path):
+                        val[n] = adapt_typehints(v, subtypehints[0], **adapt_kwargs_n)
+                except ValueError as ex:
+                    if list_path is not None:
+                        ex.value_source = ValueSource("list of paths file", list_path, line=n + 1)
+                    ex.list_index = n  # the outermost list's, for its position in a file
+                    raise
         if typehint_origin is deque:
             val = list(val) if serialize else deque(val)
         elif typehint_origin is abc.Iterator and instantiate_classes:
@@ -3218,7 +3232,7 @@ def typehint_metavar(typehint):
         enum = typehint.__args__[0]
         metavar = iter_to_set_str(list(enum.__members__) + ["null"])
     elif is_list_pathlike(typehint):
-        metavar = "'[\"PATH1\",...]' | LIST_OF_PATHS_FILE | -"
+        metavar = "'[\"PATH1\",...]' | LIST_OF_PATHS_FILE | -" + (" | null" if is_optional(typehint) else "")
     elif typehint_origin in tuple_set_origin_types or typehint_origin in sequence_origin_types:
         metavar = "[ITEM,...]"
     return metavar

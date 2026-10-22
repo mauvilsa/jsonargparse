@@ -24,6 +24,7 @@ class ValueSource(NamedTuple):
     key: str | None = None  # the key in a config file that the value corresponds to
     implied_by: "ValueSource | None" = None  # for implicit values, e.g. a class_path, the source of what implied it
     selector: str | None = None  # the key selected in a config file with path#key, of which key is relative
+    line: int | None = None  # the line number in a plain text file, e.g. a list of paths, which has no keys
 
     def __deepcopy__(self, memo):
         return self  # immutable, so copies of namespaces can share it, which is much faster, e.g. for list items

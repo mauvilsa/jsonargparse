@@ -376,6 +376,10 @@ def _find_position(source, cache: dict) -> tuple[int, int, str] | None:
     """Returns the line number, column and line of the config file where a value came from, if known."""
     from ._loaders_dumpers import get_config_mode
 
+    if source.line is not None:
+        if id(source.origin) not in cache:
+            cache[id(source.origin)] = ({}, source.origin.read_text().splitlines())
+        return source.line, 0, cache[id(source.origin)][1][source.line - 1].rstrip()
     if source.key is None or get_config_mode(source.origin, source.mode) not in line_number_modes:
         return None
     if id(source.origin) not in cache:  # each config file is read only once

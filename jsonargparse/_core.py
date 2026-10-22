@@ -205,6 +205,8 @@ class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, a
             kwargs["choices"] = tuple(kwargs["choices"])
         action = super().add_argument(*args, **kwargs)
         action.logger = self._logger  # type: ignore[attr-defined]
+        if sub_configs and isinstance(action, ActionTypeHint):
+            action.sub_add_kwargs = {"sub_configs": True}  # also for nested classes
         ActionConfigFile._add_print_config_argument(self, action)
         ActionJsonnet._check_ext_vars_action(parser, action)
         if is_meta_key(action.dest):
