@@ -72,6 +72,9 @@ Added
   file, e.g. ``pyproject.toml#tool.myapp``, in default config files, the config
   argument and ``parse_path``. Default config files without the key are skipped
   (`#1022 <https://github.com/mauvilsa/jsonargparse/pull/1022>`__).
+- ``Optional[list[<path_type>]]`` with ``sub_configs=True`` also accepts a file
+  with a list of paths (`#1023
+  <https://github.com/mauvilsa/jsonargparse/pull/1023>`__).
 
 Fixed
 ^^^^^
@@ -204,6 +207,15 @@ Fixed
   defined in ``_io``, only showing the defining path, as if it was the one
   imported, and not saying which path to allow (`#1020
   <https://github.com/mauvilsa/jsonargparse/pull/1020>`__).
+- Plain text files listing paths, i.e. ``list[<path_type>]`` with
+  ``sub_configs=True``, failing with an unclear ``Expected type ... Got value``
+  error when the file is not in the working directory or a listed path does not
+  exist. Also, a file listing a single existing file giving the lines of that
+  file instead (`#1023 <https://github.com/mauvilsa/jsonargparse/pull/1023>`__).
+- ``add_argument`` with ``sub_configs=True`` and a class type not accepting
+  sub-config files for the parameters of nested classes, failing with
+  ``Unexpected import path format`` (`#1023
+  <https://github.com/mauvilsa/jsonargparse/pull/1023>`__).
 
 Changed
 ^^^^^^^

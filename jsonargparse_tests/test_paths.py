@@ -29,6 +29,7 @@ from jsonargparse_tests.conftest import (
     responses_activate,
     responses_available,
     skip_if_fsspec_unavailable,
+    skip_if_no_pyyaml,
     skip_if_requests_unavailable,
     skip_if_responses_unavailable,
     skip_if_running_as_root,
@@ -971,6 +972,26 @@ def test_sub_configs_list_subclass_nested_subconfig(parser, tmp_cwd):
     assert isinstance(init.main.objects[0].sub, ItemSub)
 
 
+def test_sub_configs_add_argument_nested_subconfig(parser, tmp_cwd):
+    subdir = tmp_cwd / "subdir"
+    subdir.mkdir()
+    outer = {"class_path": f"{__name__}.ItemNested", "init_args": {"sub": "inner.yaml"}}
+    inner = {"class_path": f"{__name__}.ItemSub", "init_args": {"y": "n"}}
+    (subdir / "outer.yaml").write_text(json_or_yaml_dump(outer))
+    (subdir / "inner.yaml").write_text(json_or_yaml_dump(inner))
+
+    parser.add_argument("--object", type=ItemBase, sub_configs=True)
+    parser.add_argument("--objects", type=List[ItemBase], sub_configs=True)
+
+    cfg = parser.parse_args(["--object=subdir/outer.yaml", '--objects=["subdir/outer.yaml"]'])
+    for obj in [cfg.object, cfg.objects[0]]:
+        assert obj.init_args.sub.class_path == f"{__name__}.ItemSub"
+        assert obj.init_args.sub.init_args.y == "n"
+    init = parser.instantiate(cfg)
+    assert isinstance(init.object.sub, ItemSub)
+    assert isinstance(init.objects[0].sub, ItemSub)
+
+
 def test_sub_configs_list_subclass_loop_detected(parser, tmp_cwd):
     pathlib.Path("objects.yaml").write_text(json_or_yaml_dump(["objects.yaml"]))
 
@@ -1203,6 +1224,66 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
         ctx.match("Expected a path but no-such-file is either not accessible or invalid")
 
 
+def test_sub_configs_list_path_fr_relative_to_list_file(parser, tmp_cwd, subtests):
+    subdir = tmp_cwd / "subdir"
+    subdir.mkdir()
+    (subdir / "file1").touch()
+    (subdir / "file2").write_text("file1\n")  # an existing path, which must not be read as a list
+    (subdir / "files.lst").write_text("file1\nfile2\n")
+    (subdir / "single.lst").write_text("file2\n")
+    (subdir / "missing.lst").write_text("file1\nfile3\n")
+    pathlib.Path("config.yaml").write_text(json_or_yaml_dump({"list": "subdir/files.lst"}))
+    pathlib.Path("config_missing.yaml").write_text(json_or_yaml_dump({"list": "subdir/missing.lst"}))
+
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--list", type=List[Path_fr], sub_configs=True)
+
+    def resolved(paths):
+        return [pathlib.Path(os.fspath(p)).resolve() for p in paths]
+
+    with subtests.test("list file from command line"):
+        cfg = parser.parse_args(["--list=subdir/files.lst"])
+        assert resolved(cfg.list) == resolved([subdir / "file1", subdir / "file2"])
+
+    with subtests.test("list file from config file"):
+        cfg = parser.parse_args(["--cfg=config.yaml"])
+        assert resolved(cfg.list) == resolved([subdir / "file1", subdir / "file2"])
+
+    with subtests.test("list file with a single path"):
+        cfg = parser.parse_args(["--list=subdir/single.lst"])
+        assert resolved(cfg.list) == resolved([subdir / "file2"])
+
+    list_source = "Source: list of paths file subdir/missing.lst:2\n    2 | file3"
+
+    with subtests.test("path not exist from command line"):
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(["--list=subdir/missing.lst"])
+        ctx.match("File does not exist")
+        assert list_source in str(ctx.value)
+
+    with subtests.test("path not exist from config file"):
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(["--cfg=config_missing.yaml"])
+        ctx.match("File does not exist")
+        assert list_source in str(ctx.value)
+
+
+@skip_if_no_pyyaml
+def test_sub_configs_list_path_fr_yaml_list_path_not_exist(parser, tmp_cwd):
+    subdir = tmp_cwd / "subdir"
+    subdir.mkdir()
+    (subdir / "file1").touch()
+    (subdir / "missing.yaml").write_text("- file1\n- file3\n")
+    parser.add_argument("--list", type=List[Path_fr], sub_configs=True)
+    parser.add_argument("--optional", type=Optional[List[Path_fr]], sub_configs=True)
+
+    for arg in ["--list", "--optional"]:
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args([f"{arg}=subdir/missing.yaml"])
+        ctx.match("File does not exist")
+        assert "Source: config file subdir/missing.yaml:2\n    2 | - file3" in str(ctx.value)
+
+
 @pytest.mark.parametrize("validate_defaults", [False, True])
 @patch_parsing_settings
 def test_sub_configs_list_path_fr_default_stdin(parser, tmp_cwd, validate_defaults, mock_stdin, subtests):
@@ -1257,6 +1338,38 @@ def test_add_class_list_path(parser, tmp_cwd):
 
     help_str = get_parser_help(parser)
     assert "'[\"PATH1\",...]' | LIST_OF_PATHS_FILE | -" in help_str
+
+
+class ClassOptionalListPath:
+    def __init__(self, files: Optional[list[Path_fr]] = None):
+        self.files = files  # pragma: no cover
+
+
+def test_add_class_optional_list_path(parser, tmp_cwd):
+    subdir = tmp_cwd / "subdir"
+    subdir.mkdir()
+    (subdir / "file1").touch()
+    (subdir / "files.lst").write_text("file1\n")
+    (subdir / "missing.lst").write_text("file1\nfile2\n")
+    (subdir / "null").touch()
+    (subdir / "null.lst").write_text("null\n")  # loads as None, but is a path
+
+    parser.add_class_arguments(ClassOptionalListPath, "cls", sub_configs=True)
+
+    cfg = parser.parse_args(["--cls.files=subdir/files.lst"])
+    assert [pathlib.Path(os.fspath(p)).resolve() for p in cfg.cls.files] == [(subdir / "file1").resolve()]
+    assert cfg.cls.files[0].relative == "file1"
+    assert parser.parse_args(["--cls.files=null"]).cls.files is None
+    cfg = parser.parse_args(["--cls.files=subdir/null.lst"])
+    assert [pathlib.Path(os.fspath(p)).resolve() for p in cfg.cls.files] == [(subdir / "null").resolve()]
+
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cls.files=subdir/missing.lst"])
+    ctx.match("File does not exist")
+    assert "Source: list of paths file subdir/missing.lst:2\n    2 | file2" in str(ctx.value)
+
+    help_str = get_parser_help(parser)
+    assert "'[\"PATH1\",...]' | LIST_OF_PATHS_FILE | - | null" in help_str
 
 
 class DataOptionalPath:
