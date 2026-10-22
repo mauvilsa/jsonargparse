@@ -1253,7 +1253,7 @@ def test_sub_configs_list_path_fr_relative_to_list_file(parser, tmp_cwd, subtest
         cfg = parser.parse_args(["--list=subdir/single.lst"])
         assert resolved(cfg.list) == resolved([subdir / "file2"])
 
-    list_source = f"Source: list of paths file {os.path.join('subdir', 'missing.lst')}:2\n    2 | file3"
+    list_source = "Source: list of paths file subdir/missing.lst:2\n    2 | file3"
 
     with subtests.test("path not exist from command line"):
         with pytest.raises(ArgumentError) as ctx:
@@ -1275,11 +1275,13 @@ def test_sub_configs_list_path_fr_yaml_list_path_not_exist(parser, tmp_cwd):
     (subdir / "file1").touch()
     (subdir / "missing.yaml").write_text("- file1\n- file3\n")
     parser.add_argument("--list", type=List[Path_fr], sub_configs=True)
+    parser.add_argument("--optional", type=Optional[List[Path_fr]], sub_configs=True)
 
-    with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args(["--list=subdir/missing.yaml"])
-    ctx.match("File does not exist")
-    assert f"Source: config file {os.path.join('subdir', 'missing.yaml')}:2\n    2 | - file3" in str(ctx.value)
+    for arg in ["--list", "--optional"]:
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args([f"{arg}=subdir/missing.yaml"])
+        ctx.match("File does not exist")
+        assert "Source: config file subdir/missing.yaml:2\n    2 | - file3" in str(ctx.value)
 
 
 @pytest.mark.parametrize("validate_defaults", [False, True])
@@ -1349,6 +1351,8 @@ def test_add_class_optional_list_path(parser, tmp_cwd):
     (subdir / "file1").touch()
     (subdir / "files.lst").write_text("file1\n")
     (subdir / "missing.lst").write_text("file1\nfile2\n")
+    (subdir / "null").touch()
+    (subdir / "null.lst").write_text("null\n")  # loads as None, but is a path
 
     parser.add_class_arguments(ClassOptionalListPath, "cls", sub_configs=True)
 
@@ -1356,11 +1360,13 @@ def test_add_class_optional_list_path(parser, tmp_cwd):
     assert [pathlib.Path(os.fspath(p)).resolve() for p in cfg.cls.files] == [(subdir / "file1").resolve()]
     assert cfg.cls.files[0].relative == "file1"
     assert parser.parse_args(["--cls.files=null"]).cls.files is None
+    cfg = parser.parse_args(["--cls.files=subdir/null.lst"])
+    assert [pathlib.Path(os.fspath(p)).resolve() for p in cfg.cls.files] == [(subdir / "null").resolve()]
 
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--cls.files=subdir/missing.lst"])
     ctx.match("File does not exist")
-    assert f"Source: list of paths file {os.path.join('subdir', 'missing.lst')}:2\n    2 | file2" in str(ctx.value)
+    assert "Source: list of paths file subdir/missing.lst:2\n    2 | file2" in str(ctx.value)
 
     help_str = get_parser_help(parser)
     assert "'[\"PATH1\",...]' | LIST_OF_PATHS_FILE | - | null" in help_str

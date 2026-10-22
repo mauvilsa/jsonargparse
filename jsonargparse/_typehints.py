@@ -748,7 +748,11 @@ class ActionTypeHint(Action):
                     config_path = None
                     if isinstance(val, str) and val.strip()[:1] in {"[", "{"}:
                         load_error = ex  # included in the error, since it seems intended as a list or dict
-                list_file = config_path is not None and isinstance(val, str) and is_list_pathlike(self._typehint)
+                list_file = (
+                    config_path is not None
+                    and isinstance(val, (str, NoneType))  # None for a file listing a path named null
+                    and is_list_pathlike(self._typehint)
+                )
                 if list_file:  # a plain text list of paths, read when adapting, relative to the current directory
                     val, config_path = orig_val, None
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
@@ -776,9 +780,12 @@ class ActionTypeHint(Action):
                 except ValueError as ex:
                     if orig_val == "-" and isinstance(getattr(ex, "parent", None), PathError):
                         raise ex
-                    if config_path is not None and not append and isinstance(val, list) and hasattr(ex, "list_index"):
-                        source = ValueSource("config file", config_path, mode, key=f"[{ex.list_index}]")
-                        ex.value_source = getattr(ex, "value_source", source)
+                    item_ex: BaseException | None = ex
+                    while item_ex is not None and not hasattr(item_ex, "list_index"):  # e.g. under a union error
+                        item_ex = item_ex.__cause__
+                    if config_path is not None and not append and isinstance(val, list) and item_ex is not None:
+                        source = ValueSource("config file", config_path, mode, key=f"[{item_ex.list_index}]")
+                        item_ex.value_source = getattr(item_ex, "value_source", source)
                     try:
                         if isinstance(orig_val, str) and not list_file:
                             # without load_config_path_context, since orig_val could be the path it would load
