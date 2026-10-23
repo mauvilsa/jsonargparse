@@ -3616,7 +3616,8 @@ users, as root:
 
     # example.py --print_completion=shtab-bash > /etc/bash_completion.d/example
 
-Without installing, a script can be tested by sourcing or evaluating it:
+Without installing, a script can be tested by evaluating it, for zsh after
+``compinit``:
 
 .. code-block:: bash
 
@@ -3661,6 +3662,17 @@ other than the choices. For example:
     The guidance requires bash 4 or newer. With older versions, e.g. bash 3.2 in
     macOS, no guidance is printed, and the choices of types that accept other
     values, like ``int | None``, are only completed after typing a prefix.
+
+In zsh the guidance is shown on the first ``<TAB>``, above the choices, using
+the ``descriptions`` format style if configured. It doesn't include the number
+of matched choices, since zsh's matching can differ from a prefix match. For
+example:
+
+.. code-block:: zsh
+
+    % example.py --bool <TAB>
+    Expected type: bool | None
+    false  null   true
 
 For subclass types, the import paths of the known subclasses are completed, both
 for the option that selects the class and for the ``--*.help`` option. The

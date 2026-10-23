@@ -161,8 +161,8 @@ def get_shtab_script(parser, shell: str, preambles: list[str] | None = None) -> 
     assert prog
     if not preambles:
         preambles = []
-    if shell == "bash":
-        preambles += [bash_compgen_typehint.strip().replace("{prog}", prog)]
+    if shell in typehint_preambles:
+        preambles += [typehint_preambles[shell].strip().replace("{prog}", prog)]
     with prepare_actions_context(shell, prog, preambles):
         shtab_prepare_actions(parser)
     return shtab.complete(parser, shell, preamble="\n".join(preambles))
@@ -190,6 +190,9 @@ def shtab_prepare_actions(parser) -> None:
     if parser._subcommands_action:
         for subparser in parser._subcommands_action._name_parser_map.values():
             shtab_prepare_actions(subparser)
+        for choice_action in parser._subcommands_action._choices_actions:
+            if choice_action.help is None:
+                choice_action.help = ""  # shtab zsh requires the help of subcommands to be a string
     if get_parsing_setting("parse_optionals_as_positionals"):
         for action in get_optionals_as_positionals_actions(parser):
             clone = copy(action)
@@ -236,11 +239,11 @@ def shtab_prepare_action(action, parser) -> None:
         skip = getattr(action, "sub_add_kwargs", {}).get("skip", set())
         prefix = action.option_strings[0] if action.option_strings else None
         choices, require_prefix = get_typehint_choices(action._typehint, prefix, parser, skip)
-        if shtab_shell.get() == "bash":
+        if shtab_shell.get() in typehint_preambles:
             message = f"Expected type: {type_to_str(action._typehint)}"
             if action.option_strings == []:
                 message = f"Argument: {action.dest}; " + message
-            add_bash_typehint_completion(
+            add_typehint_completion(
                 parser,
                 action,
                 message,
@@ -310,14 +313,49 @@ bash_compgen_typehint = """
 }
 
 
-def add_bash_typehint_completion(parser, action, message, choices, require_prefix=False) -> None:
-    fn_typehint = norm_name(bash_compgen_typehint_name.replace("{prog}", shtab_prog.get()))
+# "{prog}" is a placeholder replaced with the normalized prog name, see get_shtab_script.
+zsh_compadd_typehint_name = "_jsonargparse_{prog}_compadd_typehint"
+# Called with the message, whether choices require a prefix, and the compadd options given by
+# _arguments. The choices are in the "choices" array, local to the calling function.
+zsh_compadd_typehint = (
+    zsh_compadd_typehint_name
+    + r"""() {
+  local message=${1//\%/%%} require_prefix=$2 format explanation
+  shift 2
+  # the explanation from _arguments only names the argument, so it is replaced by the message,
+  # formatted like other descriptions if the user configured a format
+  zparseopts -D -E X:=explanation
+  zstyle -s ":completion:${curcontext}:descriptions" format format &&
+    zformat -f message "$format" "d:$message"
+  # -x shows the message even when no choice matches
+  compadd "$@" -x "$message" -a choices
+  # when the choices are not all that is accepted, without a prefix list them but don't insert
+  if [[ $require_prefix = 1 && -z $PREFIX ]]; then
+    compstate[insert]=''
+    compstate[list]='list force'
+  fi
+}
+"""
+)
+
+typehint_preambles = {"bash": bash_compgen_typehint, "zsh": zsh_compadd_typehint}
+
+
+def add_typehint_completion(parser, action, message, choices, require_prefix=False) -> None:
+    shell = shtab_shell.get()
     fn_name = parser.prog.replace(" [options] ", "_")
     fn_name = norm_name(f"_jsonargparse_{fn_name}_{action.dest}_typehint")
-    # choices are quoted twice: once so that compgen -W splits them into the intended words,
-    # and once so that the whole word list reaches the function as a single argument.
-    wordlist = shlex.quote(" ".join(shlex.quote(c) for c in choices))
-    fn = '{fn_name}(){{ {fn_typehint} {choices} "$1" {message} {require_prefix} {total}; }}'.format(
+    if shell == "bash":
+        fn_typehint = norm_name(bash_compgen_typehint_name.replace("{prog}", shtab_prog.get()))
+        # choices are quoted twice: once so that compgen -W splits them into the intended words,
+        # and once so that the whole word list reaches the function as a single argument.
+        wordlist = shlex.quote(" ".join(shlex.quote(c) for c in choices))
+        fn = '{fn_name}(){{ {fn_typehint} {choices} "$1" {message} {require_prefix} {total}; }}'
+    else:
+        fn_typehint = norm_name(zsh_compadd_typehint_name.replace("{prog}", shtab_prog.get()))
+        wordlist = " ".join(shlex.quote(c) for c in choices)
+        fn = '{fn_name}(){{ local choices=({choices}); {fn_typehint} {message} {require_prefix} "$@"; }}'
+    fn = fn.format(
         fn_name=fn_name,
         fn_typehint=fn_typehint,
         choices=wordlist,
@@ -326,7 +364,7 @@ def add_bash_typehint_completion(parser, action, message, choices, require_prefi
         total=len(choices),
     )
     shtab_preambles.get().append(fn)
-    action.complete = {"bash": fn_name}
+    action.complete = {shell: fn_name}
 
 
 def get_typehint_choices(typehint, prefix, parser, skip, added_subclasses=None) -> tuple[list[str], bool]:
@@ -433,11 +471,11 @@ def add_subactions_and_get_subclass_choices(
                     subchoices, require_prefix = get_typehint_choices(
                         subtype, option_string, parser, skip, added_subclasses
                     )
-                    if shtab_shell.get() == "bash":
+                    if shtab_shell.get() in typehint_preambles:
                         message = f"Expected type: {type_to_str(subtype)}"
                         if not closed_type:
                             message += f"; Accepted by subclasses: {', '.join(subclasses[name])}"
-                        add_bash_typehint_completion(
+                        add_typehint_completion(
                             parser,
                             action,
                             message,
