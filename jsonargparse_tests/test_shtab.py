@@ -3,6 +3,7 @@ import os
 import re
 import select
 import shlex
+import shutil
 import struct
 import subprocess
 import sys
@@ -413,23 +414,16 @@ def read_from_pty_until(fd, pattern, timeout=10.0):
 
 
 @contextmanager
-def interactive_bash(parser, tmp_path, rc_lines=()):
-    if get_bash_major_version() < 4:
-        pytest.skip("test requires bash>=4")  # pragma: no cover
+def interactive_shell(argv, env=None):
     import fcntl
     import pty
     import termios
 
-    shtab_script_path = tmp_path / "comp.sh"
-    shtab_script_path.write_text(get_shtab_script(parser, "bash"))
-    rcfile = tmp_path / "rcfile"
-    rcfile.write_text("\n".join(["PS1='PROMPT$ '", f"source {shtab_script_path}", *rc_lines, ""]))
-
     pid, fd = pty.fork()
     if pid == 0:  # pragma: no cover
         try:
-            os.environ["TERM"] = "xterm-256color"
-            os.execvp("bash", ["bash", "--noprofile", "--rcfile", str(rcfile), "-i"])
+            os.environ.update({"TERM": "xterm-256color", **(env or {})})
+            os.execvp(argv[0], argv)
         finally:
             os._exit(1)
     try:
@@ -443,6 +437,18 @@ def interactive_bash(parser, tmp_path, rc_lines=()):
             os.close(fd)
         with suppress(OSError):
             os.waitpid(pid, 0)
+
+
+@contextmanager
+def interactive_bash(parser, tmp_path, rc_lines=()):
+    if get_bash_major_version() < 4:
+        pytest.skip("test requires bash>=4")  # pragma: no cover
+    shtab_script_path = tmp_path / "comp.sh"
+    shtab_script_path.write_text(get_shtab_script(parser, "bash"))
+    rcfile = tmp_path / "rcfile"
+    rcfile.write_text("\n".join(["PS1='PROMPT$ '", f"source {shtab_script_path}", *rc_lines, ""]))
+    with interactive_shell(["bash", "--noprofile", "--rcfile", str(rcfile), "-i"]) as fd:
+        yield fd
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="pty is not available on Windows")
@@ -932,10 +938,176 @@ def test_zsh_script(parser):
     shtab_script = get_shtab_script(parser, "zsh")
     actions = get_zsh_completion_actions(shtab_script)
     classes = f"{__name__}.Base {__name__}.SubA {__name__}.SubB"
-    assert actions["--enum"] == "(ABC XY XZ null)"
+    assert actions["--enum"] == "_jsonargparse_tool_enum_typehint"
     assert actions["--path"] == "_files"
     assert actions["--cls.help"] == f"({classes})"
-    assert actions["--cls"] == f"({classes})"
-    assert actions["--cls.p1"] == ""
-    assert actions["--cls.p2"] == "(ABC XY XZ)"
-    assert actions["--cls.p3"] == ""
+    assert actions["--cls"] == "_jsonargparse_tool_cls_typehint"
+    assert actions["--cls.p1"] == "_jsonargparse_tool_cls_p1_typehint"
+    assert actions["--cls.p2"] == "_jsonargparse_tool_cls_p2_typehint"
+    assert actions["--cls.p3"] == "_jsonargparse_tool_cls_p3_typehint"
+
+
+def test_tcsh_subclass_init_arg_choices(parser):
+    # shells without type guidance get the choices directly
+    parser.add_argument("--cls", type=Base)
+    shtab_script = get_shtab_script(parser, "tcsh")
+    assert "'n/--cls.p2/(ABC XY XZ)/'" in shtab_script
+
+
+@pytest.fixture(scope="module")
+def zsh_available():
+    if not shutil.which("zsh"):
+        pytest.skip("zsh is required")  # pragma: no cover
+
+
+# compadd only works inside completion widgets, so it is replaced by a function that prints the
+# options it is given, followed by the elements of the array named by its last argument
+zsh_compadd_stub = 'compdef(){ :; }; compadd(){ print -rl -- "$@" "<CHOICES>" "${(@P)argv[-1]}" "<END>"; }'
+
+
+def run_zsh_typehint_completion(shtab_script, tmp_path, dest, word="", compadd_opts="-J -default-", rc=""):
+    shtab_script_path = tmp_path / "comp.zsh"
+    shtab_script_path.write_text(shtab_script)
+    sh = (
+        f"zmodload zsh/zutil; typeset -A compstate; {zsh_compadd_stub}; {rc}\n"
+        f'eval "$(<{shtab_script_path})"\n'
+        f"PREFIX={shlex.quote(word)} _jsonargparse_tool_{norm_name(dest)}_typehint {compadd_opts}\n"
+        'print -r -- "<INSERT>${compstate[insert]-unset}"'
+    )
+    out = subprocess.run(["zsh", "-f", "-c", sh], capture_output=True)
+    assert out.stderr.decode() == ""
+    lines = out.stdout.decode().splitlines()
+    opts = lines[: lines.index("<CHOICES>")]
+    choices = lines[lines.index("<CHOICES>") + 1 : lines.index("<END>")]
+    return {
+        "message": opts[opts.index("-x") + 1],
+        "choices": choices,
+        "list_only": lines[-1] == "<INSERT>",
+        "opts": opts,
+    }
+
+
+def assert_zsh_typehint_completions(subtests, parser, tmp_path, completions):
+    shtab_script = get_shtab_script(parser, "zsh")
+    for dest, word, message, choices, list_only in completions:
+        with subtests.test(f"{dest} {word!r}"):
+            result = run_zsh_typehint_completion(shtab_script, tmp_path, dest, word)
+            assert result["message"] == message
+            assert result["choices"] == choices
+            assert result["list_only"] == list_only
+
+
+def test_zsh_choices(parser, subtests, tmp_path, zsh_available):
+    parser.add_argument("--enum", type=Optional[AXEnum])
+    parser.add_argument("--num", type=int)
+    assert_zsh_typehint_completions(
+        subtests,
+        parser,
+        tmp_path,
+        [
+            ("enum", "", f"Expected type: {type_to_str(Optional[AXEnum])}", ["ABC", "XY", "XZ", "null"], False),
+            ("num", "", "Expected type: int", [], False),
+        ],
+    )
+
+
+def test_zsh_union_with_open_values_lists_without_inserting(parser, subtests, tmp_path, zsh_available):
+    parser.add_argument("--num", type=Optional[int])
+    assert_zsh_typehint_completions(
+        subtests,
+        parser,
+        tmp_path,
+        [
+            ("num", "", f"Expected type: {type_to_str(Optional[int])}", ["null"], True),
+            ("num", "n", f"Expected type: {type_to_str(Optional[int])}", ["null"], False),
+        ],
+    )
+
+
+def test_zsh_literal_special_characters(parser, tmp_path, zsh_available):
+    typehint = Literal["one two", "it's", "50%"]
+    parser.add_argument("--literal", type=typehint)
+    shtab_script = get_shtab_script(parser, "zsh")
+    syntax_check = subprocess.run(["zsh", "-n"], input=shtab_script.encode(), capture_output=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr.decode()
+    result = run_zsh_typehint_completion(shtab_script, tmp_path, "literal")
+    assert result["choices"] == ["one two", "it's", "50%"]
+    # a % in the message is escaped since zsh expands prompt sequences in explanations
+    assert result["message"] == f"Expected type: {type_to_str(typehint)}".replace("%", "%%")
+
+
+def test_zsh_positional(parser, tmp_path, zsh_available):
+    parser.add_argument("name", type=Literal["Alice", "Bob"])
+    shtab_script = get_shtab_script(parser, "zsh")
+    assert ':_jsonargparse_tool_name_typehint"' in shtab_script
+    result = run_zsh_typehint_completion(shtab_script, tmp_path, "name")
+    assert result["message"] == f"Argument: name; Expected type: {type_to_str(Literal['Alice', 'Bob'])}"
+    assert result["choices"] == ["Alice", "Bob"]
+
+
+def test_zsh_subclasses(parser, subtests, tmp_path, zsh_available):
+    parser.add_argument("--cls", type=Base)
+    classes = f"{__name__}.Base {__name__}.SubA {__name__}.SubB".split()
+    assert_zsh_typehint_completions(
+        subtests,
+        parser,
+        tmp_path,
+        [
+            ("cls", "", "Expected type: Base", classes, False),
+            ("cls.p1", "", "Expected type: int; Accepted by subclasses: Base, SubA, SubB", [], False),
+            ("cls.p2", "", "Expected type: AXEnum; Accepted by subclasses: SubA", ["ABC", "XY", "XZ"], False),
+        ],
+    )
+
+
+def test_zsh_subcommands(parser, subparser, tmp_path, zsh_available):
+    subparser.add_argument("--enum", type=AXEnum)
+    subcommands = parser.add_subcommands()
+    subcommands.add_subcommand("s1", subparser)
+    result = run_zsh_typehint_completion(get_shtab_script(parser, "zsh"), tmp_path, "s1.enum")
+    assert result["message"] == "Expected type: AXEnum"
+    assert result["choices"] == ["ABC", "XY", "XZ"]
+
+
+def test_zsh_message_uses_descriptions_format(parser, tmp_path, zsh_available):
+    parser.add_argument("--num", type=int)
+    result = run_zsh_typehint_completion(
+        get_shtab_script(parser, "zsh"),
+        tmp_path,
+        "num",
+        compadd_opts="-J -default- -X '-- num --'",
+        rc="zstyle ':completion:*:descriptions' format '%B-- %d --%b'",
+    )
+    assert result["message"] == "%B-- Expected type: int --%b"
+    assert "-X" not in result["opts"], "the explanation given by _arguments should be replaced"
+    assert result["opts"][:2] == ["-J", "-default-"]
+
+
+@contextmanager
+def interactive_zsh(parser, tmp_path):
+    shtab_script_path = tmp_path / "comp.zsh"
+    shtab_script_path.write_text(get_shtab_script(parser, "zsh"))
+    # Ctrl-T prints the current command line, to check what completion inserted
+    rc_lines = [
+        "PS1='PROMPT$ '",
+        "autoload -Uz compinit && compinit -D -u",
+        f'eval "$(<{shtab_script_path})"',
+        'print-line(){ zle -I; print -r -- "LINE=[$BUFFER]"; }; zle -N print-line; bindkey "^T" print-line',
+    ]
+    (tmp_path / ".zshrc").write_text("\n".join(rc_lines) + "\n")
+    with interactive_shell(["zsh", "-d", "-i"], env={"ZDOTDIR": str(tmp_path)}) as fd:
+        yield fd
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pty is not available on Windows")
+@pytest.mark.filterwarnings("ignore:.*multi-threaded, use of forkpty.*:DeprecationWarning")
+def test_zsh_interactive_shows_message_and_lists_choice_without_inserting(parser, tmp_path, zsh_available):
+    parser.add_argument("--num", type=Optional[int])
+    with interactive_zsh(parser, tmp_path) as fd:
+        os.write(fd, b"tool --num \t")
+        out = read_from_pty_until(fd, b"null")
+        assert f"Expected type: {type_to_str(Optional[int])}".encode() in out
+        assert b"null" in out, "the choice should be listed"
+        os.write(fd, b"\x14")
+        out = read_from_pty_until(fd, b"]\r\n")
+        assert b"LINE=[tool --num ]" in out, "the choice should not be inserted"

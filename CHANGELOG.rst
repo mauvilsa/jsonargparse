@@ -75,6 +75,10 @@ Added
 - ``Optional[list[<path_type>]]`` with ``sub_configs=True`` also accepts a file
   with a list of paths (`#1023
   <https://github.com/mauvilsa/jsonargparse/pull/1023>`__).
+- ``shtab`` zsh completion scripts now show the expected type of values, like
+  the bash scripts do, and list without inserting the choices of types that
+  accept other values, e.g. ``null`` for ``int | None`` (`#1024
+  <https://github.com/mauvilsa/jsonargparse/pull/1024>`__).
 
 Fixed
 ^^^^^
@@ -216,6 +220,10 @@ Fixed
   sub-config files for the parameters of nested classes, failing with
   ``Unexpected import path format`` (`#1023
   <https://github.com/mauvilsa/jsonargparse/pull/1023>`__).
+- ``shtab`` zsh completion script generation failing with ``TypeError: vars()
+  argument must have __dict__ attribute`` for parsers with subcommands added
+  without ``help`` (`#1024
+  <https://github.com/mauvilsa/jsonargparse/pull/1024>`__).
 
 Changed
 ^^^^^^^
