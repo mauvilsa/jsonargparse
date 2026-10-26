@@ -465,6 +465,24 @@ def test_parse_link(parser, tmp_cwd):
     }
 
 
+def test_parse_link_whole_class(parser, tmp_cwd):
+    parser.add_argument("--src", type=Trainer, sub_configs=True)
+    parser.add_argument("--dst", type=Trainer)
+    parser.link_arguments("src", "dst")
+    trainer = {"class_path": f"{__name__}.Trainer", "init_args": {"opts": [{"class_path": sgd}]}}
+    Path("trainer.json").write_text(json.dumps(trainer))
+    assert get_sources(parser.parse_args(["--src=trainer.json"])) == {
+        "src.class_path": "config file trainer.json",
+        "src.init_args.opts[0].class_path": "config file trainer.json",
+        "src.init_args.opts[0].init_args.lr": "default",
+        "src.init_args.opts[0].init_args.momentum": "default",
+        "dst.class_path": "link from src, from config file trainer.json",
+        "dst.init_args.opts[0].class_path": "link from src, from config file trainer.json",
+        "dst.init_args.opts[0].init_args.lr": "link from src, from default",
+        "dst.init_args.opts[0].init_args.momentum": "link from src, from default",
+    }
+
+
 def test_subcommand(parser, subparser, tmp_cwd):
     subparser.add_argument("--config", action="config")
     subparser.add_argument("--val", type=int, default=1)
@@ -972,6 +990,16 @@ nested_errors = [
         f"a:\n  optimizer:\n    class_path: {sgd}\n    init_args:\n      momentum: abc\n",
         "5 |       momentum: abc",
         id="mixed_init_args",
+    ),
+    pytest.param(
+        Scheduler,
+        f"a:\n  optimizer:\n    class_path: {sgd}\n    init_args:\n      momentum: 0.5\n      momentum: abc\n",
+        "6 |       momentum: abc",
+        id="mixed_init_args_duplicate_key",
+        marks=pytest.mark.skipif(
+            "JSONARGPARSE_OMEGACONF_FULL_TEST" in os.environ,
+            reason="the omegaconf yaml loader does not accept duplicate keys",
+        ),
     ),
     pytest.param(
         Optimizer,

@@ -467,6 +467,21 @@ def fill_provenance(value: Any, source: ValueSource) -> None:
                 fill_provenance(item, child_source(source, f"[{name}]" if isinstance(value, list) else f".{name}"))
 
 
+def replace_provenance(value: Any, source: ValueSource) -> None:
+    """Sets a source to all leaf values of a namespace, e.g. of a link, with each previous source as what implied it."""
+    if isinstance(value, Namespace):
+        provenance = _get_provenance_dict(value)
+        for name, item in vars(value).items():
+            if name in meta_keys:
+                continue
+            if not isinstance(item, Namespace):
+                provenance[name] = source._replace(implied_by=provenance.get(name, source.implied_by))
+            replace_provenance(item, source)
+    elif isinstance(value, (list, dict)):
+        for item in value if isinstance(value, list) else value.values():
+            replace_provenance(item, source)
+
+
 def copy_provenance(source: Namespace, target: Namespace, key: str | None = None) -> None:
     """Copies the sources of the leaf values of a namespace to the same leaves of another one."""
     source_provenance = getattr(source, provenance_key, None) or {}

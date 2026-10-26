@@ -403,6 +403,7 @@ def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
 
     yaml = import_pyyaml("_get_config_key_positions")
     positions: dict[str, tuple[int, int]] = {}
+    exact_keys: set[str] = set()
 
     def collect(node, key):
         if isinstance(node, yaml.MappingNode):
@@ -413,8 +414,11 @@ def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
             return
         for child_key, position_node, value_node in children:  # for duplicate keys the last is kept, as when loading
             positions[child_key] = (position_node.start_mark.line + 1, position_node.start_mark.column)
+            exact_keys.add(child_key)
             # also without init_args, so that a key matches when the config has init_args only at some levels
-            positions.setdefault(_without_init_args(child_key), positions[child_key])
+            alias = _without_init_args(child_key)
+            if alias not in exact_keys:
+                positions[alias] = positions[child_key]
             collect(value_node, child_key)
 
     try:
