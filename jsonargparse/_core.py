@@ -33,6 +33,7 @@ from ._common import (
     get_parsing_setting,
     is_subclasses_disabled,
     lenient_check,
+    parent_parser,
     parser_context,
     supports_optionals_as_positionals,
     validate_default,
@@ -59,6 +60,7 @@ from ._namespace import (
     Namespace,
     NSKeyError,
     ValueSource,
+    child_source,
     copy_provenance,
     get_non_meta_sorted_keys,
     get_provenance,
@@ -141,12 +143,19 @@ class _AfterSeparator(str):
 def _get_error_source(ex: BaseException | None) -> ValueSource | None:
     """Returns where the value that caused an error came from, the innermost one when nested."""
     source = None
+    nested_key = ""  # the key within the source's value, from errors of nested parsers that have no source
     while ex is not None:
         if getattr(ex, "value_source_reported", False):  # already in the message of a nested error
             return None
-        source = getattr(ex, "value_source", source)
+        if hasattr(ex, "value_source"):  # which already includes the error's own value_key and subkey
+            source = ex.value_source
+            nested_key = ""
+        else:
+            if hasattr(ex, "value_key"):
+                nested_key += f".init_args.{ex.value_key}"
+            nested_key += getattr(ex, "subkey", "")
         ex = ex.__cause__ or ex.__context__
-    return source
+    return child_source(source, nested_key) if source is not None and nested_key else source
 
 
 class ActionsContainer(ArgumentLinking, InstantiateMethod, SignatureArguments, argparse._ActionsContainer):
@@ -1302,7 +1311,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             message: The error message.
             ex: The exception that caused the error, if any.
         """
-        source = _get_error_source(ex)
+        # the error of a nested parse, e.g. of init args, is part of the error of the parent, which gives the source
+        nested = not self.exit_on_error and parent_parser.get() not in {None, self}
+        source = None if nested else _get_error_source(ex)
         if source is not None:
             cache: dict = {}
             message += f"\n  Source: {describe_source(source, cache)}"
@@ -1426,9 +1437,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                             raise NSKeyError(f"Option '{key}' is not accepted before subcommand {subcommand}")
                         raise NSKeyError(f"Option '{key}' is not accepted")
                 except (TypeError, KeyError) as ex:
-                    source = get_provenance(cfg).get(key)
+                    provenance = get_provenance(cfg)
+                    # a subclass spec has the source of its class_path, e.g. for a missing required init arg
+                    source = provenance.get(key) or provenance.get(f"{key}.class_path")
                     if source is not None and not hasattr(ex, "value_source"):
-                        ex.value_source = source
+                        ex.value_source = source.implied_by or source
+                    if not hasattr(ex, "value_key"):
+                        ex.value_key = key  # for the source of errors of nested parsers, relative to the parser
                     raise
 
         with parser_context(load_value_mode=self.parser_mode):

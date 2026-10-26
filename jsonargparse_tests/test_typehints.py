@@ -6,6 +6,7 @@ import json
 import pickle
 import random
 import sys
+import textwrap
 import time
 import uuid
 from collections import ChainMap, Counter, OrderedDict, abc, deque, namedtuple
@@ -3310,6 +3311,18 @@ def test_callable_args_return_type_class(parser, subtests):
 
     with subtests.test("short notation"):
         assert cfg == parser.parse_args(["--optimizer=Adam", "--optimizer.lr=0.01"])
+
+    with subtests.test("invalid init arg"):
+        with pytest.raises(ArgumentError) as ctx:
+            parser.parse_args(["--optimizer=Adam", "--optimizer.lr=abc"])
+        expected = f"""
+        Parser key "optimizer":
+          Problem with given class_path '{__name__}.Adam':
+            Parser key "lr":
+              Expected type: float. Got value: abc
+        """
+        assert textwrap.dedent(expected).strip() in str(ctx.value)
+        assert str(ctx.value).count("Got value") == 1
 
     with subtests.test("help"):
         help_str = get_parser_help(parser)

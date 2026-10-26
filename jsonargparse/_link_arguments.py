@@ -17,7 +17,15 @@ from ._actions import (
     filter_non_parsing_actions,
 )
 from ._common import parser_context
-from ._namespace import Namespace, split_key, split_key_leaf
+from ._namespace import (
+    Namespace,
+    ValueSource,
+    get_provenance,
+    replace_provenance,
+    split_key,
+    split_key_leaf,
+    value_source_context,
+)
 from ._parameter_resolvers import get_signature_parameters
 from ._required import clear_required
 from ._subcommands import (
@@ -386,7 +394,14 @@ class ActionLink(Action):
                         args[n] = args[n].as_dict()
                 # Compute value
                 value = action.call_compute_fn(args)
-            ActionLink.set_target_value(action, value, cfg, parser.logger)
+            # the source of a value from a single source key is followed, e.g. to the line of a config file
+            implied_by = get_provenance(cfg).get(action.source[0][0]) if len(action.source) == 1 else None
+            source = ValueSource("link from", ", ".join(k for k, _ in action.source), implied_by=implied_by)
+            if isinstance(value, Namespace):  # a copy, so that the sources of the linked namespace are kept
+                value = value.clone()
+                replace_provenance(value, source)
+            with value_source_context(source):
+                ActionLink.set_target_value(action, value, cfg, parser.logger)
             parser.logger.debug(f"Applied link '{action.option_strings[0]}'.")
 
     @staticmethod

@@ -343,9 +343,9 @@ snippet_width = 80
 
 def describe_source(source, cache: dict | None = None) -> str:
     """Returns a description of where a value came from, including the line number for config files."""
-    if source.implied_by is not None:
-        return f"{source.description}, from {describe_source(source.implied_by, cache)}"
     text = source.description if source.origin is None else f"{source.description} {_describe_origin(source.origin)}"
+    if source.implied_by is not None:
+        return f"{text}, from {describe_source(source.implied_by, cache)}"
     if source.selector:
         text += f"#{source.selector}"
     position = _find_position(source, {} if cache is None else cache)
@@ -388,7 +388,7 @@ def _find_position(source, cache: dict) -> tuple[int, int, str] | None:
     positions, lines = cache[id(source.origin)]
     key = f"{source.selector}.{source.key}" if source.selector else source.key
     while key:
-        for candidate in [key, ("." + key).replace(".init_args.", ".")[1:]]:  # init_args can be implicit
+        for candidate in [key, _without_init_args(key)]:  # init_args can be implicit
             if candidate in positions:
                 line, column = positions[candidate]
                 return line, column, lines[line - 1].rstrip()
@@ -403,6 +403,7 @@ def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
 
     yaml = import_pyyaml("_get_config_key_positions")
     positions: dict[str, tuple[int, int]] = {}
+    exact_keys: set[str] = set()
 
     def collect(node, key):
         if isinstance(node, yaml.MappingNode):
@@ -413,6 +414,11 @@ def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
             return
         for child_key, position_node, value_node in children:  # for duplicate keys the last is kept, as when loading
             positions[child_key] = (position_node.start_mark.line + 1, position_node.start_mark.column)
+            exact_keys.add(child_key)
+            # also without init_args, so that a key matches when the config has init_args only at some levels
+            alias = _without_init_args(child_key)
+            if alias not in exact_keys:
+                positions[alias] = positions[child_key]
             collect(value_node, child_key)
 
     try:
@@ -421,6 +427,10 @@ def _get_config_key_positions(content: str) -> dict[str, tuple[int, int]]:
         return positions
     collect(node, "")
     return positions
+
+
+def _without_init_args(key: str) -> str:
+    return ("." + key).replace(".init_args.", ".")[1:]
 
 
 class DefaultHelpFormatter(HelpFormatter):
