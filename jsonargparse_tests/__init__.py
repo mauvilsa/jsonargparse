@@ -10,4 +10,4 @@ if "JSONARGPARSE_OMEGACONF_FULL_TEST" in os.environ:
         loaders["yaml"] = loaders["omegaconf"]
         warnings.warn("Running all tests with omegaconf as the yaml loader.")
 
-__version__ = "5.0.0rc1"
+__version__ = "5.0.0rc2"
