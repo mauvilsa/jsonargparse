@@ -780,12 +780,8 @@ class ActionTypeHint(Action):
                 except ValueError as ex:
                     if orig_val == "-" and isinstance(getattr(ex, "parent", None), PathError):
                         raise ex
-                    item_ex: BaseException | None = ex
-                    while item_ex is not None and not hasattr(item_ex, "list_index"):  # e.g. under a union error
-                        item_ex = item_ex.__cause__
-                    if config_path is not None and not append and isinstance(val, list) and item_ex is not None:
-                        source = ValueSource("config file", config_path, mode, key=f"[{item_ex.list_index}]")
-                        item_ex.value_source = getattr(item_ex, "value_source", source)
+                    if config_path is not None and not append:
+                        set_config_file_error_source(ex, config_path, mode)
                     try:
                         if isinstance(orig_val, str) and not list_file:
                             # without load_config_path_context, since orig_val could be the path it would load
@@ -822,7 +818,9 @@ class ActionTypeHint(Action):
                 else:
                     elem = "" if not islist else f" element {num + 1}"
                     error = indent_text(str(ex) if load_error is None else f"{ex}\n{load_error}")
-                    raise TypeError(f'Parser key "{self.dest}"{elem}:\n{error}') from ex
+                    type_error = TypeError(f'Parser key "{self.dest}"{elem}:\n{error}')
+                    type_error.value_key = self.dest  # for the source of nested errors
+                    raise type_error from ex
         return value if islist else value[0]
 
     def _is_valid_string(self, value):
@@ -979,8 +977,12 @@ def adapt_subconfig_path(val, typehint, adapt_kwargs):
             subconfig = resolve_config_includes(load_config_value(path.read_text(), path))
     except get_loader_exceptions() as ex:
         raise_unexpected_value(f"Invalid content in sub-config file {val}: {ex}", exception=ex)
-    with load_config_path_context(path), path_dir_context(path):
-        val = adapt_typehints(subconfig, typehint, **adapt_kwargs)
+    try:
+        with load_config_path_context(path), path_dir_context(path):
+            val = adapt_typehints(subconfig, typehint, **adapt_kwargs)
+    except ValueError as ex:
+        set_config_file_error_source(ex, path, get_parser_mode())
+        raise
     fill_provenance(val, ValueSource("config file", path, get_parser_mode()))
     if isinstance(val, (Namespace, dict)):
         val["__path__"] = path
@@ -1018,6 +1020,25 @@ def raise_unexpected_value(message: str, val: Any = inspect._empty, exception: E
     if val is not inspect._empty:
         message += f". Got value: {val}"
     raise ValueError(message) from exception
+
+
+def raise_class_path_error(message: str, exception: Exception | None = None) -> NoReturn:
+    """Raises an error of the class_path of a subclass spec, which in a config file is the class_path line."""
+    error = ValueError(message)
+    error.subkey = ".class_path"  # type: ignore[attr-defined]
+    raise error from exception
+
+
+def prepend_error_subkey(ex: Exception, subkey: str) -> None:
+    """Prepends to the key within the value that caused an error, e.g. "[0]" when raised for a list item."""
+    ex.subkey = subkey + getattr(ex, "subkey", "")  # type: ignore[attr-defined]
+
+
+def set_config_file_error_source(ex: Exception, path, mode: str | None) -> None:
+    """Sets as source of an error of a value loaded from a config file that file, at the key that caused it."""
+    if not hasattr(ex, "value_source"):  # e.g. of a list of paths file
+        key = getattr(ex, "subkey", "").lstrip(".") or None
+        ex.value_source = ValueSource("config file", path, mode, key=key)  # type: ignore[attr-defined]
 
 
 def raise_union_unexpected_value(typehint, subtypes, val: Any, exceptions: list[Exception]) -> NoReturn:
@@ -1751,7 +1772,7 @@ def adapt_typehints(
                 except ValueError as ex:
                     if list_path is not None:
                         ex.value_source = ValueSource("list of paths file", list_path, line=n + 1)
-                    ex.list_index = n  # the outermost list's, for its position in a file
+                    prepend_error_subkey(ex, f"[{n}]")
                     raise
         if typehint_origin is deque:
             val = list(val) if serialize else deque(val)
@@ -1802,7 +1823,11 @@ def adapt_typehints(
                         kwargs["prev_val"] = kwargs["prev_val"].get(k)
                     else:
                         kwargs["prev_val"] = None
-                val[k] = adapt_typehints(v, subtypehints[1], **kwargs)
+                try:
+                    val[k] = adapt_typehints(v, subtypehints[1], **kwargs)
+                except ValueError as ex:
+                    prepend_error_subkey(ex, f".{k}")
+                    raise
         if is_typed_dict(typehint):
             dict_annotations = get_typed_dict_annotations(typehint, logger)
             required_keys = get_typed_dict_required_keys(typehint, dict_annotations)
@@ -1942,7 +1967,10 @@ def adapt_typehints(
                     # e.g. a list, which without this would be accepted unchanged, silently
                     # preventing the resolution by other subtypes when part of a union
                     raise ImportError(f"Expected an import path or a subclass spec, but got {val_input}")
-            except (ImportError, AttributeError, ArgumentError) as ex:
+            except ArgumentError as ex:  # of the init_args, which already says what the value is
+                error = indent_text(str(ex))
+                raise_unexpected_value(f"Problem with given class_path {val['class_path']!r}:\n{error}", exception=ex)
+            except (ImportError, AttributeError) as ex:
                 raise_unexpected_value(
                     f"Type {type_to_str(typehint)} expects a function or a callable class: {ex}", val, ex
                 )
@@ -2001,7 +2029,7 @@ def adapt_typehints(
         try:
             class_path = resolve_class_path_by_name(typehint, val["class_path"])
             if "." not in class_path:  # not resolved to a subclass
-                raise_unexpected_value(
+                raise_class_path_error(
                     f"Expected a dot import path or the name of a known subclass of {typehint.__name__}. "
                     f"Got value: {class_path}{known_subclasses_suffix(typehint)}"
                 )
@@ -2010,7 +2038,7 @@ def adapt_typehints(
                 return val_class  # importable instance
             if is_protocol(val_class) or inspect.isabstract(val_class):
                 kind = "a protocol" if is_protocol(val_class) else "abstract"
-                raise_unexpected_value(
+                raise_class_path_error(
                     f"Expected an instantiatable class, but {val['class_path']} is {kind}"
                     f"{known_subclasses_suffix(typehint)}"
                 )
@@ -2019,7 +2047,7 @@ def adapt_typehints(
                 and inspect.isclass(val_class)
                 and val_class is not get_generic_origin(typehint)
             ):
-                raise_unexpected_value(subclasses_disabled_message(typehint, val["class_path"]))
+                raise_class_path_error(subclasses_disabled_message(typehint, val["class_path"]))
             subclass = True
             if not is_subclass_or_implements_protocol(val_class, typehint):
                 subclass = False
@@ -2038,7 +2066,7 @@ def adapt_typehints(
                         prev_val.init_args.pop(key, None)
             if not subclass:
                 msg = "implement protocol" if is_protocol(typehint) else "correspond to a subclass of"
-                raise_unexpected_value(
+                raise_class_path_error(
                     f"Import path {val['class_path']} does not {msg} {typehint.__name__}"
                     f"{known_subclasses_suffix(typehint)}"
                 )
@@ -2056,9 +2084,10 @@ def adapt_typehints(
                 raise  # an exception of the instantiated code, not of the given value
             class_path = val if isinstance(val, str) else val["class_path"]
             error = indent_text(str(ex))
-            # an ArgumentError is of the init_args, thus not related to which the subclasses are
-            suffix = "" if isinstance(ex, ArgumentError) else known_subclasses_suffix(typehint)
-            raise_unexpected_value(f"Problem with given class_path {class_path!r}:\n{error}{suffix}", exception=ex)
+            message = f"Problem with given class_path {class_path!r}:\n{error}"
+            if isinstance(ex, ArgumentError):  # of the init_args, thus not related to which the subclasses are
+                raise_unexpected_value(message, exception=ex)
+            raise_class_path_error(message + known_subclasses_suffix(typehint), exception=ex)
 
     # TypeAliasType -- 3.12 `type x = y` or manually via typing_extensions
     elif is_alias_type(typehint):

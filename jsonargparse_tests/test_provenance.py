@@ -58,7 +58,13 @@ class Trainer:
         self.opts = opts  # pragma: no cover
 
 
+class Scheduler:
+    def __init__(self, optimizer: Optimizer, steps: int = 1):
+        self.optimizer = optimizer  # pragma: no cover
+
+
 sgd = f"{__name__}.SGD"
+scheduler = f"{__name__}.Scheduler"
 optimizer = f"{__name__}.Optimizer"
 
 
@@ -441,6 +447,24 @@ def test_callable_return_class_implicit_class_path(parser):
     }
 
 
+def test_parse_link(parser, tmp_cwd):
+    parser.add_argument("--a", type=float, default=0.0)
+    parser.add_argument("--b", type=float, default=0.0)
+    parser.add_argument("--opt", type=Optimizer)
+    parser.add_argument("--sum", type=float, default=0.0)
+    parser.link_arguments("a", "opt.init_args.lr")
+    parser.link_arguments(("a", "b"), "sum", compute_fn=lambda a, b: a + b)
+    Path("cfg.json").write_text(json.dumps({"a": 0.4, "opt": {"class_path": sgd}}))
+    assert get_sources(parser.parse_args(["--config=cfg.json"])) == {
+        "a": "config file cfg.json",
+        "b": "default",
+        "opt.class_path": "config file cfg.json",
+        "opt.init_args.lr": "link from a, from config file cfg.json",
+        "opt.init_args.momentum": "default",
+        "sum": "link from a, b",
+    }
+
+
 def test_subcommand(parser, subparser, tmp_cwd):
     subparser.add_argument("--config", action="config")
     subparser.add_argument("--val", type=int, default=1)
@@ -756,10 +780,10 @@ def test_error_command_line(parser):
 
 
 def test_error_command_line_nested_option(parser):
-    parser.add_argument("--opt", type=Optimizer)
-    error = get_error(parser, [f"--opt={sgd}", "--opt.init_args.momentum=abc"])
+    parser.add_argument("--sched", type=Scheduler)
+    error = get_error(parser, [f"--sched.optimizer={sgd}", "--sched.optimizer.init_args.momentum=abc"])
     assert error.count("Source:") == 1
-    assert error.endswith("Source: command line argument --opt.init_args.momentum")
+    assert error.endswith("\n  Source: command line argument --sched.optimizer.init_args.momentum")
 
 
 def test_error_from_argparse_without_source(parser):
@@ -935,11 +959,93 @@ def test_error_json_config_not_composable_as_yaml(tmp_cwd):
     assert get_error(parser, ["--config=cfg.json"]).endswith("Got value: abc\n  Source: config file cfg.json")
 
 
+nested_errors = [
+    pytest.param(
+        Optimizer,
+        f"a:\n  class_path: {sgd}\n  init_args:\n    momentum: abc\n",
+        "4 |     momentum: abc",
+        id="init_args",
+    ),
+    pytest.param(Scheduler, "a:\n  steps: 2\n  optimizer:\n    lr: abc\n", "4 |     lr: abc", id="implicit_init_args"),
+    pytest.param(
+        Scheduler,
+        f"a:\n  optimizer:\n    class_path: {sgd}\n    init_args:\n      momentum: abc\n",
+        "5 |       momentum: abc",
+        id="mixed_init_args",
+    ),
+    pytest.param(
+        Optimizer,
+        f"a:\n  class_path: {sgd}\n  init_args:\n    lr: 0.1\n    unknown: 1\n",
+        "5 |     unknown: 1",
+        id="unknown",
+    ),
+    pytest.param(
+        list[Optimizer],
+        f"a:\n  - class_path: {sgd}\n  - class_path: {sgd}\n    init_args:\n      lr: abc\n",
+        "5 |       lr: abc",
+        id="list_item",
+    ),
+    pytest.param(
+        dict[str, Optimizer],
+        f"a:\n  x:\n    class_path: {sgd}\n  y:\n    class_path: {sgd}\n    init_args:\n      lr: abc\n",
+        "7 |       lr: abc",
+        id="dict_item",
+    ),
+    pytest.param(
+        dict[str, list[Optimizer]],
+        f"a:\n  x:\n    - class_path: {sgd}\n    - lr: abc\n",
+        "4 |     - lr: abc",
+        id="list_in_dict_item",
+    ),
+    pytest.param(
+        Scheduler,
+        "a:\n  optimizer:\n    class_path: calendar.Calendar\n",
+        "3 |     class_path: calendar.Calendar",
+        id="class_path",
+    ),
+    pytest.param(
+        Callable[[], Optimizer],
+        f"a:\n  class_path: {sgd}\n  init_args:\n    momentum: abc\n",
+        "4 |     momentum: abc",
+        id="callable",
+    ),
+    pytest.param(
+        Scheduler,
+        f"a:\n  class_path: {scheduler}\n  init_args:\n    steps: 2\n",
+        f"2 |   class_path: {scheduler}",
+        id="missing_required",
+    ),
+    pytest.param(Scheduler, "val: 1\na:\n  steps: 2\n", "2 | a:", id="missing_required_implicit_class_path"),
+]
+
+
 @skip_if_no_pyyaml
-def test_dump_without_provenance(yaml_parser):
-    yaml_parser.add_argument("--val", type=int, default=1)
-    cfg = yaml_parser.parse_args(["--val=2"])
-    assert yaml_parser.dump(cfg) == "val: 2\n"
+@pytest.mark.parametrize(["typehint", "content", "line"], nested_errors)
+def test_error_line_number_nested(yaml_parser, tmp_cwd, typehint, content, line):
+    yaml_parser.add_argument("--val", type=int, default=0)
+    yaml_parser.add_argument("--a", type=typehint)
+    Path("cfg.yaml").write_text(content)
+    expected = f"\n  Source: config file cfg.yaml:{line.split()[0]}\n    {line}"
+    assert get_error(yaml_parser, ["--config=cfg.yaml"]).endswith(expected)
+
+
+subconfig_errors = [
+    pytest.param(Scheduler, ["--config=cfg.yaml"], "a:\n  optimizer: sub.yaml\n", id="init_arg"),
+    pytest.param(list[Optimizer], ["--config=cfg.yaml"], f"a:\n  - class_path: {sgd}\n  - sub.yaml\n", id="list_item"),
+    pytest.param(dict[str, Optimizer], ["--config=cfg.yaml"], "a:\n  x: sub.yaml\n", id="dict_item"),
+    pytest.param(Optimizer, ["--a=sub.yaml"], None, id="command_line"),
+]
+
+
+@skip_if_no_pyyaml
+@pytest.mark.parametrize(["typehint", "args", "content"], subconfig_errors)
+def test_error_line_number_in_subconfig_file(yaml_parser, tmp_cwd, typehint, args, content):
+    yaml_parser.add_argument("--a", type=typehint, sub_configs=True)
+    if content:
+        Path("cfg.yaml").write_text(content)
+    Path("sub.yaml").write_text(f"class_path: {sgd}\ninit_args:\n  momentum: abc\n")
+    expected = "\n  Source: config file sub.yaml:3\n    3 |   momentum: abc"
+    assert get_error(yaml_parser, args).endswith(expected)
 
 
 # print config provenance flag

@@ -22,7 +22,7 @@ class ValueSource(NamedTuple):
     origin: Any = None  # the path of a config file or the name of an environment variable
     mode: str | None = None  # the parser mode of a config file, required to find line numbers
     key: str | None = None  # the key in a config file that the value corresponds to
-    implied_by: "ValueSource | None" = None  # for implicit values, e.g. a class_path, the source of what implied it
+    implied_by: "ValueSource | None" = None  # e.g. for an implicit class_path or a link, the source it comes from
     selector: str | None = None  # the key selected in a config file with path#key, of which key is relative
     line: int | None = None  # the line number in a plain text file, e.g. a list of paths, which has no keys
 
@@ -455,7 +455,7 @@ def fill_provenance(value: Any, source: ValueSource) -> None:
         for name, item in vars(value).items():
             if name in meta_keys:
                 continue
-            item_source = _child_source(source, "." + del_clash_mark(name))
+            item_source = child_source(source, "." + del_clash_mark(name))
             if not isinstance(item, Namespace) and name not in provenance:
                 provenance[name] = item_source
             elif provenance.get(name) is implicit_source:
@@ -464,7 +464,7 @@ def fill_provenance(value: Any, source: ValueSource) -> None:
     elif isinstance(value, (list, dict)):
         for name, item in enumerate(value) if isinstance(value, list) else value.items():
             if isinstance(item, (Namespace, list, dict)):
-                fill_provenance(item, _child_source(source, f"[{name}]" if isinstance(value, list) else f".{name}"))
+                fill_provenance(item, child_source(source, f"[{name}]" if isinstance(value, list) else f".{name}"))
 
 
 def copy_provenance(source: Namespace, target: Namespace, key: str | None = None) -> None:
@@ -482,7 +482,7 @@ def copy_provenance(source: Namespace, target: Namespace, key: str | None = None
             target_provenance[name] = source_provenance[name]
 
 
-def _child_source(source: ValueSource, suffix: str) -> ValueSource:
+def child_source(source: ValueSource, suffix: str) -> ValueSource:
     """The source narrowed to a child key, e.g. suffix ".name" or "[0]", only needed for config file line numbers."""
     if source.mode is None:
         return source
