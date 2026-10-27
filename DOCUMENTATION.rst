@@ -2423,13 +2423,15 @@ library modules that give arbitrary code execution, e.g. ``os``, ``subprocess``,
     )
 
 An entry denies or allows a dot import path and everything under it, so ``os``
-also denies ``os.system``. The most specific entry decides, which is why
-``functools.partial`` above is allowed even though ``functools`` is denied by
-default. An entry given in both lists is allowed, so naming a default entry in
-``import_path_allowlist`` is how to stop denying it. The one exception is
-``jsonargparse`` itself, which is denied by default and not accepted in
-``import_path_allowlist``, since a value that names it would be able to call
-:func:`.set_parsing_settings` and thus change the policy that is checking it.
+also denies ``os.system``, and denied classes are left out of the known
+subclasses shown in help, errors and completions. The most specific entry
+decides, which is why ``functools.partial`` above is allowed even though
+``functools`` is denied by default. An entry given in both lists is allowed, so
+naming a default entry in ``import_path_allowlist`` is how to stop denying it.
+The one exception is ``jsonargparse`` itself, which is denied by default and not
+accepted in ``import_path_allowlist``, since a value that names it would be able
+to call :func:`.set_parsing_settings` and thus change the policy that is
+checking it.
 
 An object is denied by where it is defined, not only by the path used to reach
 it. Modules commonly import others, e.g. ``import os``, so without this
