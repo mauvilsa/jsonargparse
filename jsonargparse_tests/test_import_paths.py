@@ -454,6 +454,41 @@ def test_help_class_path_denied(parser):
         parser.parse_args(["--cal.help=calendar.TextCalendar"])
 
 
+def test_denied_subclass_not_listed_in_help(parser):
+    set_parsing_settings(import_path_denylist=["calendar.TextCalendar"])
+    parser.add_argument("--cal", type=Calendar)
+    help_str = get_parser_help(parser)
+    assert "calendar.HTMLCalendar" in help_str
+    assert "calendar.LocaleTextCalendar" in help_str  # subclass of a denied class, but itself allowed
+    assert "calendar.TextCalendar" not in help_str
+
+
+def test_denied_subclass_not_listed_in_error(parser):
+    set_parsing_settings(import_path_denylist=["calendar.TextCalendar"])
+    parser.add_argument("--cal", type=Calendar)
+    with pytest.raises(ArgumentError) as ctx:
+        parser.parse_args(["--cal=Unknown"])
+    assert "Known subclasses: " in str(ctx.value)
+    assert "calendar.LocaleTextCalendar" in str(ctx.value)
+    assert "calendar.TextCalendar" not in str(ctx.value)
+
+
+def test_denied_subclass_short_name_not_resolved(parser):
+    set_parsing_settings(import_path_denylist=["calendar.TextCalendar"])
+    parser.add_argument("--cal", type=Calendar)
+    with pytest.raises(ArgumentError, match="Known subclasses: ") as ctx:
+        parser.parse_args(["--cal=TextCalendar"])
+    assert "calendar.TextCalendar" not in str(ctx.value)
+
+
+def test_denied_subclass_not_in_jsonschema_completion(parser):
+    set_parsing_settings(import_path_denylist=["calendar.TextCalendar"])
+    parser.add_argument("--cal", type=Calendar)
+    schema = parser.get_completion_script("jsonschema")
+    assert "calendar.LocaleTextCalendar" in schema
+    assert "calendar.TextCalendar" not in schema
+
+
 def test_from_config_class_path_denied(tmp_cwd):
     class Base(FromConfigMixin):
         def __init__(self, p: int = 1):

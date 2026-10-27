@@ -62,6 +62,7 @@ from ._common import (
     check_import_path,
     command_line_source,
     config_schema_key,
+    denying_import_path_entry,
     get_generic_origin,
     get_parsing_setting,
     get_unaliased_type,
@@ -2637,7 +2638,12 @@ def get_all_subclass_paths(cls: type, include_abstract: bool = False, closed_typ
             return
         if is_local(cl) or is_subclass(cl, _LazyInitBaseClass):
             return
-        if not ((inspect.isabstract(cl) and not include_abstract) or is_private(class_path) or is_protocol(cl)):
+        if not (
+            (inspect.isabstract(cl) and not include_abstract)
+            or is_private(class_path)
+            or is_protocol(cl)
+            or denying_import_path_entry(class_path)
+        ):
             if class_path in subclass_list:
                 return
             subclass_list.append(class_path)

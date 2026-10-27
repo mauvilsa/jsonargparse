@@ -225,6 +225,10 @@ Fixed
   argument must have __dict__ attribute`` for parsers with subcommands added
   without ``help`` (`#1024
   <https://github.com/mauvilsa/jsonargparse/pull/1024>`__).
+- Subclasses denied by ``import_path_denylist`` were listed as known subclasses
+  in the help, in parse errors and in shell completions, and made the
+  ``jsonschema`` completion fail with ``ImportDenied`` (`#1026
+  <https://github.com/mauvilsa/jsonargparse/pull/1026>`__).
 
 Changed
 ^^^^^^^
