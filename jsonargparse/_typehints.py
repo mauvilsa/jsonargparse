@@ -118,6 +118,7 @@ from ._util import (
     ComposedConfig,
     NestedArg,
     NoneType,
+    canonical_import_path,
     config_file_context,
     get_code_given_class_path,
     get_import_path,
@@ -2643,6 +2644,7 @@ def get_all_subclass_paths(cls: type, include_abstract: bool = False, closed_typ
             or is_private(class_path)
             or is_protocol(cl)
             or denying_import_path_entry(class_path)
+            or denying_import_path_entry(canonical_import_path(cl) or class_path)
         ):
             if class_path in subclass_list:
                 return
