@@ -79,7 +79,7 @@ ruamel = [
     "ruamel.yaml>=0.18.15",
 ]
 omegaconf = [
-    "omegaconf>=2.1.1",
+    "omegaconf>=2.4.0",
 ]
 docstrings = [
     "docstring-parser>=0.17",

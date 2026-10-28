@@ -340,6 +340,8 @@ Changed
   ``get_config_files`` gives a flat list. Config file paths in value sources
   follow the same rule, instead of being relative only when inside the working
   directory (`#1019 <https://github.com/mauvilsa/jsonargparse/pull/1019>`__).
+- The minimum supported ``omegaconf`` version is now 2.4.0 (`#1028
+  <https://github.com/mauvilsa/jsonargparse/pull/1028>`__).
 
 Removed
 ^^^^^^^

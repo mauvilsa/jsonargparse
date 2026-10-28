@@ -131,7 +131,7 @@ def test_omegaconf_global_default_config_files_interpolation(parser, tmp_cwd):
 
 @skip_if_omegaconf_unavailable
 def test_omegaconf_global_resolver_config(parser):
-    OmegaConf.register_new_resolver("increment", lambda x: x + 1)
+    OmegaConf.register_resolver("increment", lambda x: x + 1)
 
     parser.parser_mode = "omegaconf+"
     parser.add_argument("--config", action="config")
@@ -153,7 +153,7 @@ def test_omegaconf_global_resolver_argument(parser):
         allowed = {"pi": math.pi}
         return eval(expr, {"__builtins__": None}, allowed)
 
-    OmegaConf.register_new_resolver("const", const)
+    OmegaConf.register_resolver("const", const)
 
     parser.parser_mode = "omegaconf+"
     parser.add_argument("--value", type=float)
