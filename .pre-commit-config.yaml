@@ -94,14 +94,6 @@ repos:
     pass_filenames: false
     verbose: true
 
-  - id: tox
-    name: tox --parallel --parallel-no-spinner
-    entry: tox --parallel --parallel-no-spinner
-    stages: [pre-push]
-    language: system
-    pass_filenames: false
-    verbose: true
-
   - id: doctest
     name: sphinx-build -M doctest sphinx sphinx/_build sphinx/index.rst
     entry: bash -c '
@@ -116,9 +108,21 @@ repos:
     pass_filenames: false
     verbose: true
 
-  - id: coverage
-    name: pytest -v -s --cov --cov-report=term --cov-report=html
-    entry: pytest -v -s --cov --cov-report=term --cov-report=html
+  - id: tox
+    name: tox --parallel --parallel-no-spinner with combined coverage
+    entry: bash -c '
+      set -e;
+      rm -fr jsonargparse_tests/.coverage* jsonargparse_tests/htmlcov;
+      tox --parallel --parallel-no-spinner -- --cov=../jsonargparse --cov-append;
+      cd jsonargparse_tests;
+      expected=$(tox -l | grep -- -all-extras | sed "s|-.*||" | sort | tr "\n" " ");
+      ran=$(ls .coverage.*-all-extras 2>/dev/null | sed "s|^.coverage.||; s|-.*||" | sort | tr "\n" " ");
+      coverage combine;
+      coverage html;
+      coverage report --skip-covered --show-missing;
+      if [ "$ran" = "$expected" ] && [ "$(coverage report --format=total)" != 100 ]; then
+        echo "$(tput setaf 3) WARNING, coverage is below 100%, see jsonargparse_tests/htmlcov/index.html $(tput sgr0)";
+      fi'
     stages: [pre-push]
     language: system
     pass_filenames: false
