@@ -21,6 +21,7 @@ from jsonargparse._optionals import (
 from jsonargparse._signatures import convert_to_dict
 from jsonargparse.typing import path_type
 from jsonargparse_tests.conftest import (
+    Doc,
     capture_logs,
     get_parse_args_stdout,
     get_parser_help,
@@ -130,6 +131,13 @@ if annotated and pydantic_support > 1:
     class PydanticAnnotatedField(pydantic.BaseModel):
         p1: annotated[int, pydantic.Field(default=2, ge=1, le=8)]  # type: ignore[valid-type]
 
+    class PydanticModelAnnotatedDoc(pydantic.BaseModel):
+        p1: annotated[int, Doc("p1 from Doc")] = 1  # type: ignore[valid-type]
+
+    @pydantic.dataclasses.dataclass
+    class PydanticDataclassAnnotatedDoc:
+        p1: annotated[int, Doc("p1 from Doc")] = 1  # type: ignore[valid-type]
+
 
 @pytest.mark.skipif(not (annotated and pydantic_support > 1), reason="Annotated is required")
 class TestPydantic2Annotated:
@@ -152,6 +160,12 @@ class TestPydantic2Annotated:
         parser.add_class_arguments(annotated[NestedAnnotatedDataClassWithDefaultFactory, 1], "n")
         cfg = parser.parse_args(["--n", "{}"])
         assert cfg.n == Namespace(a1=Namespace(a2=1))
+
+    @pytest.mark.parametrize("model", ["PydanticModelAnnotatedDoc", "PydanticDataclassAnnotatedDoc"])
+    def test_annotated_doc(self, parser, model):
+        parser.add_argument("--model", type=globals()[model])
+        help_str = get_parser_help(parser)
+        assert "p1 from Doc (type: int, default: 1)" in help_str
 
     def test_annotated_field(self, parser):
         parser.add_argument("--model", type=PydanticAnnotatedField)

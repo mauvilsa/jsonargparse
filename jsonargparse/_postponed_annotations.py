@@ -350,7 +350,7 @@ def get_types(obj: Any, logger: logging.Logger | None = None, parent: Any = None
     owner = None if inspect.isclass(obj) else get_owner_class(obj) or parent
     local_vars = None if inspect.isclass(obj) else get_local_vars(owner)
     try:
-        types = get_type_hints(obj, global_vars, local_vars)
+        types = get_type_hints(obj, global_vars, local_vars, include_extras=True)
     except Exception as ex1:
         types = ex1
     if not isinstance(types, Exception) and all(not type_requires_eval(t) for t in types.values()):

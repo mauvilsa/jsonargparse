@@ -26,6 +26,7 @@ from jsonargparse._signatures import convert_to_dict
 from jsonargparse._subcommands import find_action
 from jsonargparse.typing import PositiveFloat, PositiveInt, restricted_number_type
 from jsonargparse_tests.conftest import (
+    Doc,
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_load,
@@ -435,6 +436,20 @@ def test_attribute_docstrings(parser):
     help_str = get_parser_help(parser)
     assert "attr_str description (type: str, default: a)" in help_str
     assert "attr_int description (type: int, default: 1)" in help_str
+
+
+if annotated:
+
+    @dataclasses.dataclass
+    class WithAnnotatedDoc:
+        p1: annotated[int, Doc("p1 from Doc")] = 1  # type: ignore[valid-type]
+
+
+@pytest.mark.skipif(not annotated, reason="Annotated is required")
+def test_annotated_doc(parser):
+    parser.add_class_arguments(WithAnnotatedDoc, "data")
+    help_str = get_parser_help(parser)
+    assert "p1 from Doc (type: int, default: 1)" in help_str
 
 
 @dataclasses.dataclass

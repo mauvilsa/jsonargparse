@@ -6,7 +6,7 @@ import operator
 import pickle
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Generic, List, Optional, Tuple, TypedDict, TypeVar, Union
+from typing import Annotated, Any, Callable, Dict, Generic, List, NamedTuple, Optional, Tuple, TypedDict, TypeVar, Union
 from unittest.mock import patch
 
 import pytest
@@ -18,11 +18,12 @@ from jsonargparse import (
     add_instantiator,
     lazy_instance,
 )
-from jsonargparse._optionals import docstring_parser_support
+from jsonargparse._optionals import docstring_parser_support, typing_extensions_import
 from jsonargparse._subcommands import find_action
 from jsonargparse._typehints import Untyped, type_to_str
 from jsonargparse._util import NoneType
 from jsonargparse_tests.conftest import (
+    Doc,
     capture_logs,
     get_parse_args_stdout,
     get_parser_help,
@@ -571,6 +572,65 @@ def test_add_class_generics_docstring(parser):
     help_str = get_parser_help(parser, strip=True)
     assert "Class with generics:" in help_str
     assert "--p.a A The a doc. (type:" in help_str
+
+
+class WithAnnotatedDoc:
+    def __init__(
+        self,
+        a: Annotated[int, Doc("a from Doc")] = 1,
+        b: Annotated[int, "not a doc", Doc("b from Doc")] = 2,
+        c: Annotated[int, "not a doc"] = 3,
+        d: Annotated[int, Doc("d from Doc")] = 4,
+    ):
+        """
+        Args:
+            c: c from docstring
+            d: d from docstring
+        """
+
+
+def test_add_class_annotated_doc(parser):
+    parser.add_class_arguments(WithAnnotatedDoc)
+    help_str = get_parser_help(parser, strip=True)
+    assert "--a A a from Doc (type: int, default: 1)" in help_str
+    # Doc is removed from the type, other metadata is kept
+    assert "--b B b from Doc (type: Annotated[int, 'not a doc'], default: 2)" in help_str
+    if docstring_parser_support:
+        assert "--c C c from docstring (type: Annotated[int, 'not a doc'], default: 3)" in help_str
+    # Doc is next to the parameter, so it takes precedence over the docstring
+    assert "--d D d from Doc (type: int, default: 4)" in help_str
+    assert "d from docstring" not in help_str
+
+
+class TypedDictAnnotatedDoc(TypedDict):
+    a: Annotated[int, Doc("a from Doc")]
+
+
+class NamedTupleAnnotatedDoc(NamedTuple):
+    b: Annotated[int, Doc("b from Doc")] = 1
+
+
+def test_add_class_annotated_doc_typed_dict_and_named_tuple(parser):
+    parser.add_class_arguments(TypedDictAnnotatedDoc, "td")
+    parser.add_class_arguments(NamedTupleAnnotatedDoc, "nt")
+    help_str = get_parser_help(parser, strip=True)
+    assert "--td.a A a from Doc (required, type: int)" in help_str
+    assert "--nt.b B b from Doc (type: int, default: 1)" in help_str
+
+
+typing_extensions_doc = typing_extensions_import("Doc")
+
+if typing_extensions_doc:
+
+    def func_typing_extensions_doc(a: Annotated[str, typing_extensions_doc("a description")] = "x"):
+        pass  # pragma: no cover
+
+
+@pytest.mark.skipif(not typing_extensions_doc, reason="typing_extensions.Doc is required")
+def test_add_function_typing_extensions_doc(parser):
+    parser.add_function_arguments(func_typing_extensions_doc, "f")
+    help_str = get_parser_help(parser, strip=True)
+    assert "--f.a A a description (type: str, default: x)" in help_str
 
 
 class WithGenericsPep604Union(Generic[X]):
