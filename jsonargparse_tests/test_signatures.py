@@ -20,7 +20,7 @@ from jsonargparse import (
 )
 from jsonargparse._optionals import docstring_parser_support, typing_extensions_import
 from jsonargparse._subcommands import find_action
-from jsonargparse._typehints import Untyped, type_to_str
+from jsonargparse._typehints import NotRequired, ReadOnly, Untyped, type_to_str
 from jsonargparse._util import NoneType
 from jsonargparse_tests.conftest import (
     Doc,
@@ -581,11 +581,13 @@ class WithAnnotatedDoc:
         b: Annotated[int, "not a doc", Doc("b from Doc")] = 2,
         c: Annotated[int, "not a doc"] = 3,
         d: Annotated[int, Doc("d from Doc")] = 4,
+        e: Annotated[int, Doc("")] = 5,
     ):
         """
         Args:
             c: c from docstring
             d: d from docstring
+            e: e from docstring
         """
 
 
@@ -600,10 +602,16 @@ def test_add_class_annotated_doc(parser):
     # Doc is next to the parameter, so it takes precedence over the docstring
     assert "--d D d from Doc (type: int, default: 4)" in help_str
     assert "d from docstring" not in help_str
+    # an empty Doc also takes precedence
+    assert "e from docstring" not in help_str
 
 
 class TypedDictAnnotatedDoc(TypedDict):
     a: Annotated[int, Doc("a from Doc")]
+
+
+class TypedDictTotalFalseAnnotatedDoc(TypedDict, total=False):
+    c: Annotated[int, Doc("c from Doc")]
 
 
 class NamedTupleAnnotatedDoc(NamedTuple):
@@ -613,9 +621,19 @@ class NamedTupleAnnotatedDoc(NamedTuple):
 def test_add_class_annotated_doc_typed_dict_and_named_tuple(parser):
     parser.add_class_arguments(TypedDictAnnotatedDoc, "td")
     parser.add_class_arguments(NamedTupleAnnotatedDoc, "nt")
+    parser.add_class_arguments(TypedDictTotalFalseAnnotatedDoc, "tf")
     help_str = get_parser_help(parser, strip=True)
     assert "--td.a A a from Doc (required, type: int)" in help_str
     assert "--nt.b B b from Doc (type: int, default: 1)" in help_str
+    assert "--tf.c C c from Doc (type: int" in help_str
+
+
+@pytest.mark.skipif(not (NotRequired and ReadOnly), reason="NotRequired and ReadOnly are required")
+def test_add_class_annotated_doc_typed_dict_qualifiers(parser):
+    td = TypedDict("td", {"a": NotRequired[ReadOnly[Annotated[int, Doc("a from Doc")]]]})
+    parser.add_class_arguments(td, "td")
+    help_str = get_parser_help(parser, strip=True)
+    assert "--td.a A a from Doc (type: int" in help_str
 
 
 typing_extensions_doc = typing_extensions_import("Doc")

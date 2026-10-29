@@ -327,11 +327,22 @@ def get_signature_parameters_and_indexes(component, parent, logger):
     return params, args_idx, kwargs_idx, doc_params, stubs
 
 
+def strip_qualified_annotated_doc(annotation) -> tuple[Any, str | None]:
+    """Like strip_annotated_doc, also inside TypedDict key qualifiers, e.g. ``NotRequired[Annotated[...]]``."""
+    from ._typehints import typed_dict_key_qualifiers
+
+    origin = get_typehint_origin(annotation)
+    if origin in typed_dict_key_qualifiers:
+        subtype, doc = strip_qualified_annotated_doc(annotation.__args__[0])
+        return origin[subtype], doc
+    return strip_annotated_doc(annotation)
+
+
 def set_annotated_docs(params: ParamList) -> ParamList:
     """Sets descriptions from ``Annotated[..., Doc(...)]``, which take precedence over docstrings."""
     for param in params:
-        param.annotation, doc = strip_annotated_doc(param.annotation)
-        if doc:
+        param.annotation, doc = strip_qualified_annotated_doc(param.annotation)
+        if doc is not None:
             param.doc = doc
     return params
 
