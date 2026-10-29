@@ -23,7 +23,7 @@ from ._common import (
     is_unpack_typehint,
     parse_logger,
 )
-from ._optionals import get_annotated_base_type, is_annotated, is_pydantic_model, parse_docs
+from ._optionals import get_annotated_base_type, is_annotated, is_pydantic_model, parse_docs, strip_annotated_doc
 from ._postponed_annotations import evaluate_postponed_annotations
 from ._stubs_resolver import get_arg_type, get_stub_types, get_stubs_resolver
 from ._util import (
@@ -325,6 +325,26 @@ def get_signature_parameters_and_indexes(component, parent, logger):
     strip_field_qualifiers(params)
     replace_generic_type_vars(params, parent)
     return params, args_idx, kwargs_idx, doc_params, stubs
+
+
+def strip_qualified_annotated_doc(annotation) -> tuple[Any, str | None]:
+    """Like strip_annotated_doc, also inside TypedDict key qualifiers, e.g. ``NotRequired[Annotated[...]]``."""
+    from ._typehints import typed_dict_key_qualifiers
+
+    origin = get_typehint_origin(annotation)
+    if origin in typed_dict_key_qualifiers:
+        subtype, doc = strip_qualified_annotated_doc(annotation.__args__[0])
+        return origin[subtype], doc
+    return strip_annotated_doc(annotation)
+
+
+def set_annotated_docs(params: ParamList) -> ParamList:
+    """Sets descriptions from ``Annotated[..., Doc(...)]``, which take precedence over docstrings."""
+    for param in params:
+        param.annotation, doc = strip_qualified_annotated_doc(param.annotation)
+        if doc is not None:
+            param.doc = doc
+    return params
 
 
 def strip_field_qualifiers(params: ParamList) -> None:
@@ -1103,13 +1123,8 @@ def get_field_data_pydantic2_dataclass(field, name, doc_params):
     elif field.default_factory is not dataclasses.MISSING:
         default = field.default_factory()
 
-    # Get the type, stripping Annotated like get_type_hints does.
-    if is_annotated(field.type):
-        field_type = get_annotated_base_type(field.type)
-    else:
-        field_type = field.type
     return {
-        "annotation": field_type,
+        "annotation": field.type,
         "default": default,
         "doc": doc_params.get(name),
     }
@@ -1219,6 +1234,7 @@ def get_parameters_from_pydantic_or_attrs(
 
     function_or_class = get_unaliased_type(function_or_class)
     fields_iterator = get_field_data = None
+    strip_annotated = False
     get_field_names = get_field_names_default
     if pydantic_support:
         pydantic_model = is_pydantic_model(function_or_class)
@@ -1237,6 +1253,7 @@ def get_parameters_from_pydantic_or_attrs(
             get_field_data = get_field_data_pydantic2_dataclass
             get_field_names = get_field_names_pydantic2_dataclass
             is_init_field = is_init_field_pydantic2_dataclass
+            strip_annotated = True
 
     if not fields_iterator and attrs_support:
         import attrs
@@ -1266,6 +1283,11 @@ def get_parameters_from_pydantic_or_attrs(
             field_names.append(get_field_names(field, name, function_or_class))
     # after the attribute names have been used to resolve the annotations
     evaluate_postponed_annotations(params, function_or_class, None, logger)
+    if strip_annotated:
+        # like get_type_hints does, after getting the descriptions
+        for param in set_annotated_docs(params):
+            if is_annotated(param.annotation):
+                param.annotation = get_annotated_base_type(param.annotation)
     strip_field_qualifiers(params)
     set_param_names_and_aliases(params, field_names)
 
@@ -1385,11 +1407,11 @@ def get_signature_parameters(
     logger = parse_logger(logger, "get_signature_parameters")
     if method_or_property is None and is_typed_dict(function_or_class):
         # a typed dict has no signature to inspect, its parameters correspond to its keys
-        return get_typed_dict_params(function_or_class, logger, component=function_or_class)
+        return set_annotated_docs(get_typed_dict_params(function_or_class, logger, component=function_or_class))
     if method_or_property is None and is_namedtuple(function_or_class):
         # the generated __new__ of a named tuple doesn't keep the annotations as written, and a
         # subscripted generic one has no signature, so its parameters come from its fields
-        return get_namedtuple_params(function_or_class, logger, component=function_or_class)
+        return set_annotated_docs(get_namedtuple_params(function_or_class, logger, component=function_or_class))
     component, parent, method_name = get_component_and_parent(function_or_class, method_or_property)
     params = None
     for get_parameters in [
@@ -1420,4 +1442,4 @@ def get_signature_parameters(
         params = remove_unresolved_kwargs(params)
     if not include_var_positional:
         params = [p for p in params if p.kind != kinds.VAR_POSITIONAL]
-    return params
+    return set_annotated_docs(params)

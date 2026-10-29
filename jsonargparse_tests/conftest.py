@@ -299,6 +299,13 @@ def get_parse_args_stderr(parser: ArgumentParser, args: list[str]) -> str:
     return err.getvalue()
 
 
+class Doc:
+    """A Doc compatible with the one of typing_extensions and annotated-doc."""
+
+    def __init__(self, documentation: str):
+        self.documentation = documentation
+
+
 class BaseClass:
     def __init__(self):
         pass  # pragma: no cover

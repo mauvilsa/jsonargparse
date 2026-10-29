@@ -80,6 +80,10 @@ Added
   the bash scripts do, and list without inserting the choices of types that
   accept other values, e.g. ``null`` for ``int | None`` (`#1024
   <https://github.com/mauvilsa/jsonargparse/pull/1024>`__).
+- Parameter descriptions from ``Annotated[..., Doc("...")]``, e.g.
+  ``typing_extensions.Doc`` or any compatible ``Doc``, which take precedence
+  over docstrings (`#1030
+  <https://github.com/mauvilsa/jsonargparse/pull/1030>`__).
 
 Fixed
 ^^^^^

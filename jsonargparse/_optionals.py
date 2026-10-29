@@ -422,6 +422,22 @@ def get_annotated_base_type(typehint: type) -> type:
     return typehint.__origin__  # type: ignore[attr-defined]
 
 
+def is_annotated_doc(meta) -> bool:
+    """Whether metadata of an ``Annotated`` is a ``Doc``, e.g. ``typing_extensions.Doc``."""
+    return type(meta).__name__ == "Doc" and isinstance(getattr(meta, "documentation", None), str)
+
+
+def strip_annotated_doc(typehint) -> tuple[Any, str | None]:
+    """Removes the ``Doc`` metadata of an ``Annotated``, returning the type and the last description."""
+    metadata = typehint.__metadata__ if is_annotated(typehint) else ()
+    docs = [m.documentation for m in metadata if is_annotated_doc(m)]
+    if not docs:
+        return typehint, None
+    rest = tuple(m for m in metadata if not is_annotated_doc(m))
+    base = typehint.__origin__
+    return (typing_extensions_import("Annotated")[(base, *rest)] if rest else base), docs[-1]
+
+
 type_alias_type = typing_extensions_import("TypeAliasType")
 if sys.version_info >= (3, 12):
     from typing import TypeAliasType as typing_type_alias_type

@@ -1760,9 +1760,12 @@ See :class:`.FromConfigMixin` in the API reference for the complete behavior.
 Docstring parsing
 -----------------
 
-Parameter descriptions in the help require the `docstring-parser
-<https://pypi.org/project/docstring-parser/>`__ package, which is installed by
-the ``docstrings`` extra, see :ref:`installation`.
+Parameter descriptions in the help from docstrings require the
+`docstring-parser <https://pypi.org/project/docstring-parser/>`__ package,
+which is installed by the ``docstrings`` extra, see :ref:`installation`.
+Descriptions can also be given as ``Annotated[int, Doc("...")]``, with any
+``Doc`` that has a ``documentation`` attribute, e.g. ``typing_extensions.Doc``.
+These take precedence over docstrings and don't require extra packages.
 
 Two options can be configured, both related to parsing speed. By default the
 style is ``docstring_parser.DocstringStyle.AUTO``, which tries all supported
