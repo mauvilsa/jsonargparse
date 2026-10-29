@@ -1398,7 +1398,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 try:
                     parent_action = None
                     if action is None:
-                        if is_branch_key(self, key):
+                        if is_branch_key(self, key) or (key in self.groups and isinstance(cfg[key], Namespace)):
                             continue
                         parent_action, subcommand = find_parent_action_and_subcommand(
                             self, key, exclude=_ActionConfigLoad

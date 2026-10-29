@@ -233,6 +233,19 @@ def test_parse_object_simple(parser):
     pytest.raises(ArgumentError, lambda: parser.parse_object({"undefined": True}))
 
 
+def test_parse_object_unknown_empty_mapping(parser):
+    parser.add_argument("--op", type=int)
+    with pytest.raises(ArgumentError, match="Option 'unknown' is not accepted"):
+        parser.parse_object({"op": 1, "unknown": {}})
+
+
+def test_parse_object_group_name_non_mapping_value(parser):
+    parser.add_argument_group("Settings", name="settings")
+    parser.add_argument("--count", type=int)
+    with pytest.raises(ArgumentError, match="Option 'settings' is not accepted"):
+        parser.parse_object({"settings": 123})
+
+
 def test_parse_object_config(parser, tmp_cwd):
     parser.add_argument("--cfg", action="config")
     parser.add_argument("--a", type=int)
