@@ -310,7 +310,9 @@ class Namespace(argparse.Namespace):
                 self[key] = Namespace()
             prefix = key + "." if key else ""
             provenance = get_provenance(value, items=False)  # items in lists keep their own sources
-            for subkey, subval in value.items():
+            for subkey, subval in value.items(branches=True):
+                if isinstance(subval, Namespace) and (subval or isinstance(self.get(prefix + subkey), Namespace)):
+                    continue  # set via its leaves, or an empty branch where one already exists
                 if not only_unset or prefix + subkey not in self:
                     self[prefix + subkey] = subval
                     _set_source(self, prefix + subkey, _resolve_implicit(provenance.get(subkey, value_source.get())))

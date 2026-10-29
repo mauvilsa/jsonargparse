@@ -276,6 +276,24 @@ def test_add_argument_dataclass_unexpected_keys(parser):
         parser.parse_args([f"--b={json.dumps(invalid)}"])
 
 
+def test_add_argument_dataclass_unexpected_key_empty_mapping(parser):
+    parser.add_argument("--b", type=DataClassB)
+    with pytest.raises(ArgumentError, match="Group 'b' does not accept option 'unexpected'"):
+        parser.parse_object({"b": {"b1": 2.0, "unexpected": {}}})
+
+
+def test_list_dataclass_unexpected_key_empty_mapping(parser):
+    parser.add_argument("--list", type=List[DataClassB])
+    with pytest.raises(ArgumentError, match="Option 'unexpected' is not accepted"):
+        parser.parse_object({"list": [{"b1": 2.0, "unexpected": {}}]})
+
+
+def test_add_class_arguments_unexpected_key_empty_mapping(parser):
+    parser.add_class_arguments(DataClassB, "b")
+    with pytest.raises(ArgumentError, match="Group 'b' does not accept option 'unexpected'"):
+        parser.parse_object({"b": {"b1": 2.0, "unexpected": {}}})
+
+
 @dataclasses.dataclass
 class DataRequiredAttr:
     a1: str

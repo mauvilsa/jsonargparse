@@ -229,6 +229,10 @@ Fixed
   in the help, in parse errors and in shell completions, and made the
   ``jsonschema`` completion fail with ``ImportDenied`` (`#1026
   <https://github.com/mauvilsa/jsonargparse/pull/1026>`__).
+- Unknown keys with an empty mapping as value, e.g. a misspelled ``key: {}`` in
+  a config file or in the fields of a dataclass, silently ignored instead of
+  failing with ``Option ... is not accepted`` (`#1029
+  <https://github.com/mauvilsa/jsonargparse/pull/1029>`__).
 
 Changed
 ^^^^^^^

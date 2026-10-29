@@ -212,6 +212,12 @@ def test_update_shallow():
     assert ns_to == Namespace(a=1, b=None, c=3)
 
 
+def test_update_empty_branch():
+    ns = Namespace(a=1, b=Namespace(c=2))
+    ns.update(Namespace(b=Namespace(), d=Namespace(e=Namespace())))
+    assert ns == Namespace(a=1, b=Namespace(c=2), d=Namespace(e=Namespace()))
+
+
 def test_update_invalid():
     ns = Namespace()
     with pytest.raises(KeyError):
