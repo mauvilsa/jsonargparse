@@ -1,7 +1,5 @@
 fail_fast: true
 default_install_hook_types: [pre-commit, pre-push]
-default_language_version:
-  python: python3.12
 
 ci:
   skip:
