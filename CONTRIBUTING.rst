@@ -60,10 +60,8 @@ that unit tests and code checks run automatically on your machine:
 
 .. note::
 
-    ``.pre-commit-config.yaml`` is configured to run the hooks using Python
-    3.12, so make sure that this version is installed and available. Other
-    Python versions work for development, but 3.12 is recommended for
-    convenience.
+    The hooks run with the same Python that runs pre-commit, so any Python
+    version supported for development can be used, e.g. 3.12 or 3.14.
 
 The ``pre-push`` stage runs several hooks, including tests, doctests, mypy and
 coverage. They inform developers of issues that must be resolved before a pull

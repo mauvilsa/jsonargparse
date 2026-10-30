@@ -162,6 +162,7 @@ source = ["jsonargparse"]
 
 
 [tool.mypy]
+python_version = "3.12"
 allow_redefinition = true
 warn_unused_ignores = true
 disable_error_code = "annotation-unchecked"
