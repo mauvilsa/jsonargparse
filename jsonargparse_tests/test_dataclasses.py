@@ -484,6 +484,95 @@ def test_attribute_docstrings_inherited(parser):
 
 
 @dataclasses.dataclass
+class WithAttrDocComments:
+    #: before line 1
+    #: before line 2
+    before: int = 1
+    same: str = "a"  #: same line
+    # not a doc comment
+    plain: int = 2
+    #: separated by blank line
+
+    separated: int = 3
+    multiline: list = dataclasses.field(  #: not the end of statement
+        default_factory=list
+    )  #: end of multiline statement
+
+
+def test_attribute_doc_comments(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(WithAttrDocComments)
+    help_str = get_parser_help(parser)
+    assert "before line 1 before line 2 (type: int, default: 1)" in help_str
+    assert "same line (type: str, default: a)" in help_str
+    assert "--plain PLAIN         (type: int, default: 2)" in help_str
+    assert "end of multiline statement (type: list, default: [])" in help_str
+    assert "not a doc comment" not in help_str
+    assert "separated by blank line" not in help_str
+    assert "not the end of statement" not in help_str
+
+
+@patch("jsonargparse._optionals.docstring_parser_support", False)
+def test_attribute_doc_comments_without_docstring_parser(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(WithAttrDocComments)
+    help_str = get_parser_help(parser)
+    assert "same line (type: str, default: a)" in help_str
+
+
+def test_attribute_doc_comments_disabled_by_default(parser):
+    parser.add_class_arguments(WithAttrDocComments)
+    help_str = get_parser_help(parser)
+    assert "same line" not in help_str
+
+
+@dataclasses.dataclass
+class WithAttrDocCommentsBase:
+    base: int = 1  #: base comment
+    overridden: int = 2  #: overridden base comment
+
+
+@dataclasses.dataclass
+class WithAttrDocCommentsSub(WithAttrDocCommentsBase):
+    #: overridden sub comment
+    overridden: int = 3
+
+
+def test_attribute_doc_comments_inherited(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(WithAttrDocCommentsSub)
+    help_str = get_parser_help(parser)
+    assert "base comment (type: int, default: 1)" in help_str
+    assert "overridden sub comment (type: int, default: 3)" in help_str
+    assert "overridden base comment" not in help_str
+
+
+@dataclasses.dataclass
+class WithAttrDocCommentAndDocstring:
+    attr: int = 1  #: from comment
+    "from docstring"
+
+
+@skip_if_docstring_parser_unavailable
+@patch.dict("jsonargparse._optionals._docstring_parse_options")
+def test_attribute_doc_comments_docstring_precedence(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True, docstring_parse_attribute_docstrings=True)
+    parser.add_class_arguments(WithAttrDocCommentAndDocstring)
+    help_str = get_parser_help(parser)
+    assert "from docstring (type: int, default: 1)" in help_str
+    assert "from comment" not in help_str
+
+
+def test_attribute_doc_comments_source_unavailable(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    namespace: dict = {"dataclass": dataclasses.dataclass}
+    exec("@dataclass\nclass NoSource:\n    attr: int = 1  #: doc\n", namespace)
+    parser.add_class_arguments(namespace["NoSource"])
+    help_str = get_parser_help(parser)
+    assert "--attr ATTR  (type: int, default: 1)" in help_str
+
+
+@dataclasses.dataclass
 class Data:
     p1: str
     p2: int = 0

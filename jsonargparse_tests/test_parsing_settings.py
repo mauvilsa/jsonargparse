@@ -345,6 +345,14 @@ def test_set_omegaconf_absolute_to_relative_paths_failure():
         set_parsing_settings(omegaconf_absolute_to_relative_paths="invalid")
 
 
+# parse_attribute_doc_comments
+
+
+def test_set_parse_attribute_doc_comments_failure():
+    with pytest.raises(ValueError, match="parse_attribute_doc_comments must be a boolean"):
+        set_parsing_settings(parse_attribute_doc_comments="invalid")
+
+
 # enable/disable-subclasses
 
 

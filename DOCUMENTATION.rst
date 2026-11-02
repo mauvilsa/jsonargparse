@@ -1800,6 +1800,22 @@ enabling it makes parsing slower even for classes that have none:
         prize: int = 100
         """Amount won."""
 
+Attribute descriptions can also be given as Sphinx style ``#:`` comments, either
+in the lines right before the attribute or at the end of its line. This doesn't
+require ``docstring-parser``, and is also disabled by default because it is
+slower. Attribute docstrings take precedence over these comments:
+
+.. testcode:: docstrings
+
+    set_parsing_settings(parse_attribute_doc_comments=True)
+
+
+    @dataclass
+    class Options:
+        #: Name of winner.
+        name: str
+        prize: int = 100  #: Amount won.
+
 Docstrings are searched in the entire class inheritance chain. So inherited
 parameters and attributes are documented in the help by the base class that
 declares them, and the description of a group comes from the nearest class in
@@ -1812,6 +1828,7 @@ describe themselves instead of the class being added to the parser.
 
     set_parsing_settings(docstring_parse_style=DocstringStyle.GOOGLE)
     set_parsing_settings(docstring_parse_attribute_docstrings=False)
+    set_parsing_settings(parse_attribute_doc_comments=False)
 
 Customization of arguments
 --------------------------

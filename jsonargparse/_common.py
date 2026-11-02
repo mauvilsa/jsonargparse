@@ -289,6 +289,7 @@ parsing_settings: dict = {
     "stubs_resolver_allow_py_files": False,
     "omegaconf_absolute_to_relative_paths": False,
     "config_include_enabled": False,
+    "parse_attribute_doc_comments": False,
     "unset_sentinel": None,
     "import_path_verdicts": {entry: False for entry in default_import_path_denylist},
 }
@@ -372,6 +373,7 @@ def set_parsing_settings(
     config_read_mode_fsspec_enabled: bool | None = None,
     docstring_parse_style: "docstring_parser.DocstringStyle | None" = None,
     docstring_parse_attribute_docstrings: bool | None = None,
+    parse_attribute_doc_comments: bool | None = None,
     parse_optionals_as_positionals: bool | None = None,
     add_print_completion_argument: bool | None = None,
     stubs_resolver_allow_py_files: bool | None = None,
@@ -418,6 +420,9 @@ def set_parsing_settings(
             ``DocstringStyle.AUTO``.
         docstring_parse_attribute_docstrings: Whether to parse attribute
             docstrings (slower). Default is ``False``.
+        parse_attribute_doc_comments: Whether to take descriptions from Sphinx
+            style ``#:`` comments of class attributes (slower). Default is
+            ``False``.
         parse_optionals_as_positionals: If ``True``, extra positional command
             line arguments are taken as values for optional arguments, in the
             order that the optionals were added to the parser. So optionals can
@@ -482,6 +487,7 @@ def set_parsing_settings(
         "stubs_resolver_allow_py_files": stubs_resolver_allow_py_files,
         "omegaconf_absolute_to_relative_paths": omegaconf_absolute_to_relative_paths,
         "config_include_enabled": config_include_enabled,
+        "parse_attribute_doc_comments": parse_attribute_doc_comments,
     }
     for name, value in bool_settings.items():
         if isinstance(value, bool):
