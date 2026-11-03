@@ -84,6 +84,10 @@ Added
   ``typing_extensions.Doc`` or any compatible ``Doc``, which take precedence
   over docstrings (`#1030
   <https://github.com/mauvilsa/jsonargparse/pull/1030>`__).
+- New ``parse_attribute_doc_comments`` parsing setting, to get descriptions of
+  class attributes from Sphinx style ``#:`` comments, which doesn't require
+  ``docstring-parser`` (`#1032
+  <https://github.com/mauvilsa/jsonargparse/pull/1032>`__).
 
 Fixed
 ^^^^^

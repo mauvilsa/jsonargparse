@@ -4,6 +4,7 @@ import abc
 import dataclasses
 import json
 import sys
+from importlib import import_module
 from typing import Any, Dict, Final, Generic, List, Optional, Tuple, TypeVar, Union
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from jsonargparse._common import subclasses_disabled_selectors
 from jsonargparse._namespace import NSKeyError
 from jsonargparse._optionals import (
     docstring_parser_support,
+    get_attribute_doc_comments,
     type_alias_type,
     typing_extensions_import,
 )
@@ -27,6 +29,7 @@ from jsonargparse._subcommands import find_action
 from jsonargparse.typing import PositiveFloat, PositiveInt, restricted_number_type
 from jsonargparse_tests.conftest import (
     Doc,
+    capture_logs,
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_load,
@@ -481,6 +484,140 @@ def test_attribute_docstrings_inherited(parser):
     assert "attr_base description (type: str, default: b)" in help_str
     assert "attr_mid description (type: int, default: 1)" in help_str
     assert "attr_sub description (type: float, default: 0.1)" in help_str
+
+
+@dataclasses.dataclass
+class WithAttrDocComments:
+    #: before line 1
+    #: before line 2
+    before: int = 1
+    same: str = "a"  #: same line
+    # not a doc comment
+    plain: int = 2
+    #: separated by blank line
+
+    separated: int = 3
+    multiline: list = dataclasses.field(  #: not the end of statement
+        default_factory=list
+    )  #: end of multiline statement
+
+
+def test_attribute_doc_comments(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(WithAttrDocComments)
+    help_str = get_parser_help(parser)
+    assert "before line 1 before line 2 (type: int, default: 1)" in help_str
+    assert "same line (type: str, default: a)" in help_str
+    assert "--plain PLAIN         (type: int, default: 2)" in help_str
+    assert "end of multiline statement (type: list, default: [])" in help_str
+    assert "not a doc comment" not in help_str
+    assert "separated by blank line" not in help_str
+    assert "not the end of statement" not in help_str
+
+
+@patch("jsonargparse._optionals.docstring_parser_support", False)
+def test_attribute_doc_comments_without_docstring_parser(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(WithAttrDocComments)
+    help_str = get_parser_help(parser)
+    assert "same line (type: str, default: a)" in help_str
+
+
+def test_attribute_doc_comments_disabled_by_default(parser):
+    parser.add_class_arguments(WithAttrDocComments)
+    help_str = get_parser_help(parser)
+    assert "same line" not in help_str
+
+
+@dataclasses.dataclass
+class WithAttrDocCommentsBase:
+    base: int = 1  #: base comment
+    overridden: int = 2  #: overridden base comment
+
+
+@dataclasses.dataclass
+class WithAttrDocCommentsSub(WithAttrDocCommentsBase):
+    #: overridden sub comment
+    overridden: int = 3
+
+
+def test_attribute_doc_comments_inherited(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(WithAttrDocCommentsSub)
+    help_str = get_parser_help(parser)
+    assert "base comment (type: int, default: 1)" in help_str
+    assert "overridden sub comment (type: int, default: 3)" in help_str
+    assert "overridden base comment" not in help_str
+
+
+@dataclasses.dataclass
+class WithAttrDocCommentAndDocstring:
+    attr: int = 1  #: from comment
+    "from docstring"
+
+
+@skip_if_docstring_parser_unavailable
+@patch.dict("jsonargparse._optionals._docstring_parse_options")
+def test_attribute_doc_comments_docstring_precedence(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True, docstring_parse_attribute_docstrings=True)
+    parser.add_class_arguments(WithAttrDocCommentAndDocstring)
+    help_str = get_parser_help(parser)
+    assert "from docstring (type: int, default: 1)" in help_str
+    assert "from comment" not in help_str
+
+
+def test_attribute_doc_comments_source_unavailable(parser, parsing_settings_patch):
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    namespace: dict = {"dataclass": dataclasses.dataclass}
+    exec("@dataclass\nclass NoSource:\n    attr: int = 1  #: doc\n", namespace)
+    parser.add_class_arguments(namespace["NoSource"])
+    help_str = get_parser_help(parser)
+    assert "--attr ATTR  (type: int, default: 1)" in help_str
+
+
+def test_attribute_doc_comments_nested_class_with_unindented_string(parser, parsing_settings_patch):
+    @dataclasses.dataclass
+    class Nested:
+        attr: int = 1  #: nested comment
+        text: str = """
+unindented
+"""
+
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(Nested)
+    help_str = get_parser_help(parser)
+    assert "nested comment (type: int, default: 1)" in help_str
+    assert "--text TEXT" in help_str
+
+
+def test_attribute_doc_comments_statements_in_same_line(tmp_path, monkeypatch):
+    source = tmp_path / "attr_doc_comments_same_line.py"
+    source.write_text(
+        "class SameLine:\n"
+        "    #: before first\n"
+        "    first: int = 1; second: int = 2  #: after second\n"
+        "    third: int = 3; fourth: int = 4\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    with patch.dict(sys.modules):
+        same_line = import_module(source.stem).SameLine
+        assert get_attribute_doc_comments(same_line) == {"first": "before first", "second": "after second"}
+
+
+def test_attribute_doc_comments_unparsable_source(parser, logger, parsing_settings_patch, tmp_path, monkeypatch):
+    source = tmp_path / "attr_doc_comments_stale.py"
+    source.write_text("import dataclasses\n\n@dataclasses.dataclass\nclass Stale:\n    attr: int = 1  #: doc\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.logger = logger
+    with patch.dict(sys.modules):
+        stale = import_module(source.stem).Stale
+        source.write_text("import dataclasses\n\n@dataclasses.dataclass\nclass Stale:\n    attr: int = (\n")
+        with capture_logs(logger) as logs:
+            parser.add_class_arguments(stale)
+        assert get_attribute_doc_comments(stale) == {}
+    assert "Failed getting attribute doc comments" in logs.getvalue()
+    assert "--attr ATTR  (type: int, default: 1)" in get_parser_help(parser)
 
 
 @dataclasses.dataclass

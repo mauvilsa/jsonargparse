@@ -1,10 +1,14 @@
 """Code related to optional dependencies."""
 
+import ast
 import builtins
 import inspect
+import io
 import os
 import re
 import sys
+import textwrap
+import tokenize
 from contextlib import contextmanager
 from copy import deepcopy
 from importlib.metadata import version
@@ -258,27 +262,65 @@ def get_mro_doc_sources(cls) -> list:
     return bases[::-1] + [cls]
 
 
+def get_attribute_doc_comments(cls, logger=None) -> dict[str, str]:
+    """Descriptions of class attributes from Sphinx style ``#:`` comments, either
+    in the lines right before the attribute or at the end of its statement."""
+    comments = {}  # line number -> (comment text, whether the comment is alone in its line)
+    try:
+        # inside a block so that it is valid independent of how nested the class is
+        source = "if True:\n" + textwrap.indent(inspect.getsource(cls), " ")
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT and token.string.startswith("#:"):
+                comments[token.start[0]] = (token.string[2:].strip(), not token.line[: token.start[1]].strip())
+        body = ast.parse(source).body[0].body[0].body  # type: ignore[attr-defined]
+    except (AttributeError, OSError, SyntaxError, TypeError, tokenize.TokenError) as ex:
+        if logger:
+            logger.debug(f"Failed getting attribute doc comments for {cls}: {ex}")
+        return {}
+    last_in_line = {node.end_lineno: node for node in body}
+    first_in_line = {node.lineno: node for node in reversed(body)}
+    docs = {}
+    for node in body:
+        target = node.target if isinstance(node, ast.AnnAssign) else getattr(node, "targets", [None])[0]
+        if not isinstance(target, ast.Name):
+            continue
+        comment, alone = (
+            comments.get(node.end_lineno, ("", True)) if last_in_line[node.end_lineno] is node else ("", True)
+        )
+        if alone and first_in_line[node.lineno] is node:  # no comment at the end, so look for comment lines before
+            lines: list[str] = []
+            line_num = node.lineno - 1
+            while comments.get(line_num, ("", False))[1]:
+                lines.insert(0, comments[line_num][0])
+                line_num -= 1
+            comment = "\n".join(lines)
+        if comment:
+            docs[target.id] = comment
+    return docs
+
+
 def parse_docs(component, parent, logger):
-    from ._common import get_generic_origin
+    from ._common import get_generic_origin, get_parsing_setting
 
     # a subscripted generic, e.g. Strategy[int], is documented by the class that it stands for
     component = get_generic_origin(component)
     parent = get_generic_origin(parent)
+    if inspect.isclass(parent) and component.__name__ == "__init__":
+        # base classes first, so that descriptions in derived classes take precedence
+        doc_sources = get_mro_doc_sources(parent)[:-1] + [component, parent]
+    elif inspect.isclass(component):
+        doc_sources = get_mro_doc_sources(component)
+    else:
+        doc_sources = [component]
     docs = {}
-    if docstring_parser_support:
-        if inspect.isclass(parent) and component.__name__ == "__init__":
-            # base classes first, so that descriptions in derived classes take precedence
-            doc_sources = get_mro_doc_sources(parent)[:-1] + [component, parent]
-        elif inspect.isclass(component):
-            doc_sources = get_mro_doc_sources(component)
-        else:
-            doc_sources = [component]
-        for src in doc_sources:
-            doc = parse_docstring(src, params=True, logger=logger)
-            if doc:
-                for param in doc.params:
-                    if param.description:
-                        docs[param.arg_name] = param.description
+    for src in doc_sources:
+        if inspect.isclass(src) and get_parsing_setting("parse_attribute_doc_comments"):
+            docs.update(get_attribute_doc_comments(src, logger))
+        doc = parse_docstring(src, params=True, logger=logger) if docstring_parser_support else None
+        if doc:
+            for param in doc.params:
+                if param.description:
+                    docs[param.arg_name] = param.description
     return docs
 
 
