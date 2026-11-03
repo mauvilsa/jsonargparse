@@ -850,7 +850,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
             self.parse_source_tree()
             default_nodes = self.get_default_nodes({p.name for p in params})
             assert len(params) == len(default_nodes)
-            from ._typehints import get_subclass_types
+            from ._typehints import get_subclass_types, is_subclass_or_implements_protocol
 
             for param, default_node in zip(params, default_nodes):
                 lambda_default = is_lambda(param.default)
@@ -860,8 +860,10 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                     node = default_node.body
                     num_positionals = len(param.annotation.__args__) - 1
                 class_type = self.get_call_class_type(node)
-                subclass_types = get_subclass_types(param.annotation, callable_return=True)
-                if not (class_type and subclass_types and is_subclass(class_type, subclass_types)):
+                subclass_types = get_subclass_types(param.annotation, callable_return=True, subscripted_protocols=True)
+                if not (
+                    class_type and subclass_types and is_subclass_or_implements_protocol(class_type, subclass_types)
+                ):
                     continue
                 default: dict = {"class_path": get_import_path(class_type), "init_args": {}}
                 for kwarg in node.keywords:

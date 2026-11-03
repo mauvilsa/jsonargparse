@@ -1922,7 +1922,7 @@ def adapt_typehints(
                     if inspect.isclass(val_obj):
                         val = Namespace(class_path=class_path)
                     elif callable(val_obj):
-                        subclass_types = get_subclass_types(return_type)
+                        subclass_types = get_subclass_types(return_type, subscripted_protocols=True)
                         if subclass_types and not function_returns_subclass(val_obj, subclass_types, logger):
                             raise ImportError(
                                 f"Expected '{class_path}' to be a function that returns {type_to_str(return_type)}."
@@ -1933,7 +1933,7 @@ def adapt_typehints(
                 if isinstance(val, (dict, Namespace, NestedArg)):
                     if prev_val is unset_sentinel:
                         return_type = get_callable_return_type(typehint)
-                        if return_type and not inspect.isabstract(return_type):
+                        if return_type and not inspect.isabstract(return_type) and not is_protocol(return_type):
                             with suppress(ValueError):
                                 prev_val = Namespace(class_path=get_import_path(return_type))
                                 set_implicit_source(prev_val, "class_path")
@@ -1944,12 +1944,19 @@ def adapt_typehints(
                         )
                     val, partial_skip_args = adapt_partial_callable_class(typehint, val)
                     val_class = import_object(val["class_path"])
+                    if is_protocol(val_class) or inspect.isabstract(val_class):
+                        kind = "a protocol" if is_protocol(val_class) else "abstract"
+                        raise ImportError(f"Expected an instantiatable class, but {val['class_path']} is {kind}.")
                     if inspect.isclass(val_class) and partial_skip_args is None:
                         # partial_skip_args is only None when not a subclass of the return type
                         return_type = get_callable_return_type(typehint)
-                        if get_subclass_types(return_type):
+                        subclass_types = get_subclass_types(return_type)
+                        if subclass_types:
+                            expected = (
+                                "implement" if all(is_protocol(t) for t in subclass_types) else "be a subclass of"
+                            )
                             raise ImportError(
-                                f"Expected '{val['class_path']}' to be a subclass of {type_to_str(return_type)}."
+                                f"Expected '{val['class_path']}' to {expected} {type_to_str(return_type)}."
                             )
                         if not callable_instances(val_class):
                             raise ImportError(
@@ -2310,8 +2317,10 @@ def implements_protocol(value, protocol) -> bool:
         return False
     if inspect.isfunction(value):
         return function_implements_protocol(value, protocol)
-    if not inspect.isclass(value):
+    value_origin = get_generic_origin(value)
+    if not inspect.isclass(value_origin):
         return False
+    value_type_var_map = get_type_var_map(value, value_origin)
     origin = get_protocol_origin(protocol)
     type_var_map = get_type_var_map(protocol, origin)
     protocol = origin
@@ -2319,12 +2328,13 @@ def implements_protocol(value, protocol) -> bool:
     logger = parse_logger(True, "implements_protocol")
     members = get_protocol_members(protocol)
     for name in members:
-        if not hasattr(value, name):
+        if not hasattr(value_origin, name):
             return False
         try:
-            value_params, value_return = get_protocol_method_signature(value, name, logger)
+            value_params, value_return = get_protocol_method_signature(value_origin, name, logger)
         except (ValueError, TypeError):
             return False
+        value_return = substitute_protocol_type_vars(value_params, value_return, value_type_var_map)
         proto_params, proto_return = get_protocol_method_signature(protocol, name, logger)
         proto_return = substitute_protocol_type_vars(proto_params, proto_return, type_var_map)
         if not protocol_params_match(proto_params, value_params):
@@ -2366,6 +2376,8 @@ def get_protocol_origin(protocol):
 
 
 def is_subclass_or_implements_protocol(value, class_type) -> bool:
+    if isinstance(class_type, tuple):
+        return any(is_subclass_or_implements_protocol(value, t) for t in class_type)
     if is_protocol(class_type):
         return implements_protocol(value, class_type)
     return is_subclass(value, class_type)
@@ -2494,7 +2506,13 @@ is_single_subclass_or_closed_type = partial(is_single_class_type, closed_class=T
 
 
 def yield_class_types(
-    typehint, is_single, also_lists=False, also_containers=False, callable_return=False, expanding_aliases=frozenset()
+    typehint,
+    is_single,
+    also_lists=False,
+    also_containers=False,
+    callable_return=False,
+    subscripted_protocols=False,
+    expanding_aliases=frozenset(),
 ):
     typehint = typehint_from_action(typehint)
     if typehint is None:
@@ -2511,6 +2529,7 @@ def yield_class_types(
         "also_lists": also_lists,
         "also_containers": also_containers,
         "callable_return": callable_return,
+        "subscripted_protocols": subscripted_protocols,
         "expanding_aliases": expanding_aliases,
     }
     if callable_return and (typehint_origin in callable_origin_types or is_instance_factory_protocol(typehint)):
@@ -2530,9 +2549,10 @@ def yield_class_types(
             if subtype is not Ellipsis:
                 yield from yield_class_types(subtype, **kwargs)
     if is_single(typehint, typehint_origin):
-        if is_structured_value_type(typehint):
+        if is_structured_value_type(typehint) or (subscripted_protocols and is_protocol(typehint)):
             # a subscripted generic TypedDict or NamedTuple is yielded as is, since its keys or
-            # fields are resolved from it, substituting what it is subscripted with
+            # fields are resolved from it, substituting what it is subscripted with. The same
+            # for a protocol when requested, since what implements it depends on the subscript.
             yield typehint
         else:
             # a subscripted user defined generic, e.g. Strategy[T], is yielded as its origin
@@ -2540,7 +2560,9 @@ def yield_class_types(
             yield get_generic_origin(typehint)
 
 
-def get_subclass_types(typehint, also_lists=False, also_containers=False, callable_return=False):
+def get_subclass_types(
+    typehint, also_lists=False, also_containers=False, callable_return=False, subscripted_protocols=False
+):
     types = tuple(
         yield_class_types(
             typehint,
@@ -2548,6 +2570,7 @@ def get_subclass_types(typehint, also_lists=False, also_containers=False, callab
             also_lists=also_lists,
             also_containers=also_containers,
             callable_return=callable_return,
+            subscripted_protocols=subscripted_protocols,
         )
     )
     return types or None
@@ -2595,16 +2618,20 @@ def function_returns_subclass(function, subclass_types, logger) -> bool:
         return_type = None  # e.g. a builtin that doesn't have an inspectable signature
     if return_type in {None, inspect._empty}:
         return_type = get_stub_return_type(function, logger)
-    return is_subclass(return_type, subclass_types)
+    return is_subclass_or_implements_protocol(return_type, subclass_types)
 
 
 def adapt_partial_callable_class(callable_type, subclass_spec):
     partial_skip_args = None
     return_type = get_callable_return_type(callable_type)
     if return_type:
-        subclass_types = get_subclass_types(return_type)
+        subclass_types = get_subclass_types(return_type, subscripted_protocols=True)
         class_type = import_object(resolve_class_path_by_name(return_type, subclass_spec.class_path))
-        if subclass_types and is_subclass(class_type, subclass_types):
+        if (
+            subclass_types
+            and inspect.isclass(class_type)
+            and is_subclass_or_implements_protocol(class_type, subclass_types)
+        ):
             subclass_spec = subclass_spec.clone()
             subclass_spec["class_path"] = get_import_path(class_type)
             if is_protocol(callable_type):

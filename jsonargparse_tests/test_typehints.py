@@ -9,6 +9,7 @@ import sys
 import textwrap
 import time
 import uuid
+from abc import ABC, abstractmethod
 from collections import ChainMap, Counter, OrderedDict, abc, deque, namedtuple
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -3534,6 +3535,342 @@ def test_callable_protocol_instance_factory_with_positional(parser):
     assert optimizer.params == [0, 1]
     assert optimizer.momentum == 0.9
     assert isinstance(optimizer, DifferentParamsOrder)
+
+
+class StepProtocol(Protocol):
+    def step(self, value: int) -> int: ...
+
+
+class StepImplementer:
+    def __init__(self, params: List[float], lr: float = 0.1):
+        self.params = params
+        self.lr = lr
+
+    def step(self, value: int) -> int:
+        return value  # pragma: no cover
+
+
+class StepInheritor(StepProtocol):
+    def __init__(self, params: List[float], lr: float = 0.1):
+        self.params = params
+        self.lr = lr
+
+    def step(self, value: int) -> int:
+        return value  # pragma: no cover
+
+
+class StepWrongSignature:
+    def __init__(self, params: List[float]):
+        pass  # pragma: no cover
+
+    def step(self, value: str) -> int:
+        return 1  # pragma: no cover
+
+
+class StepMissing:
+    def __init__(self, params: List[float]):
+        pass  # pragma: no cover
+
+
+class StepFactoryProtocol(Protocol):
+    def __call__(self, params: List[float]) -> StepProtocol: ...
+
+
+step_factory_typehints = pytest.mark.parametrize(
+    "typehint",
+    [
+        Callable[[List[float]], StepProtocol],
+        Callable[[List[float]], Optional[StepProtocol]],
+        StepFactoryProtocol,
+    ],
+    ids=["callable", "callable_optional", "protocol"],
+)
+
+
+@step_factory_typehints
+@pytest.mark.parametrize("class_type", [StepImplementer, StepInheritor])
+def test_factory_return_protocol_accepts_implementer(parser, typehint, class_type):
+    parser.add_argument("--step", type=typehint)
+    class_path = f"{__name__}.{class_type.__name__}"
+    cfg = parser.parse_args([f"--step={class_path}", "--step.lr=0.5"])
+    assert cfg.step == Namespace(class_path=class_path, init_args=Namespace(lr=0.5))
+    assert json_or_yaml_load(parser.dump(cfg)) == {"step": {"class_path": class_path, "init_args": {"lr": 0.5}}}
+    init = parser.instantiate(cfg)
+    instance = init.step([1.0, 2.0])
+    assert isinstance(instance, class_type)
+    assert instance.params == [1.0, 2.0]
+    assert instance.lr == 0.5
+
+
+@step_factory_typehints
+@pytest.mark.parametrize("class_type", [StepMissing, StepWrongSignature])
+def test_factory_return_protocol_rejects_non_implementer(parser, typehint, class_type):
+    parser.add_argument("--step", type=typehint)
+    with pytest.raises(ArgumentError, match=f"Expected '{__name__}.{class_type.__name__}' to implement .*StepProtocol"):
+        parser.parse_args([f"--step={__name__}.{class_type.__name__}"])
+
+
+@step_factory_typehints
+def test_factory_return_protocol_rejects_the_protocol_itself(parser, typehint):
+    parser.add_argument("--step", type=typehint)
+    with pytest.raises(ArgumentError, match=f"Expected an instantiatable class, but {__name__}.StepProtocol is"):
+        parser.parse_args([f"--step={__name__}.StepProtocol"])
+
+
+def test_factory_return_protocol_requires_class_path(parser):
+    parser.add_argument("--step", type=Callable[[List[float]], StepProtocol])
+    with pytest.raises(ArgumentError, match="must include a class_path"):
+        parser.parse_args(["--step.lr=0.5"])
+
+
+def test_factory_return_protocol_class_name_of_inheritor(parser):
+    parser.add_argument("--step", type=Callable[[List[float]], StepProtocol])
+    cfg = parser.parse_args(["--step=StepInheritor"])
+    assert cfg.step.class_path == f"{__name__}.StepInheritor"
+
+
+@pytest.mark.parametrize(
+    "default",
+    [StepImplementer, {"class_path": f"{__name__}.StepImplementer"}],
+    ids=["class", "dict"],
+)
+def test_factory_return_protocol_default(parser, default):
+    parser.add_argument("--step", type=Callable[[List[float]], StepProtocol], default=default)
+    cfg = parser.get_defaults()
+    assert cfg.step.class_path == f"{__name__}.StepImplementer"
+    assert isinstance(parser.instantiate(cfg).step([1.0]), StepImplementer)
+
+
+def test_factory_return_protocol_in_union(parser):
+    parser.add_argument("--step", type=Union[StepProtocol, Callable[[List[float]], StepProtocol]])
+    class_path = f"{__name__}.StepImplementer"
+    init = parser.instantiate(parser.parse_args([f"--step={class_path}", "--step.lr=0.5"]))
+    assert init.step([1.0]).lr == 0.5
+    value = {"class_path": class_path, "init_args": {"params": [1.0]}}
+    init = parser.instantiate(parser.parse_args([f"--step={json.dumps(value)}"]))
+    assert isinstance(init.step, StepImplementer)
+
+
+@step_factory_typehints
+def test_factory_return_protocol_help(parser, typehint):
+    parser.add_argument("--step", type=typehint)
+    help_str = get_parse_args_stdout(parser, [f"--step.help={__name__}.StepImplementer"])
+    assert "--step.lr" in help_str
+    assert "--step.params" not in help_str
+
+
+class StepLambdaDefault:
+    def __init__(self, step: Callable[[List[float]], StepProtocol] = lambda p: StepImplementer(p, lr=0.5)):
+        self.step = step
+
+
+def test_factory_return_protocol_lambda_default(parser):
+    parser.add_class_arguments(StepLambdaDefault, "main")
+    cfg = parser.get_defaults()
+    assert cfg.main.step == Namespace(class_path=f"{__name__}.StepImplementer", init_args=Namespace(lr=0.5))
+    assert parser.instantiate(cfg).main.step([1.0]).lr == 0.5
+
+
+class StepNoRequiredParams:
+    def __init__(self, lr: float = 0.1):
+        self.lr = lr
+
+    def step(self, value: int) -> int:
+        return value  # pragma: no cover
+
+
+class StepInstanceDefault:
+    def __init__(self, step: StepProtocol = StepNoRequiredParams(lr=0.5)):
+        self.step = step
+
+
+def test_protocol_instance_default_resolved_as_class_path(parser):
+    parser.add_class_arguments(StepInstanceDefault, "main")
+    cfg = parser.get_defaults()
+    assert cfg.main.step == Namespace(class_path=f"{__name__}.StepNoRequiredParams", init_args=Namespace(lr=0.5))
+    assert parser.instantiate(cfg).main.step.lr == 0.5
+
+
+def step_function_protocol(params: List[float]) -> StepProtocol:
+    return StepImplementer(params)
+
+
+def step_function_inheritor(params: List[float]) -> StepInheritor:
+    return StepInheritor(params)  # pragma: no cover
+
+
+def step_function_implementer(params: List[float]) -> StepImplementer:
+    return StepImplementer(params)  # pragma: no cover
+
+
+def step_function_wrong_signature(params: List[float]) -> StepWrongSignature:
+    return StepWrongSignature(params)  # pragma: no cover
+
+
+@step_factory_typehints
+@pytest.mark.parametrize(
+    "function",
+    [step_function_protocol, step_function_inheritor, step_function_implementer],
+    ids=["protocol", "inheritor", "implementer"],
+)
+def test_factory_return_protocol_accepts_function(parser, typehint, function):
+    parser.add_argument("--step", type=typehint)
+    cfg = parser.parse_args([f"--step={__name__}.{function.__name__}"])
+    assert cfg.step is function
+
+
+@step_factory_typehints
+def test_factory_return_protocol_rejects_function(parser, typehint):
+    parser.add_argument("--step", type=typehint)
+    path = f"{__name__}.step_function_wrong_signature"
+    with pytest.raises(ArgumentError, match=f"Expected '{path}' to be a function that returns .*StepProtocol"):
+        parser.parse_args([f"--step={path}"])
+
+
+GenericStepVar = TypeVar("GenericStepVar")
+
+
+class GenericStepProtocol(Protocol[GenericStepVar]):
+    def step(self, value: GenericStepVar) -> GenericStepVar: ...
+
+
+class GenericStepImplementer(Generic[GenericStepVar]):
+    def __init__(self, params: List[float]):
+        self.params = params
+
+    def step(self, value: GenericStepVar) -> GenericStepVar:
+        return value  # pragma: no cover
+
+
+class IntStepImplementer:
+    def __init__(self, params: List[float]):
+        self.params = params
+
+    def step(self, value: int) -> int:
+        return value  # pragma: no cover
+
+
+class StrStepImplementer:
+    def __init__(self, params: List[float]):
+        pass  # pragma: no cover
+
+    def step(self, value: str) -> str:
+        return value  # pragma: no cover
+
+
+def test_factory_return_subscripted_generic_protocol_class(parser):
+    parser.add_argument("--step", type=Callable[[List[float]], GenericStepProtocol[int]])
+    init = parser.instantiate(parser.parse_args([f"--step={__name__}.IntStepImplementer"]))
+    assert isinstance(init.step([1.0]), IntStepImplementer)
+    with pytest.raises(ArgumentError, match=f"Expected '{__name__}.StrStepImplementer' to implement"):
+        parser.parse_args([f"--step={__name__}.StrStepImplementer"])
+    with pytest.raises(ArgumentError, match="must include a class_path"):
+        parser.parse_args(["--step.params=[1.0]"])
+
+
+def step_function_generic_protocol_int(params: List[float]) -> GenericStepProtocol[int]:
+    return IntStepImplementer(params)  # pragma: no cover
+
+
+def step_function_generic_protocol_str(params: List[float]) -> GenericStepProtocol[str]:
+    return StrStepImplementer(params)  # pragma: no cover
+
+
+def step_function_generic_class_int(params: List[float]) -> GenericStepImplementer[int]:
+    return GenericStepImplementer(params)  # pragma: no cover
+
+
+def step_function_generic_class_str(params: List[float]) -> GenericStepImplementer[str]:
+    return GenericStepImplementer(params)  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    "function",
+    [step_function_generic_protocol_int, step_function_generic_class_int],
+    ids=["protocol", "class"],
+)
+def test_factory_return_subscripted_generic_protocol_accepts_function(parser, function):
+    parser.add_argument("--step", type=Callable[[List[float]], GenericStepProtocol[int]])
+    assert parser.parse_args([f"--step={__name__}.{function.__name__}"]).step is function
+
+
+@pytest.mark.parametrize(
+    "function",
+    [step_function_generic_protocol_str, step_function_generic_class_str],
+    ids=["protocol", "class"],
+)
+def test_factory_return_subscripted_generic_protocol_rejects_function(parser, function):
+    parser.add_argument("--step", type=Callable[[List[float]], GenericStepProtocol[int]])
+    with pytest.raises(ArgumentError, match="to be a function that returns"):
+        parser.parse_args([f"--step={__name__}.{function.__name__}"])
+
+
+class CallableResultProtocol(Protocol):
+    def __call__(self, value: int) -> int: ...
+
+
+def callable_result_function(value: int) -> int:
+    return value  # pragma: no cover
+
+
+def test_factory_return_callable_protocol_class_path_of_function(parser):
+    parser.add_argument("--step", type=Callable[[], CallableResultProtocol])
+    with pytest.raises(ArgumentError, match=f"Problem with given class_path '{__name__}.callable_result_function'"):
+        parser.parse_args([f'--step={{"class_path": "{__name__}.callable_result_function"}}'])
+
+
+class AbstractStep(ABC):
+    def __init__(self, params: List[float]):
+        self.params = params
+
+    @abstractmethod
+    def step(self, value: int) -> int: ...
+
+
+class ConcreteStep(AbstractStep):
+    def step(self, value: int) -> int:
+        return value  # pragma: no cover
+
+
+class AbstractStepFactoryProtocol(Protocol):
+    def __call__(self, params: List[float]) -> AbstractStep: ...
+
+
+class AbstractCallableClass(ABC):
+    @abstractmethod
+    def __call__(self) -> int: ...
+
+
+@pytest.mark.parametrize(
+    "typehint",
+    [
+        Callable[[List[float]], AbstractStep],
+        AbstractStepFactoryProtocol,
+        Callable[[List[float]], StepProtocol],
+        StepFactoryProtocol,
+    ],
+    ids=["callable_base", "protocol_base", "callable_return_protocol", "protocol_return_protocol"],
+)
+def test_factory_rejects_abstract_class(parser, typehint):
+    parser.add_argument("--step", type=typehint)
+    with pytest.raises(
+        ArgumentError, match=f"Expected an instantiatable class, but {__name__}.AbstractStep is abstract"
+    ):
+        parser.parse_args([f"--step={__name__}.AbstractStep"])
+    init = parser.instantiate(parser.parse_args([f"--step={__name__}.ConcreteStep"]))
+    assert isinstance(init.step([1.0]), ConcreteStep)
+
+
+def test_factory_rejects_abstract_class_default(parser):
+    parser.add_argument("--step", type=Callable[[List[float]], AbstractStep], default=AbstractStep)
+    with pytest.raises(TypeError, match=f"but {__name__}.AbstractStep is abstract"):
+        parser.get_defaults()
+
+
+def test_callable_without_return_type_rejects_abstract_class(parser):
+    parser.add_argument("--call", type=Callable)
+    with pytest.raises(ArgumentError, match=f"but {__name__}.AbstractCallableClass is abstract"):
+        parser.parse_args([f"--call={__name__}.AbstractCallableClass"])
 
 
 def test_optional_callable_return_type_help(parser):
