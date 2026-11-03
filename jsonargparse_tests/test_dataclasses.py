@@ -4,6 +4,7 @@ import abc
 import dataclasses
 import json
 import sys
+from importlib import import_module
 from typing import Any, Dict, Final, Generic, List, Optional, Tuple, TypeVar, Union
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from jsonargparse._common import subclasses_disabled_selectors
 from jsonargparse._namespace import NSKeyError
 from jsonargparse._optionals import (
     docstring_parser_support,
+    get_attribute_doc_comments,
     type_alias_type,
     typing_extensions_import,
 )
@@ -27,6 +29,7 @@ from jsonargparse._subcommands import find_action
 from jsonargparse.typing import PositiveFloat, PositiveInt, restricted_number_type
 from jsonargparse_tests.conftest import (
     Doc,
+    capture_logs,
     get_parse_args_stdout,
     get_parser_help,
     json_or_yaml_load,
@@ -570,6 +573,51 @@ def test_attribute_doc_comments_source_unavailable(parser, parsing_settings_patc
     parser.add_class_arguments(namespace["NoSource"])
     help_str = get_parser_help(parser)
     assert "--attr ATTR  (type: int, default: 1)" in help_str
+
+
+def test_attribute_doc_comments_nested_class_with_unindented_string(parser, parsing_settings_patch):
+    @dataclasses.dataclass
+    class Nested:
+        attr: int = 1  #: nested comment
+        text: str = """
+unindented
+"""
+
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.add_class_arguments(Nested)
+    help_str = get_parser_help(parser)
+    assert "nested comment (type: int, default: 1)" in help_str
+    assert "--text TEXT" in help_str
+
+
+def test_attribute_doc_comments_statements_in_same_line(tmp_path, monkeypatch):
+    source = tmp_path / "attr_doc_comments_same_line.py"
+    source.write_text(
+        "class SameLine:\n"
+        "    #: before first\n"
+        "    first: int = 1; second: int = 2  #: after second\n"
+        "    third: int = 3; fourth: int = 4\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    with patch.dict(sys.modules):
+        same_line = import_module(source.stem).SameLine
+        assert get_attribute_doc_comments(same_line) == {"first": "before first", "second": "after second"}
+
+
+def test_attribute_doc_comments_unparsable_source(parser, logger, parsing_settings_patch, tmp_path, monkeypatch):
+    source = tmp_path / "attr_doc_comments_stale.py"
+    source.write_text("import dataclasses\n\n@dataclasses.dataclass\nclass Stale:\n    attr: int = 1  #: doc\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    set_parsing_settings(parse_attribute_doc_comments=True)
+    parser.logger = logger
+    with patch.dict(sys.modules):
+        stale = import_module(source.stem).Stale
+        source.write_text("import dataclasses\n\n@dataclasses.dataclass\nclass Stale:\n    attr: int = (\n")
+        with capture_logs(logger) as logs:
+            parser.add_class_arguments(stale)
+        assert get_attribute_doc_comments(stale) == {}
+    assert "Failed getting attribute doc comments" in logs.getvalue()
+    assert "--attr ATTR  (type: int, default: 1)" in get_parser_help(parser)
 
 
 @dataclasses.dataclass
