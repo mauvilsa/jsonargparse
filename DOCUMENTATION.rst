@@ -2720,6 +2720,9 @@ Several arguments after injection work the same way, e.g. ``Callable[[Iterable,
 Iterable], Type]`` for two ``Iterable`` arguments, and ``Callable[[], Type]``
 for none.
 
+The return type can also be a ``Protocol``, which the class or the return type
+of a function must implement, see :ref:`type-hints`.
+
 ``Callable`` has an important limitation: its parameters are positional and
 unnamed. The second option, a callable ``Protocol``, avoids this. For the same
 example:

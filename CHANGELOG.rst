@@ -241,6 +241,17 @@ Fixed
   a config file or in the fields of a dataclass, silently ignored instead of
   failing with ``Option ... is not accepted`` (`#1029
   <https://github.com/mauvilsa/jsonargparse/pull/1029>`__).
+- ``Callable`` and callable ``Protocol`` types that return a ``Protocol`` failed
+  with ``Expected 'X' to be a subclass of ...`` for classes that implement the
+  protocol, and with ``Expected 'X' to be a function that returns ...`` for
+  functions that return it. Also, a default like ``lambda p: Impl(p, lr=0.5)``
+  or ``Impl(lr=0.5)`` for such a type or a plain ``Protocol`` stayed unresolved,
+  rather than becoming a ``class_path`` with ``init_args`` (`#1033
+  <https://github.com/mauvilsa/jsonargparse/pull/1033>`__).
+- ``Callable`` and callable ``Protocol`` types accepted an abstract class when
+  parsing, which then failed with a ``TypeError`` on instantiation or when calling
+  the factory, instead of failing with a parse error (`#1033
+  <https://github.com/mauvilsa/jsonargparse/pull/1033>`__).
 
 Changed
 ^^^^^^^
