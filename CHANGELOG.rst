@@ -252,6 +252,11 @@ Fixed
   parsing, which then failed with a ``TypeError`` on instantiation or when calling
   the factory, instead of failing with a parse error (`#1033
   <https://github.com/mauvilsa/jsonargparse/pull/1033>`__).
+- A default like ``lambda p: Impl(p, lr=0.5)`` for a callable ``Protocol`` type,
+  or like ``lambda p, lr: Impl(p, lr)`` for an ``Optional[Callable]`` with more
+  than one parameter, stayed unresolved. Dumping the config showed ``Unable to
+  serialize instance`` and overriding its ``init_args`` failed (`#1034
+  <https://github.com/mauvilsa/jsonargparse/pull/1034>`__).
 
 Changed
 ^^^^^^^

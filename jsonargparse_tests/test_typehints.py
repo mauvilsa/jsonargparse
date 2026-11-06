@@ -3664,11 +3664,46 @@ class StepLambdaDefault:
         self.step = step
 
 
-def test_factory_return_protocol_lambda_default(parser):
-    parser.add_class_arguments(StepLambdaDefault, "main")
+class StepLambdaProtocolDefault:
+    def __init__(self, step: StepFactoryProtocol = lambda p: StepImplementer(p, lr=0.5)):
+        self.step = step
+
+
+class StepLambdaOptionalProtocolDefault:
+    def __init__(self, step: Optional[StepFactoryProtocol] = lambda p: StepImplementer(p, lr=0.5)):
+        self.step = step
+
+
+@pytest.mark.parametrize(
+    "class_type",
+    [StepLambdaDefault, StepLambdaProtocolDefault, StepLambdaOptionalProtocolDefault],
+    ids=["callable", "protocol", "optional_protocol"],
+)
+def test_factory_return_protocol_lambda_default(parser, class_type):
+    parser.add_class_arguments(class_type, "main")
     cfg = parser.get_defaults()
-    assert cfg.main.step == Namespace(class_path=f"{__name__}.StepImplementer", init_args=Namespace(lr=0.5))
+    class_path = f"{__name__}.StepImplementer"
+    assert cfg.main.step == Namespace(class_path=class_path, init_args=Namespace(lr=0.5))
+    assert json_or_yaml_load(parser.dump(cfg)) == {
+        "main": {"step": {"class_path": class_path, "init_args": {"lr": 0.5}}}
+    }
     assert parser.instantiate(cfg).main.step([1.0]).lr == 0.5
+    cfg = parser.parse_args(["--main.step.init_args.lr=0.9"])
+    assert cfg.main.step == Namespace(class_path=class_path, init_args=Namespace(lr=0.9))
+
+
+class StepLambdaOptionalTwoPositionalsDefault:
+    def __init__(
+        self, step: Optional[Callable[[List[float], float], StepProtocol]] = lambda p, lr: StepImplementer(p, lr)
+    ):
+        self.step = step
+
+
+def test_factory_return_protocol_lambda_default_optional_two_positionals(parser):
+    parser.add_class_arguments(StepLambdaOptionalTwoPositionalsDefault, "main")
+    cfg = parser.get_defaults()
+    assert cfg.main.step == Namespace(class_path=f"{__name__}.StepImplementer")
+    assert parser.instantiate(cfg).main.step([1.0], 0.3).lr == 0.3
 
 
 class StepNoRequiredParams:

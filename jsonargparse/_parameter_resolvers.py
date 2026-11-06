@@ -474,7 +474,13 @@ ast_literals = {ast.dump(ast.parse(v, mode="eval").body): partial(ast.literal_ev
 
 
 def is_param_subclass_instance_default(param: ParamData) -> bool:
-    from ._typehints import ActionTypeHint, get_optional_arg, get_subclass_types, is_instance_or_supports_protocol
+    from ._typehints import (
+        ActionTypeHint,
+        get_callable_return_type,
+        get_optional_arg,
+        get_subclass_types,
+        is_instance_or_supports_protocol,
+    )
 
     annotation = get_optional_arg(param.annotation)
     class_types = get_subclass_types(annotation, callable_return=True)
@@ -482,11 +488,19 @@ def is_param_subclass_instance_default(param: ParamData) -> bool:
         (class_types and any(is_instance_or_supports_protocol(param.default, ct) for ct in class_types))
         or (
             is_lambda(param.default)
-            and ActionTypeHint.is_callable_typehint(annotation)
-            and getattr(annotation, "__args__", None)
-            and ActionTypeHint.is_subclass_typehint(annotation.__args__[-1], all_subtypes=False)
+            and ActionTypeHint.is_subclass_typehint(get_callable_return_type(annotation), all_subtypes=False)
         )
     )
+
+
+def get_callable_num_positionals(callable_type) -> int:
+    """Number of parameters of a ``Callable`` or callable protocol that can be given positionally."""
+    from ._typehints import is_protocol
+
+    if is_protocol(callable_type):
+        params = get_signature_parameters(callable_type, "__call__")
+        return sum(p.kind in {kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD} for p in params)
+    return len(callable_type.__args__) - 1
 
 
 kwargs_kinds = {kinds.KEYWORD_ONLY, kinds.POSITIONAL_OR_KEYWORD, kinds.VAR_KEYWORD}
@@ -850,7 +864,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
             self.parse_source_tree()
             default_nodes = self.get_default_nodes({p.name for p in params})
             assert len(params) == len(default_nodes)
-            from ._typehints import get_subclass_types, is_subclass_or_implements_protocol
+            from ._typehints import get_optional_arg, get_subclass_types, is_subclass_or_implements_protocol
 
             for param, default_node in zip(params, default_nodes):
                 lambda_default = is_lambda(param.default)
@@ -858,7 +872,7 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                 num_positionals = 0
                 if lambda_default:
                     node = default_node.body
-                    num_positionals = len(param.annotation.__args__) - 1
+                    num_positionals = get_callable_num_positionals(get_optional_arg(param.annotation))
                 class_type = self.get_call_class_type(node)
                 subclass_types = get_subclass_types(param.annotation, callable_return=True, subscripted_protocols=True)
                 if not (

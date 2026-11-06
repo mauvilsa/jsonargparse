@@ -548,12 +548,6 @@ class ActionTypeHint(Action):
         typehint = typehint_from_action(typehint)
         return typehint is not None and is_module_type(typehint)
 
-    @staticmethod
-    def is_callable_typehint(typehint):
-        typehint = typehint_from_action(typehint)
-        typehint_origin = get_typehint_origin(get_optional_arg(get_unaliased_type(typehint)))
-        return typehint_origin in callable_origin_types
-
     def is_init_arg_mapping_typehint(self, key, cfg):
         result = False
         class_path = cfg.get(f"{self.dest}.class_path")
