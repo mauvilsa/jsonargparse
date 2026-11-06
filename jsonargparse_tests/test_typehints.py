@@ -3699,6 +3699,38 @@ class StepLambdaOptionalTwoPositionalsDefault:
         self.step = step
 
 
+class StepLambdaModifiedInput:
+    def __init__(self, step: StepFactoryProtocol = lambda p: StepImplementer(p[::-1], lr=0.5)):
+        self.step = step
+
+
+class StepLambdaIgnoredInput:
+    def __init__(self, step: Callable[[List[float]], StepProtocol] = lambda p: StepNoRequiredParams(lr=0.5)):
+        self.step = step
+
+
+class StepLambdaSwappedInputs:
+    def __init__(self, step: Callable[[float, List[float]], StepProtocol] = lambda lr, p: StepImplementer(p, lr)):
+        self.step = step
+
+
+@pytest.mark.parametrize(
+    ["class_type", "args", "expected"],
+    [
+        (StepLambdaModifiedInput, ([1.0, 2.0],), ([2.0, 1.0], 0.5)),
+        (StepLambdaIgnoredInput, ([1.0, 2.0],), (None, 0.5)),
+        (StepLambdaSwappedInputs, (0.3, [1.0, 2.0]), ([1.0, 2.0], 0.3)),
+    ],
+    ids=["modified", "ignored", "swapped"],
+)
+def test_factory_return_protocol_lambda_default_not_forwarding_inputs(parser, class_type, args, expected):
+    parser.add_class_arguments(class_type, "main")
+    cfg = parser.get_defaults()
+    assert cfg.main.step.__name__ == "<lambda>"
+    step = parser.instantiate(cfg).main.step(*args)
+    assert (getattr(step, "params", None), step.lr) == expected
+
+
 def test_factory_return_protocol_lambda_default_optional_two_positionals(parser):
     parser.add_class_arguments(StepLambdaOptionalTwoPositionalsDefault, "main")
     cfg = parser.get_defaults()

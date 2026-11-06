@@ -870,9 +870,11 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                 lambda_default = is_lambda(param.default)
                 node = default_node
                 num_positionals = 0
+                lambda_positionals: list[str] = []
                 if lambda_default:
                     node = default_node.body
                     num_positionals = get_callable_num_positionals(get_optional_arg(param.annotation))
+                    lambda_positionals = [a.arg for a in default_node.args.posonlyargs + default_node.args.args]
                 class_type = self.get_call_class_type(node)
                 subclass_types = get_subclass_types(param.annotation, callable_return=True, subscripted_protocols=True)
                 if not (
@@ -886,7 +888,9 @@ class ParametersVisitor(LoggerProperty, ast.NodeVisitor):
                     else:
                         default.clear()
                         break
-                if not default or len(node.args) - num_positionals > 0:
+                # the call must forward the lambda's positionals unchanged, as the resolved default does
+                call_positionals = [a.id if isinstance(a, ast.Name) else None for a in node.args]
+                if not default or call_positionals != lambda_positionals or len(call_positionals) > num_positionals:
                     self.log_debug(f"unsupported class instance default: {ast.unparse(default_node)}")
                 elif default:
                     if not default["init_args"]:

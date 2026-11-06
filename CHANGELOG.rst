@@ -257,6 +257,11 @@ Fixed
   than one parameter, stayed unresolved. Dumping the config showed ``Unable to
   serialize instance`` and overriding its ``init_args`` failed (`#1034
   <https://github.com/mauvilsa/jsonargparse/pull/1034>`__).
+- A ``Callable`` default like ``lambda p: Impl(p[::-1], lr=0.5)``, whose call
+  changes, drops or reorders the lambda's arguments, was resolved to a
+  ``class_path`` with ``init_args``. The factory then called ``Impl`` with the
+  arguments as given, e.g. not reversed, or failed for a dropped one (`#1034
+  <https://github.com/mauvilsa/jsonargparse/pull/1034>`__).
 
 Changed
 ^^^^^^^
