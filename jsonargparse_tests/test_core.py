@@ -914,8 +914,9 @@ def test_save_and_load_non_ascii_values(parser, tmp_cwd):
 def test_parse_utf8_config_file(parser, tmp_cwd):
     parser.add_argument("--cfg", action=ActionConfigFile)
     parser.add_argument("--name", type=str)
-    Path("config.yaml").write_text("name: Café 日本語\n", encoding="utf-8")
-    assert parser.parse_args(["--cfg=config.yaml"]).name == "Café 日本語"
+    # JSON so that the test also runs without PyYAML
+    Path("config.json").write_text('{"name": "Café 日本語"}\n', encoding="utf-8")
+    assert parser.parse_args(["--cfg=config.json"]).name == "Café 日本語"
 
 
 def test_save_invalid_format(example_parser, tmp_cwd):
