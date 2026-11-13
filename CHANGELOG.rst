@@ -93,8 +93,8 @@ Fixed
 ^^^^^
 - Config files were saved and read with the locale encoding instead of UTF-8,
   so on Windows ``save`` failed for characters outside the code page and UTF-8
-  config files were misread (`#PR_NUMBER
-  <https://github.com/mauvilsa/jsonargparse/pull/PR_NUMBER>`__).
+  config files were misread (`#1035
+  <https://github.com/mauvilsa/jsonargparse/pull/1035>`__).
 - Parsing a list took time quadratic in its number of items (`#975
   <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
 - ``shtab`` bash completions not listing the choices on ``<TAB><TAB>`` when
