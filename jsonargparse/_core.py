@@ -1082,7 +1082,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     if multifile:
                         raise NotImplementedError(f"multifile=True not supported for fsspec paths: {path}")
                     fsspec = import_fsspec("ArgumentParser.save")
-                    with fsspec.open(path, "w") as f:
+                    with fsspec.open(path, "w", encoding="utf-8") as f:
                         f.write(self.dump(namespace, **dump_kwargs))
                     return
 
@@ -1090,7 +1090,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         check_overwrite(path_fc)
 
         if not multifile:
-            with open(path_fc.absolute, "w") as f:
+            with open(path_fc.absolute, "w", encoding="utf-8") as f:
                 f.write(self.dump(namespace, **dump_kwargs))
 
         else:
@@ -1117,7 +1117,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 else:
                     is_json = str(val_path).lower().endswith(".json")
                     val_str = dump_using_format(self, val_out, "json_indented" if is_json else format)
-                with open(val_path.absolute, "w") as f:
+                with open(val_path.absolute, "w", encoding="utf-8") as f:
                     f.write(val_str)
                 return os.path.basename(val_path)
 
@@ -1135,14 +1135,14 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     elif isinstance(val, Path) and key in self.save_path_content and "r" in val.mode:
                         val_path = Path(os.path.basename(val.absolute), mode="fc")
                         check_overwrite(val_path)
-                        with open(val_path.absolute, "w") as f:
+                        with open(val_path.absolute, "w", encoding="utf-8") as f:
                             f.write(val.read_text())
                         cfg[key] = type(val)(str(val_path))
 
             with path_dir_context(path_fc), parser_context(parent_parser=self):
                 save_paths(cfg)
             dump_kwargs["skip_validation"] = True
-            with open(path_fc.absolute, "w") as f:
+            with open(path_fc.absolute, "w", encoding="utf-8") as f:
                 f.write(self.dump(cfg, **dump_kwargs))
 
     ## Methods related to defaults ##

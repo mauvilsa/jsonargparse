@@ -902,6 +902,22 @@ def test_save_subconfig_overwrite(parser, example_parser, tmp_cwd):
     parser.save(cfg, "main.yaml", overwrite=True)
 
 
+def test_save_and_load_non_ascii_values(parser, tmp_cwd):
+    parser.add_argument("--cfg", action=ActionConfigFile)
+    parser.add_argument("--name", type=str)
+    cfg = parser.parse_args(["--name=Café 日本語"])
+    parser.save(cfg, "config.yaml")
+    assert "Café 日本語" in Path("config.yaml").read_text(encoding="utf-8")
+    assert parser.parse_args(["--cfg=config.yaml"]).name == "Café 日本語"
+
+
+def test_parse_utf8_config_file(parser, tmp_cwd):
+    parser.add_argument("--cfg", action=ActionConfigFile)
+    parser.add_argument("--name", type=str)
+    Path("config.yaml").write_text("name: Café 日本語\n", encoding="utf-8")
+    assert parser.parse_args(["--cfg=config.yaml"]).name == "Café 日本語"
+
+
 def test_save_invalid_format(example_parser, tmp_cwd):
     cfg = example_parser.parse_args(["--nums.val2=-1.2"])
     with pytest.raises(ValueError) as ctx:
