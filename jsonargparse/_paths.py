@@ -317,11 +317,11 @@ class Path:
             return response.text
         elif self._is_fsspec:
             fsspec = import_fsspec("Path.read_text")
-            with fsspec.open(self._absolute, "r") as handle:
+            with fsspec.open(self._absolute, "r", encoding="utf-8") as handle:
                 with handle as input_file:
                     return input_file.read()
         else:
-            with open(self._absolute) as input_file:
+            with open(self._absolute, encoding="utf-8") as input_file:
                 return input_file.read()
 
     @contextmanager
