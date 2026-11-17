@@ -262,6 +262,10 @@ Fixed
   ``class_path`` with ``init_args``. The factory then called ``Impl`` with the
   arguments as given, e.g. not reversed, or failed for a dropped one (`#1034
   <https://github.com/mauvilsa/jsonargparse/pull/1034>`__).
+- Config files were saved and read with the locale encoding instead of UTF-8,
+  so on Windows ``save`` failed for characters outside the code page and UTF-8
+  config files were misread (`#1035
+  <https://github.com/mauvilsa/jsonargparse/pull/1035>`__).
 
 Changed
 ^^^^^^^
