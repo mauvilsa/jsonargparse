@@ -524,7 +524,10 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         cfg = Namespace()
         if defaults:
             with parser_context(lenient_check=True):  # required for omegaconf+
-                cfg = self.get_defaults(skip_validation=True, _sub_defaults=sub_defaults)
+                if sub_defaults:
+                    cfg = self.get_defaults(skip_validation=True)
+                else:
+                    cfg = self._get_defaults_without_sub_defaults(skip_validation=True)
 
         if env or (env is None and self._default_env):
             if environ is None:
@@ -1199,7 +1202,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             check_suppressed_default()
         return defaults.get(action.dest)
 
-    def get_defaults(self, skip_validation: bool = False, **kwargs) -> Namespace:
+    def get_defaults(self, skip_validation: bool = False) -> Namespace:
         """Returns a namespace with all default values.
 
         Args:
@@ -1208,7 +1211,13 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Returns:
             An object with all default values as attributes.
         """
-        sub_defaults = get_private_kwargs(kwargs, _sub_defaults=True)
+        cfg = self._get_defaults_without_sub_defaults(skip_validation)
+        with parser_context(validating_defaults=True):
+            ActionTypeHint.add_sub_defaults(self, cfg)
+        return cfg
+
+    def _get_defaults_without_sub_defaults(self, skip_validation: bool) -> Namespace:
+        """The defaults of the parser and its default config files, without those of nested subclass values."""
         cfg = Namespace()
         with value_source_context(ValueSource("default")):
             for action in filter_non_parsing_actions(self._actions):
@@ -1269,10 +1278,6 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             else:
                 cfg["__default_config__"] = name
             self._logger.debug("Parsed default configuration from path: %s", name)
-
-        if sub_defaults:
-            with parser_context(validating_defaults=True):
-                ActionTypeHint.add_sub_defaults(self, cfg)
 
         return cfg
 
