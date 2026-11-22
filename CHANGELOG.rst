@@ -280,6 +280,10 @@ Fixed
 - Parsing lists with many items was slow, e.g. a list of 200k integers took
   about 12 seconds (`#1041
   <https://github.com/mauvilsa/jsonargparse/pull/1041>`__).
+- Since v4.52.0, a class whose instances implement a protocol with a
+  ``__call__`` that returns a class was rejected, and a protocol whose
+  ``__call__`` has no return annotation rejected all classes and functions
+  (`#1043 <https://github.com/mauvilsa/jsonargparse/pull/1043>`__).
 
 Changed
 ^^^^^^^

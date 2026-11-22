@@ -1976,16 +1976,18 @@ def adapt_typehints(
                         kind = "a protocol" if is_protocol(val_class) else "abstract"
                         raise ImportError(f"Expected an instantiatable class, but {val['class_path']} is {kind}.")
                     if inspect.isclass(val_class) and partial_skip_args is None:
-                        # partial_skip_args is only None when not a subclass of the return type
+                        # partial_skip_args is only None when not a subclass of the return type. For a
+                        # protocol, the class can instead be one whose instances implement it.
                         return_type = get_callable_return_type(typehint)
                         subclass_types = get_subclass_types(return_type)
-                        if subclass_types:
+                        if subclass_types and not implements_protocol(val_class, typehint):
                             expected = (
                                 "implement" if all(is_protocol(t) for t in subclass_types) else "be a subclass of"
                             )
-                            raise ImportError(
-                                f"Expected '{val['class_path']}' to {expected} {type_to_str(return_type)}."
-                            )
+                            message = f"Expected '{val['class_path']}' to {expected} {type_to_str(return_type)}"
+                            if is_protocol(typehint):
+                                message += f", or its instances to implement {type_to_str(typehint)}"
+                            raise ImportError(f"{message}.")
                         if not callable_instances(val_class):
                             raise ImportError(
                                 f"Expected '{val['class_path']}' to be a class that instantiates into callable "
@@ -2435,12 +2437,17 @@ def is_instance_or_supports_protocol(value, class_type):
 
 
 def get_protocol_call_return_type(protocol, logger=None):
-    """Returns the return type of the ``__call__`` of a protocol, with its TypeVars substituted."""
+    """Returns the return type of the ``__call__`` of a protocol, with its TypeVars substituted.
+
+    None when the return is not annotated.
+    """
     from ._postponed_annotations import get_return_type
 
     origin = get_protocol_origin(protocol)
     # the __call__ of the origin, since for a subscripted generic protocol the alias has its own
     return_type = get_return_type(origin.__call__, logger)
+    if return_type is inspect.Signature.empty:
+        return None
     return substitute_type_vars(return_type, get_type_var_map(protocol, origin))
 
 
