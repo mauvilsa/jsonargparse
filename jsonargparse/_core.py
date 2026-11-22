@@ -103,6 +103,7 @@ from ._subcommands import (
 )
 from ._typehints import (
     ActionTypeHint,
+    has_subclass_spec,
     is_subclass_spec,
     replace_type_vars,
     strip_required_typehint,
@@ -518,11 +519,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         defaults: bool = True,
         env: bool | None = None,
         environ: dict[str, str] | os._Environ | None = None,
+        sub_defaults: bool = True,
     ):
         cfg = Namespace()
         if defaults:
             with parser_context(lenient_check=True):  # required for omegaconf+
-                cfg = self.get_defaults(skip_validation=True)
+                cfg = self.get_defaults(skip_validation=True, _sub_defaults=sub_defaults)
 
         if env or (env is None and self._default_env):
             if environ is None:
@@ -629,16 +631,20 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Raises:
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
         """
-        skip_validation, skip_required = get_private_kwargs(kwargs, _skip_validation=False, _skip_required=False)
+        skip_validation, skip_required, skip_subclass_values = get_private_kwargs(
+            kwargs, _skip_validation=False, _skip_required=False, _skip_subclass_values=False
+        )
+        # subclass values left to the sub-defaults and validation steps of _parse_common
+        skip_fn = has_subclass_spec if skip_subclass_values else None
 
         try:
-            cfg = self._parse_defaults_and_environ(defaults, env)
+            cfg = self._parse_defaults_and_environ(defaults, env, sub_defaults=not skip_subclass_values)
             if namespace:
                 cfg = merge_config(self, namespace, cfg)
 
-            cfg = self._apply_actions(cfg)
+            cfg = self._apply_actions(cfg, skip_fn=skip_fn)
             with parser_context(load_value_mode=self.parser_mode):
-                cfg_apply = self._apply_actions(resolve_config_includes(obj), prev_cfg=cfg)
+                cfg_apply = self._apply_actions(resolve_config_includes(obj), prev_cfg=cfg, skip_fn=skip_fn)
             cfg = merge_config(self, cfg_apply, cfg)
 
             parsed_cfg = self._parse_common(
@@ -1193,7 +1199,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             check_suppressed_default()
         return defaults.get(action.dest)
 
-    def get_defaults(self, skip_validation: bool = False) -> Namespace:
+    def get_defaults(self, skip_validation: bool = False, **kwargs) -> Namespace:
         """Returns a namespace with all default values.
 
         Args:
@@ -1202,6 +1208,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Returns:
             An object with all default values as attributes.
         """
+        sub_defaults = get_private_kwargs(kwargs, _sub_defaults=True)
         cfg = Namespace()
         with value_source_context(ValueSource("default")):
             for action in filter_non_parsing_actions(self._actions):
@@ -1263,8 +1270,9 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                 cfg["__default_config__"] = name
             self._logger.debug("Parsed default configuration from path: %s", name)
 
-        with parser_context(validating_defaults=True):
-            ActionTypeHint.add_sub_defaults(self, cfg)
+        if sub_defaults:
+            with parser_context(validating_defaults=True):
+                ActionTypeHint.add_sub_defaults(self, cfg)
 
         return cfg
 
@@ -1446,7 +1454,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                         ex.value_key = key  # for the source of errors of nested parsers, relative to the parser
                     raise
 
-        with parser_context(load_value_mode=self.parser_mode):
+        with parser_context(load_value_mode=self.parser_mode, validating_values=True):
             check_values(cfg)
         if not skip_required and not lenient_check.get():
             check_required(cfg, self, prefix)

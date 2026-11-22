@@ -77,6 +77,7 @@ from ._common import (
     parse_logger,
     parser_context,
     validating_defaults,
+    validating_values,
 )
 from ._instantiation import bind_call, get_class_instantiator
 from ._loaders_dumpers import (
@@ -637,12 +638,7 @@ class ActionTypeHint(Action):
     @staticmethod
     def add_sub_defaults(parser, cfg):
         def skip_sub_defaults_apply(v):
-            return not (
-                isinstance(v, (str, Namespace, dict))
-                or is_subclass_spec(v)
-                or (isinstance(v, list) and any(is_subclass_spec(e) for e in v))
-                or (isinstance(v, dict) and any(is_subclass_spec(e) for e in v.values()))
-            )
+            return not (isinstance(v, (str, Namespace, dict)) or has_subclass_spec(v))
 
         with ActionTypeHint.sub_defaults_context():
             parser._apply_actions(cfg, skip_fn=skip_sub_defaults_apply, prev_cfg=cfg.clone())
@@ -2419,6 +2415,15 @@ def is_instance_factory_protocol(class_type, logger=None):
 _subclass_spec_keys = {"class_path", "init_args", "dict_kwargs", "__path__", subclasses_disabled_meta_key}
 
 
+def has_subclass_spec(val) -> bool:
+    """Whether a value is a subclass spec, or a list or dict with one."""
+    return (
+        is_subclass_spec(val)
+        or (isinstance(val, list) and any(is_subclass_spec(e) for e in val))
+        or (isinstance(val, dict) and any(is_subclass_spec(e) for e in val.values()))
+    )
+
+
 def is_subclass_spec(val):
     if isinstance(val, Namespace):
         keys = val.__dict__.keys()  # only the top level keys of the namespace
@@ -2864,7 +2869,14 @@ def adapt_class_type(
         elif dict_kwargs:
             init_args["dict_kwargs"] = dict_kwargs
             dict_kwargs = None
-        init_args = parser.parse_object(init_args, namespace=prev_init_args, defaults=sub_defaults.get())
+        # Adding sub-defaults or validating, the nested subclass values are handled by the steps of the nested parse
+        # that do this, so each is processed once instead of once per step of each ancestor's parse.
+        init_args = parser.parse_object(
+            init_args,
+            namespace=prev_init_args,
+            defaults=sub_defaults.get(),
+            _skip_subclass_values=sub_defaults.get() or validating_values.get(),
+        )
         if init_args:
             value["init_args"] = init_args
     if dict_kwargs:
