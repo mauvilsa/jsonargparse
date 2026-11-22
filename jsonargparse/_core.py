@@ -107,6 +107,7 @@ from ._typehints import (
     is_subclass_spec,
     replace_type_vars,
     strip_required_typehint,
+    sub_defaults,
     subclasses_disabled_remove_class_path,
 )
 from ._util import (
@@ -519,15 +520,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         defaults: bool = True,
         env: bool | None = None,
         environ: dict[str, str] | os._Environ | None = None,
-        sub_defaults: bool = True,
     ):
         cfg = Namespace()
         if defaults:
             with parser_context(lenient_check=True):  # required for omegaconf+
-                if sub_defaults:
-                    cfg = self.get_defaults(skip_validation=True)
-                else:
-                    cfg = self._get_defaults_without_sub_defaults(skip_validation=True)
+                cfg = self.get_defaults(skip_validation=True)
 
         if env or (env is None and self._default_env):
             if environ is None:
@@ -641,7 +638,7 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         skip_fn = has_subclass_spec if skip_subclass_values else None
 
         try:
-            cfg = self._parse_defaults_and_environ(defaults, env, sub_defaults=not skip_subclass_values)
+            cfg = self._parse_defaults_and_environ(defaults, env)
             if namespace:
                 cfg = merge_config(self, namespace, cfg)
 
@@ -1211,13 +1208,6 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Returns:
             An object with all default values as attributes.
         """
-        cfg = self._get_defaults_without_sub_defaults(skip_validation)
-        with parser_context(validating_defaults=True):
-            ActionTypeHint.add_sub_defaults(self, cfg)
-        return cfg
-
-    def _get_defaults_without_sub_defaults(self, skip_validation: bool) -> Namespace:
-        """The defaults of the parser and its default config files, without those of nested subclass values."""
         cfg = Namespace()
         with value_source_context(ValueSource("default")):
             for action in filter_non_parsing_actions(self._actions):
@@ -1278,6 +1268,11 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
             else:
                 cfg["__default_config__"] = name
             self._logger.debug("Parsed default configuration from path: %s", name)
+
+        # while adding sub-defaults, the parse that adds them for these defaults does it after merging the given values
+        if not sub_defaults.get():
+            with parser_context(validating_defaults=True):
+                ActionTypeHint.add_sub_defaults(self, cfg)
 
         return cfg
 
