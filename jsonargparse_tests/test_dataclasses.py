@@ -1493,3 +1493,70 @@ def test_convert_to_dict_subclasses_enabled(enable_subclasses):
             ],
         },
     }
+
+
+@dataclasses.dataclass
+class DepthBase:
+    pass
+
+
+@dataclasses.dataclass
+class DepthImpl(DepthBase):
+    value: int = 1
+
+
+@dataclasses.dataclass
+class Depth0:
+    item: DepthBase = dataclasses.field(default_factory=DepthImpl)
+
+
+@dataclasses.dataclass
+class Depth1:
+    child: Depth0 = dataclasses.field(default_factory=Depth0)
+
+
+@dataclasses.dataclass
+class Depth2:
+    child: Depth1 = dataclasses.field(default_factory=Depth1)
+
+
+@dataclasses.dataclass
+class Depth3:
+    child: Depth2 = dataclasses.field(default_factory=Depth2)
+
+
+@dataclasses.dataclass
+class Depth4:
+    child: Depth3 = dataclasses.field(default_factory=Depth3)
+
+
+@dataclasses.dataclass
+class Depth5:
+    child: Depth4 = dataclasses.field(default_factory=Depth4)
+
+
+@dataclasses.dataclass
+class Depth6:
+    child: Depth5 = dataclasses.field(default_factory=Depth5)
+
+
+def test_nested_subclass_values_parse_linear_in_depth(enable_subclasses):
+    # Each nested subclass value is parsed with parse_object. Doubling the depth of nesting should about double the
+    # number of calls, not multiply it by a factor for every added level.
+    calls = 0
+    parse_object = ArgumentParser.parse_object
+
+    def counted_parse_object(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return parse_object(self, *args, **kwargs)
+
+    counts = {}
+    with patch.object(ArgumentParser, "parse_object", counted_parse_object):
+        for depth_class in [Depth3, Depth6]:
+            parser = ArgumentParser(exit_on_error=False)
+            parser.add_argument("--nested", type=depth_class)
+            calls = 0
+            parser.parse_object({"nested": {"class_path": f"{__name__}.{depth_class.__name__}"}})
+            counts[depth_class] = calls
+    assert counts[Depth6] < 3 * counts[Depth3]

@@ -266,6 +266,10 @@ Fixed
   so on Windows ``save`` failed for characters outside the code page and UTF-8
   config files were misread (`#1035
   <https://github.com/mauvilsa/jsonargparse/pull/1035>`__).
+- Parsing nested subclass values, of classes and of dataclasses with subclasses
+  enabled, took time exponential in the depth of nesting, so that a few levels
+  could take minutes (`#1036
+  <https://github.com/mauvilsa/jsonargparse/pull/1036>`__).
 
 Changed
 ^^^^^^^
