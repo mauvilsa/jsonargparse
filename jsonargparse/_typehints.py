@@ -2870,6 +2870,7 @@ def adapt_class_type(
             init_args["dict_kwargs"] = dict_kwargs
             dict_kwargs = None
         if validating_values.get():
+            # validation discards the values it checks, so the init_args only need validating, not parsing
             try:
                 parser.validate(init_args)
             except (TypeError, KeyError) as ex:
