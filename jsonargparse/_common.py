@@ -76,6 +76,7 @@ parsing_defaults: ContextVar[bool] = ContextVar("parsing_defaults", default=Fals
 single_subcommand: ContextVar[bool] = ContextVar("single_subcommand", default=True)
 validating_defaults: ContextVar[bool] = ContextVar("validating_defaults", default=False)
 validating_values: ContextVar[bool] = ContextVar("validating_values", default=False)
+deferring_sub_defaults: ContextVar[bool] = ContextVar("deferring_sub_defaults", default=False)
 load_value_mode: ContextVar[str | None] = ContextVar("load_value_mode", default=None)
 nested_links: ContextVar[list[dict]] = ContextVar("nested_links", default=[])
 applied_instantiation_links: ContextVar[set | None] = ContextVar("applied_instantiation_links", default=None)
@@ -93,6 +94,7 @@ parser_context_vars = {
     "single_subcommand": single_subcommand,
     "validating_defaults": validating_defaults,
     "validating_values": validating_values,
+    "deferring_sub_defaults": deferring_sub_defaults,
     "load_value_mode": load_value_mode,
     "nested_links": nested_links,
     "applied_instantiation_links": applied_instantiation_links,

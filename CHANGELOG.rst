@@ -93,9 +93,6 @@ Fixed
 ^^^^^
 - Parsing a list took time quadratic in its number of items (`#975
   <https://github.com/mauvilsa/jsonargparse/pull/975>`__).
-- Parsing nested subclass values, e.g. dataclasses with subclasses enabled,
-  scaled exponentially with the depth of nesting (`#1036
-  <https://github.com/mauvilsa/jsonargparse/pull/1036>`__).
 - ``shtab`` bash completions not listing the choices on ``<TAB><TAB>`` when
   nothing has been typed and the type accepts values other than the choices,
   e.g. ``int | SomeEnum`` (`#976
@@ -269,6 +266,9 @@ Fixed
   so on Windows ``save`` failed for characters outside the code page and UTF-8
   config files were misread (`#1035
   <https://github.com/mauvilsa/jsonargparse/pull/1035>`__).
+- Parsing nested subclass values, e.g. dataclasses with subclasses enabled,
+  scaled exponentially with the depth of nesting (`#1036
+  <https://github.com/mauvilsa/jsonargparse/pull/1036>`__).
 
 Changed
 ^^^^^^^

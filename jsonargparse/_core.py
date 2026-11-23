@@ -29,6 +29,7 @@ from ._common import (
     command_line_source,
     config_schema_key,
     debug_mode_active,
+    deferring_sub_defaults,
     get_optionals_as_positionals_actions,
     get_parsing_setting,
     is_subclasses_disabled,
@@ -107,7 +108,6 @@ from ._typehints import (
     is_subclass_spec,
     replace_type_vars,
     strip_required_typehint,
-    sub_defaults,
     subclasses_disabled_remove_class_path,
 )
 from ._util import (
@@ -520,10 +520,12 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         defaults: bool = True,
         env: bool | None = None,
         environ: dict[str, str] | os._Environ | None = None,
+        defer_sub_defaults: bool = False,
     ):
         cfg = Namespace()
         if defaults:
-            with parser_context(lenient_check=True):  # required for omegaconf+
+            # lenient_check required for omegaconf+
+            with parser_context(lenient_check=True, deferring_sub_defaults=defer_sub_defaults):
                 cfg = self.get_defaults(skip_validation=True)
 
         if env or (env is None and self._default_env):
@@ -631,14 +633,14 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Raises:
             ArgumentError: If the parsing fails and ``exit_on_error=False``.
         """
-        skip_validation, skip_required, skip_subclass_values = get_private_kwargs(
-            kwargs, _skip_validation=False, _skip_required=False, _skip_subclass_values=False
+        skip_validation, skip_required, defer_subclass_values = get_private_kwargs(
+            kwargs, _skip_validation=False, _skip_required=False, _defer_subclass_values=False
         )
-        # subclass values left to the sub-defaults and validation steps of _parse_common
-        skip_fn = has_subclass_spec if skip_subclass_values else None
+        defaults = defaults or defer_subclass_values  # add_sub_defaults, which parses deferred values, needs defaults
+        skip_fn = has_subclass_spec if defer_subclass_values else None
 
         try:
-            cfg = self._parse_defaults_and_environ(defaults, env)
+            cfg = self._parse_defaults_and_environ(defaults, env, defer_sub_defaults=defer_subclass_values)
             if namespace:
                 cfg = merge_config(self, namespace, cfg)
 
@@ -1208,71 +1210,75 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         Returns:
             An object with all default values as attributes.
         """
-        cfg = Namespace()
-        with value_source_context(ValueSource("default")):
-            for action in filter_non_parsing_actions(self._actions):
-                if (
-                    action.default != argparse.SUPPRESS
-                    and action.dest != argparse.SUPPRESS
-                    and not isinstance(action.default, UnknownDefault)
+        # a deferring parse adds the sub-defaults after merging the given values, so only its call skips them
+        defer_sub_defaults = deferring_sub_defaults.get()
+        with parser_context(deferring_sub_defaults=False):
+            cfg = Namespace()
+            with value_source_context(ValueSource("default")):
+                for action in filter_non_parsing_actions(self._actions):
+                    if (
+                        action.default != argparse.SUPPRESS
+                        and action.dest != argparse.SUPPRESS
+                        and not isinstance(action.default, UnknownDefault)
+                    ):
+                        default = recreate_branches(action.default)
+                        cfg[action.dest] = default
+
+            self._logger.debug("Loaded parser defaults: %s", cfg)
+
+            default_config_files = self._get_default_config_files()
+            for default_config_file, selector in default_config_files:
+                name = cwd_relative_path(default_config_file) + (f"#{selector}" if selector else "")
+                with (
+                    load_config_path_context(default_config_file, selector),
+                    path_dir_context(default_config_file),
+                    parser_context(parent_parser=self, parsing_defaults=True),
                 ):
-                    default = recreate_branches(action.default)
-                    cfg[action.dest] = default
-
-        self._logger.debug("Loaded parser defaults: %s", cfg)
-
-        default_config_files = self._get_default_config_files()
-        for default_config_file, selector in default_config_files:
-            name = cwd_relative_path(default_config_file) + (f"#{selector}" if selector else "")
-            with (
-                load_config_path_context(default_config_file, selector),
-                path_dir_context(default_config_file),
-                parser_context(parent_parser=self, parsing_defaults=True),
-            ):
-                default_config_file_content = default_config_file.read_text()
-                if not default_config_file_content.strip():
-                    continue
-                source = ValueSource("default config file", default_config_file, self.parser_mode, selector=selector)
-                with value_source_context(source):
-                    try:
-                        cfg_file = self._load_config_parser_mode(
-                            default_config_file_content,
-                            os.path.basename(default_config_file),
-                            prev_cfg=cfg,
-                            selector=selector,
-                        )
-                    except ConfigKeyNotFoundError as ex:
-                        self._logger.debug("Skipped default config file %s: %s", name, ex)
+                    default_config_file_content = default_config_file.read_text()
+                    if not default_config_file_content.strip():
                         continue
-                cfg = merge_config(self, cfg_file, cfg)
-                try:
-                    with _ActionPrintConfig.skip_print_config():
-                        cfg = self._parse_common(
-                            cfg=cfg,
-                            env=False,
-                            defaults=False,
-                            skip_validation=skip_validation,
-                            skip_required=True,
-                            fail_no_subcommand=False,
-                        )
-                except (TypeError, KeyError, argparse.ArgumentError) as ex:
-                    raise argument_error(
-                        f"Problem in default config file '{name}': {ex.args[0]}",
-                        default_config_file=str(name),
-                    ) from ex
-            meta = cfg.get("__default_config__")
-            if isinstance(meta, list):
-                meta.append(name)
-            elif isinstance(meta, str):
-                cfg["__default_config__"] = [meta, name]
-            else:
-                cfg["__default_config__"] = name
-            self._logger.debug("Parsed default configuration from path: %s", name)
+                    source = ValueSource(
+                        "default config file", default_config_file, self.parser_mode, selector=selector
+                    )
+                    with value_source_context(source):
+                        try:
+                            cfg_file = self._load_config_parser_mode(
+                                default_config_file_content,
+                                os.path.basename(default_config_file),
+                                prev_cfg=cfg,
+                                selector=selector,
+                            )
+                        except ConfigKeyNotFoundError as ex:
+                            self._logger.debug("Skipped default config file %s: %s", name, ex)
+                            continue
+                    cfg = merge_config(self, cfg_file, cfg)
+                    try:
+                        with _ActionPrintConfig.skip_print_config():
+                            cfg = self._parse_common(
+                                cfg=cfg,
+                                env=False,
+                                defaults=False,
+                                skip_validation=skip_validation,
+                                skip_required=True,
+                                fail_no_subcommand=False,
+                            )
+                    except (TypeError, KeyError, argparse.ArgumentError) as ex:
+                        raise argument_error(
+                            f"Problem in default config file '{name}': {ex.args[0]}",
+                            default_config_file=str(name),
+                        ) from ex
+                meta = cfg.get("__default_config__")
+                if isinstance(meta, list):
+                    meta.append(name)
+                elif isinstance(meta, str):
+                    cfg["__default_config__"] = [meta, name]
+                else:
+                    cfg["__default_config__"] = name
+                self._logger.debug("Parsed default configuration from path: %s", name)
 
-        # while adding sub-defaults, the parse that adds them for these defaults does it after merging the given values
-        if not sub_defaults.get():
-            with parser_context(validating_defaults=True):
-                ActionTypeHint.add_sub_defaults(self, cfg)
+            if not defer_sub_defaults:
+                with parser_context(validating_defaults=True):
+                    ActionTypeHint.add_sub_defaults(self, cfg)
 
         return cfg
 
@@ -1629,6 +1635,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
                     cfg[action_dest] = cfg.pop(key)
                 value = cfg[action_dest]
                 if skip_fn and skip_fn(value):
+                    # subclass values deferred by parse_object are parsed later, once, by add_sub_defaults in
+                    # _parse_common, so defaults must be True
                     continue
                 with parser_context(parent_parser=self, lenient_check=True):
                     value = self._check_value_key(action, value, action_dest, prev_cfg, append=append)

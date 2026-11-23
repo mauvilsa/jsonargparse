@@ -2869,14 +2869,19 @@ def adapt_class_type(
         elif dict_kwargs:
             init_args["dict_kwargs"] = dict_kwargs
             dict_kwargs = None
-        # Adding sub-defaults or validating, the nested subclass values are handled by the steps of the nested parse
-        # that do this, so each is processed once instead of once per step of each ancestor's parse.
-        init_args = parser.parse_object(
-            init_args,
-            namespace=prev_init_args,
-            defaults=sub_defaults.get(),
-            _skip_subclass_values=sub_defaults.get() or validating_values.get(),
-        )
+        if validating_values.get():
+            try:
+                parser.validate(init_args)
+            except (TypeError, KeyError) as ex:
+                parser.error(str(ex), ex)
+        else:
+            # while adding sub-defaults, the nested parse defers its subclass values, so each is parsed once
+            init_args = parser.parse_object(
+                init_args,
+                namespace=prev_init_args,
+                defaults=sub_defaults.get(),
+                _defer_subclass_values=sub_defaults.get(),
+            )
         if init_args:
             value["init_args"] = init_args
     if dict_kwargs:
