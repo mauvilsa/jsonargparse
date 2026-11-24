@@ -42,6 +42,7 @@ from jsonargparse import (
     lazy_instance,
     set_parsing_settings,
 )
+from jsonargparse._completions_jsonschema import prior_init_args_schema
 from jsonargparse._optionals import type_alias_type, typing_extensions_import
 from jsonargparse._typehints import NoExtraItems, NotRequired, ReadOnly
 from jsonargparse.typing import (
@@ -723,6 +724,7 @@ def test_subclass_type_validation(parser):
     # all forms that the parser accepts
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"sub": 2}}})
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub"}})
+    validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "prior_init_args": "keep"}})
     validate(schema, {"cls": f"{__name__}.Sub"})
     validate(schema, {"cls": "Sub"})
     validate(schema, {"cls": "sub_config.yaml"})
@@ -730,6 +732,7 @@ def test_subclass_type_validation(parser):
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"flag": True}}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.RequiredSub"}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "bogus": 1}})
+    assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "prior_init_args": "maybe"}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "dict_kwargs": {"extra": 1}}})
     assert iter_errors(schema, {"cls": {"init_args": {"sub": 2}}})
     # stricter than the parser, so that the known subclasses are suggested and validated
@@ -753,7 +756,7 @@ class UnresolvedKwargs:
 def test_subclass_dict_kwargs_excluded_when_resolved(parser):
     parser.add_argument("--cls", type=ResolvedKwargs)
     entry = class_path_entries(get_schema(parser), "ResolvedKwargs")[f"{__name__}.ResolvedKwargs"]
-    assert set(config_properties(entry)) == {"class_path", "init_args"}
+    assert set(config_properties(entry)) == {"class_path", "init_args", "prior_init_args"}
     assert set(config_properties(entry["properties"]["init_args"])) == {"p1", "p2"}
 
 
@@ -761,7 +764,7 @@ def test_subclass_dict_kwargs_excluded_for_skipped_parameter(parser):
     # parsing accepts p1 in dict_kwargs, but the schema only describes what init_args accepts
     parser.add_subclass_arguments(ResolvedKwargs, "cls", skip={"p1"})
     entry = class_path_entries(get_schema(parser), "ResolvedKwargs@cls")[f"{__name__}.ResolvedKwargs"]
-    assert set(config_properties(entry)) == {"class_path", "init_args"}
+    assert set(config_properties(entry)) == {"class_path", "init_args", "prior_init_args"}
     assert set(config_properties(entry["properties"]["init_args"])) == {"p2"}
 
 
@@ -1281,7 +1284,16 @@ def test_subclass_type_without_known_class_paths(parser):
         "class_path": {"type": "string"},
         "init_args": {"type": "object"},
         "dict_kwargs": {"type": "object"},
+        **prior_init_args_schema(),
     }
+
+
+@skip_if_jsonschema_unavailable
+def test_subclass_type_without_known_class_paths_prior_init_args(parser):
+    parser.add_argument("--cls", type=AbstractBase)
+    schema = get_schema(parser)
+    validate(schema, {"cls": {"class_path": "not_imported.Class", "prior_init_args": "discard"}})
+    assert iter_errors(schema, {"cls": {"class_path": "not_imported.Class", "prior_init_args": "maybe"}})
 
 
 class UntypedBase:

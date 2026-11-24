@@ -48,6 +48,8 @@ from ._typehints import (
     is_single_subclass_type,
     literal_types,
     mapping_origin_types,
+    prior_init_args_key,
+    prior_init_args_modes,
     sequence_origin_types,
     tuple_set_origin_types,
     typed_dict_key_qualifiers,
@@ -124,6 +126,11 @@ def new_object(description: Optional[str] = None, properties: Optional[dict] = N
         schema["description"] = description
     schema["properties"] = dict(properties or {})
     return schema
+
+
+def prior_init_args_schema() -> dict:
+    description = "What to do with the init_args given before: keep the ones the class accepts, or discard them."
+    return {prior_init_args_key: {"enum": list(prior_init_args_modes), "description": description}}
 
 
 def class_parser_kwargs(action) -> dict:
@@ -761,7 +768,9 @@ class ParserJsonschema:
             init_args_schema = {"type": "object"}
         else:
             init_args_schema = self.parser_schema(class_parser, prefix=f"{key}.init_args.")
-        schema["properties"].update({"class_path": {"const": class_path}, "init_args": init_args_schema})
+        schema["properties"].update(
+            {"class_path": {"const": class_path}, "init_args": init_args_schema, **prior_init_args_schema()}
+        )
         # resolved parameters are only described in init_args, even though parsing also takes them from dict_kwargs
         if class_parser is None or class_parser._accepted_kwargs[None] is True:
             schema["properties"]["dict_kwargs"] = {"type": "object"}
@@ -778,6 +787,7 @@ class ParserJsonschema:
                 "class_path": {"type": "string"},
                 "init_args": {"type": "object"},
                 "dict_kwargs": {"type": "object"},
+                **prior_init_args_schema(),
             }
         )
         if self.config_required:

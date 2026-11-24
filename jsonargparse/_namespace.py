@@ -12,6 +12,7 @@ __all__ = ["Namespace"]
 
 subclasses_disabled_meta_key = "__subclasses_disabled__"
 provenance_key = "__provenance__"
+prior_discarded_key = "__prior_discarded__"
 meta_keys = {"__default_config__", "__path__", "__orig__", subclasses_disabled_meta_key, provenance_key}
 
 
@@ -25,6 +26,7 @@ class ValueSource(NamedTuple):
     implied_by: "ValueSource | None" = None  # e.g. for an implicit class_path or a link, the source it comes from
     selector: str | None = None  # the key selected in a config file with path#key, of which key is relative
     line: int | None = None  # the line number in a plain text file, e.g. a list of paths, which has no keys
+    signature: bool = False  # a default from the signature of a class, i.e. not one that was chosen
 
     def __deepcopy__(self, memo):
         return self  # immutable, so copies of namespaces can share it, which is much faster, e.g. for list items
@@ -93,6 +95,8 @@ def _recreate_branches(data, skip_keys):
         provenance = getattr(data, provenance_key, None)
         if provenance and skip_keys is None:
             object.__setattr__(new_data, provenance_key, dict(provenance))
+        if is_prior_discarded(data):
+            mark_prior_discarded(new_data)
     elif isinstance(data, list):
         new_data = [_recreate_branches(v, skip_keys) for v in data]
     return new_data
@@ -101,7 +105,7 @@ def _recreate_branches(data, skip_keys):
 class Namespace(argparse.Namespace):
     """Extension of argparse's Namespace to support nesting and subscript access."""
 
-    __slots__ = (provenance_key,)  # stored outside __dict__, so that it is not seen as a value
+    __slots__ = (provenance_key, prior_discarded_key)  # stored outside __dict__, so that they are not seen as values
 
     def __init__(self, *args, **kwargs):
         """Initializer for Namespace instance.
@@ -333,7 +337,7 @@ class Namespace(argparse.Namespace):
         return parent_ns.__dict__.pop(leaf_key, default)
 
 
-clash_names: set[str] = set(dir(Namespace)) - {provenance_key}
+clash_names: set[str] = set(dir(Namespace)) - {provenance_key, prior_discarded_key}
 clash_mark = "\u200b"
 
 
@@ -395,6 +399,15 @@ def _get_provenance_dict(namespace: Namespace) -> dict[str, ValueSource]:
         provenance = {}
         object.__setattr__(namespace, provenance_key, provenance)
     return provenance
+
+
+def mark_prior_discarded(namespace: Namespace) -> None:
+    """Marks a subclass spec as replacing the prior init_args, so that merging it does not keep them."""
+    object.__setattr__(namespace, prior_discarded_key, True)
+
+
+def is_prior_discarded(namespace: Any) -> bool:
+    return getattr(namespace, prior_discarded_key, False) is True
 
 
 def set_implicit_source(namespace: Namespace, key: str) -> None:

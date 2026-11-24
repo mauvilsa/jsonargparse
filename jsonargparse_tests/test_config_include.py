@@ -244,7 +244,7 @@ def test_include_in_list_item_class_path_change_same_as_two_configs(parser, tmp_
     write("main.json", {"hooks": [{"__include__": "hook.json", "class_path": timer_hook}]})
     expected = parser.parse_args(["--config=one.json", "--config=two.json"]).hooks
     included = parser.parse_args(["--config=main.json"]).hooks
-    assert included[0].init_args.as_dict() == expected[0].init_args.as_dict() == {"interval": 60, "verbose": True}
+    assert included[0].init_args.as_dict() == expected[0].init_args.as_dict() == {"interval": 60, "verbose": False}
 
 
 def test_include_nested_only_include(parser, tmp_cwd):
@@ -363,7 +363,7 @@ def test_include_class_path_change_same_as_other_sources(parser, tmp_cwd):
     parser.add_argument("--hook", type=Hook, sub_configs=True)
     for route, args in include_and_equivalents().items():
         hook = parser.parse_args(args).hook
-        assert (hook.class_path, hook.init_args.as_dict()) == (timer_hook, {"interval": 60, "verbose": True}), route
+        assert (hook.class_path, hook.init_args.as_dict()) == (timer_hook, {"interval": 60, "verbose": False}), route
 
 
 def test_include_same_class_path_keeps_init_args(parser, tmp_cwd):
@@ -376,11 +376,21 @@ def test_include_same_class_path_keeps_init_args(parser, tmp_cwd):
     assert cfg.hook.init_args.verbose is True
 
 
-def test_include_class_path_change_as_string_keeps_shared_init_args(parser, tmp_cwd):
+def test_include_class_path_change_as_string_discards_init_args(parser, tmp_cwd):
     parser.add_argument("--config", action="config")
     parser.add_argument("--hook", type=Hook, sub_configs=True)
     write("base.json", {"hook": {"class_path": log_hook, "init_args": {"log_file": "base.log", "verbose": True}}})
     write("main.json", {"__include__": "base.json", "hook": timer_hook})
+    cfg = parser.parse_args(["--config=main.json"])
+    assert cfg.hook.class_path == timer_hook
+    assert cfg.hook.init_args.verbose is False
+
+
+def test_include_class_path_change_prior_init_args_keep(parser, tmp_cwd):
+    parser.add_argument("--config", action="config")
+    parser.add_argument("--hook", type=Hook, sub_configs=True)
+    write("base.json", {"hook": {"class_path": log_hook, "init_args": {"log_file": "base.log", "verbose": True}}})
+    write("main.json", {"__include__": "base.json", "hook": {"class_path": timer_hook, "prior_init_args": "keep"}})
     cfg = parser.parse_args(["--config=main.json"])
     assert cfg.hook.class_path == timer_hook
     assert cfg.hook.init_args.verbose is True
@@ -715,13 +725,16 @@ class TimerComponent(Component):
         self.interval = interval
 
 
-def test_include_from_config_mixin_class_path_change(tmp_cwd):
+@pytest.mark.parametrize("prior_init_args, y", [(None, 0), ("keep", 1)])
+def test_include_from_config_mixin_class_path_change(tmp_cwd, prior_init_args, y):
     write("base.json", {"class_path": "LogComponent", "init_args": {"log_file": "a.log", "y": 1}})
     main = {"__include__": "base.json", "class_path": "TimerComponent", "init_args": {"x": 2, "interval": 5}}
+    if prior_init_args:
+        main["prior_init_args"] = prior_init_args
     write("main.json", main)
     component = Component.from_config("main.json")
     assert isinstance(component, TimerComponent)
-    assert (component.x, component.y, component.interval) == (2, 1, 5)
+    assert (component.x, component.y, component.interval) == (2, y, 5)
 
 
 def test_include_from_config_mixin_class_path_in_included(tmp_cwd):

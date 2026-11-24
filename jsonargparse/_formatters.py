@@ -516,6 +516,7 @@ class DefaultHelpFormatter(HelpFormatter):
     def _format_action_invocation(self, action: Action) -> str:
         parser = parent_parser.get()
         assert parser is not None
+        action = ActionTypeHint.without_prior_init_args_aliases(action)  # documented once, not for each option
         if isinstance(action, ActionSubCommands):
             value = "Available subcommands:"
             if parser.default_env:

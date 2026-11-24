@@ -1214,7 +1214,8 @@ class ArgumentParser(ActionsContainer, argparse.ArgumentParser):
         defer_sub_defaults = deferring_sub_defaults.get()
         with parser_context(deferring_sub_defaults=False):
             cfg = Namespace()
-            with value_source_context(ValueSource("default")):
+            # the defaults of the parser of a class come from its signature
+            with value_source_context(ValueSource("default", signature=getattr(self, "group_class", None) is not None)):
                 for action in filter_non_parsing_actions(self._actions):
                     if (
                         action.default != argparse.SUPPRESS
