@@ -12,7 +12,7 @@ __all__ = ["Namespace"]
 
 subclasses_disabled_meta_key = "__subclasses_disabled__"
 provenance_key = "__provenance__"
-prior_discarded_key = "__prior_discarded__"
+prior_init_args_mark_key = "__prior_init_args__"
 meta_keys = {"__default_config__", "__path__", "__orig__", subclasses_disabled_meta_key, provenance_key}
 
 
@@ -95,8 +95,7 @@ def _recreate_branches(data, skip_keys):
         provenance = getattr(data, provenance_key, None)
         if provenance and skip_keys is None:
             object.__setattr__(new_data, provenance_key, dict(provenance))
-        if is_prior_discarded(data):
-            mark_prior_discarded(new_data)
+        mark_prior_init_args(new_data, get_prior_init_args_mark(data))
     elif isinstance(data, list):
         new_data = [_recreate_branches(v, skip_keys) for v in data]
     return new_data
@@ -105,7 +104,7 @@ def _recreate_branches(data, skip_keys):
 class Namespace(argparse.Namespace):
     """Extension of argparse's Namespace to support nesting and subscript access."""
 
-    __slots__ = (provenance_key, prior_discarded_key)  # stored outside __dict__, so that they are not seen as values
+    __slots__ = (provenance_key, prior_init_args_mark_key)  # outside __dict__, so that they are not seen as values
 
     def __init__(self, *args, **kwargs):
         """Initializer for Namespace instance.
@@ -337,7 +336,7 @@ class Namespace(argparse.Namespace):
         return parent_ns.__dict__.pop(leaf_key, default)
 
 
-clash_names: set[str] = set(dir(Namespace)) - {provenance_key, prior_discarded_key}
+clash_names: set[str] = set(dir(Namespace)) - {provenance_key, prior_init_args_mark_key}
 clash_mark = "\u200b"
 
 
@@ -401,13 +400,14 @@ def _get_provenance_dict(namespace: Namespace) -> dict[str, ValueSource]:
     return provenance
 
 
-def mark_prior_discarded(namespace: Namespace) -> None:
-    """Marks a subclass spec as replacing the prior init_args, so that merging it does not keep them."""
-    object.__setattr__(namespace, prior_discarded_key, True)
+def mark_prior_init_args(namespace: Namespace, mode: str | None) -> None:
+    """Marks a subclass spec with its prior_init_args, so that merging it treats the prior init_args the same."""
+    if mode:
+        object.__setattr__(namespace, prior_init_args_mark_key, mode)
 
 
-def is_prior_discarded(namespace: Any) -> bool:
-    return getattr(namespace, prior_discarded_key, False) is True
+def get_prior_init_args_mark(namespace: Any) -> str | None:
+    return getattr(namespace, prior_init_args_mark_key, None)
 
 
 def set_implicit_source(namespace: Namespace, key: str) -> None:

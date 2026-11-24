@@ -93,9 +93,9 @@ from ._namespace import (
     ValueSource,
     copy_provenance,
     fill_provenance,
+    get_prior_init_args_mark,
     get_provenance,
-    is_prior_discarded,
-    mark_prior_discarded,
+    mark_prior_init_args,
     set_implicit_source,
     subclasses_disabled_meta_key,
     value_source_context,
@@ -606,8 +606,7 @@ class ActionTypeHint(Action):
                 if not isinstance(parser_or_action, ActionTypeHint):
                     action = find_action(parser_or_action, key)
                 if isinstance(action, ActionTypeHint):
-                    mode = "discard" if is_prior_discarded(val) else None
-                    discard_prior_init_args(action, prev_val, val, mode)
+                    discard_prior_init_args(action, prev_val, val, get_prior_init_args_mark(val))
                     prev_sub_cfg = prev_val.get("init_args")
                     if prev_sub_cfg:
                         sub_add_kwargs = getattr(action, "sub_add_kwargs", {})
@@ -752,7 +751,7 @@ class ActionTypeHint(Action):
                             prev_val.init_args,
                             val.get("init_args"),
                         )
-            if is_prior_discarded(val):
+            if get_prior_init_args_mark(val) == "discard":
                 cfg[self.dest] = val  # replaced, keeping the mark, so that the prior is also discarded in later merges
             else:
                 cfg.update(val, self.dest)
@@ -786,10 +785,7 @@ class ActionTypeHint(Action):
                 )
                 if list_file:  # a plain text list of paths, read when adapting, relative to the current directory
                     val, config_path = orig_val, None
-                if prior_init_args:  # from an alias --option:mode, same as giving the key in a dict
-                    val = {"class_path": val} if isinstance(val, str) else val
-                    if isinstance(val, dict):
-                        val[prior_init_args_key] = prior_init_args
+                val = with_prior_init_args(val, prior_init_args)
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 # a single sub-config appended to a list becomes one more list item
                 appended_subconfig = append and config_path is not None and not isinstance(val, list)
@@ -2806,6 +2802,15 @@ def dump_kwargs_context(kwargs):
     yield
 
 
+def with_prior_init_args(val, mode: str | None):
+    """The value of an alias --option:mode, i.e. the same as giving prior_init_args in a dict."""
+    if mode:
+        val = {"class_path": val} if isinstance(val, str) else val
+        if isinstance(val, dict):
+            val[prior_init_args_key] = mode
+    return val
+
+
 def is_prior_init_args_option(key: str) -> bool:
     """Whether a nested key is an alias option:mode, e.g. encoder:keep from --model.encoder:keep."""
     return ":" in key and key.rpartition(":")[2] in prior_init_args_modes
@@ -2825,8 +2830,9 @@ def discard_prior_init_args(parser_or_action, prev_val, value, mode=None):
     same_class = prev_val["class_path"] == value["class_path"]
     if same_class and mode != "discard":
         return
+    implicit = mode is None and prev_val["class_path"] is None  # init_args given without a class, e.g. a dataclass
     prev_val = subclass_spec_as_namespace(prev_val)
-    if same_class:
+    if not implicit:
         prev_val.pop("dict_kwargs", None)
     if not prev_val.get("init_args"):
         return
@@ -2836,7 +2842,7 @@ def discard_prior_init_args(parser_or_action, prev_val, value, mode=None):
         parser = ActionTypeHint.get_class_parser(value["class_path"], sub_add_kwargs)
     if mode == "keep":
         del_args = keep_prior_init_args(parser, prev_val, value, strict=True)
-    elif mode is None and prev_val["class_path"] is None:  # init_args given without a class, e.g. a dataclass
+    elif implicit:
         del_args = keep_prior_init_args(parser, prev_val, value, strict=False)
     else:
         del_args = dict(prev_val.pop("init_args").items(branches=True, nested=False))
@@ -2855,6 +2861,8 @@ def keep_prior_init_args(parser, prev_val, value, strict: bool) -> dict:
     """
     del_args = {}
     sources = get_provenance(prev_val.init_args, items=False) if strict else {}
+    given = value.get("init_args")
+    given = set(given.keys(branches=True, nested=False)) if isinstance(given, Namespace) else set()
     for key, val in list(prev_val.init_args.items(branches=True, nested=False)):
         if is_signature_default(sources, key):
             prev_val.init_args.pop(key)
@@ -2865,7 +2873,7 @@ def keep_prior_init_args(parser, prev_val, value, strict: bool) -> dict:
                 try:
                     parser._check_value_key(action, val, key, Namespace())
                 except Exception as ex:
-                    if strict:
+                    if strict and key not in given:  # one given again replaces it
                         raise ValueError(
                             f"The init_args kept due to prior_init_args 'keep' not valid for "
                             f"{value['class_path']!r}: {key}={val!r}\n{indent_text(str(ex))}"
@@ -2897,7 +2905,7 @@ def adapt_class_type(
     if prior_init_args not in (None, *prior_init_args_modes):
         raise ValueError(f"Expected prior_init_args to be 'keep' or 'discard', got {prior_init_args!r}")
     if prior_init_args == "discard":
-        mark_prior_discarded(value)  # so that merging it into the prior config does not keep them
+        mark_prior_init_args(value, prior_init_args)  # so that merging it into the prior config does not keep them
     if is_generic_class(typehint) and not is_protocol(typehint):
         val_class = typehint
     else:

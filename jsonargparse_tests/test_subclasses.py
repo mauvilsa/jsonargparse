@@ -1682,6 +1682,17 @@ def test_class_path_change_callable_discards(parser):
     assert cfg.data.init_args.size == 2
 
 
+def test_class_path_change_discards_dict_kwargs(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=SwitchBase)
+    cfg = parser.parse_args(["--data=SwitchKwargs", "--data.dict_kwargs.extra=1", "--data=SwitchTo"])
+    assert "dict_kwargs" not in cfg.data
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": {"class_path": "SwitchKwargs", "dict_kwargs": {"extra": 1}}}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_to}}))
+    cfg = parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert "dict_kwargs" not in cfg.data
+
+
 def test_class_path_change_logs_discarded(parser, logger):
     parser.logger = logger
     parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom, size=5))
@@ -1749,6 +1760,13 @@ def test_prior_init_args_keep_not_accepted_dropped(parser, logger):
         cfg = parser.parse_args(["--data.path=given", "--data:keep=SwitchBool"])
     assert cfg.data.init_args == Namespace(size=False)
     assert "discarding init_args: {'path': 'given'}" in logs.getvalue()
+
+
+def test_prior_init_args_keep_invalid_type_given_again(parser):
+    parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom))
+    value = {"class_path": "SwitchBool", "init_args": {"size": True}, "prior_init_args": "keep"}
+    cfg = parser.parse_args(["--data.size=5", f"--data={json.dumps(value)}"])
+    assert cfg.data.init_args == Namespace(size=True)
 
 
 def test_prior_init_args_keep_invalid_type(parser):

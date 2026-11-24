@@ -2856,7 +2856,7 @@ list of classes, but each item can have the key. Without ``class_path``,
 ``keep`` does not carry over the defaults from the signature of the previous
 class, since they belong to it. Anything else is kept, including parser defaults
 and values from default config files. A kept value that is not valid for the
-new class is an error.
+new class is an error, unless the new value gives it again.
 
 Arguments are applied in order, so ``--calendar.firstweekday 2 --calendar
 TextCalendar`` discards ``firstweekday``, while ``--calendar TextCalendar
