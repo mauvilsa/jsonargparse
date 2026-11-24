@@ -11,7 +11,7 @@ from argparse import ArgumentError
 from collections import OrderedDict, abc, defaultdict, deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-from copy import deepcopy
+from copy import copy, deepcopy
 from enum import Enum
 from functools import partial, reduce
 from importlib import import_module
@@ -81,7 +81,7 @@ from ._loaders_dumpers import (
     json_or_yaml_loader_exceptions,
     load_value,
 )
-from ._namespace import Namespace, subclasses_disabled_meta_key
+from ._namespace import Namespace, get_prior_init_args_mark, mark_prior_init_args, subclasses_disabled_meta_key
 from ._optionals import (
     capture_typing_extension_shadows,
     get_alias_target,
@@ -441,6 +441,8 @@ class ActionTypeHint(Action):
         typehint = kwargs.pop("type")
         if args[0].startswith("--") and ActionTypeHint.supports_append(typehint):
             args = tuple(list(args) + [f"{a}+" for a in args if a.startswith("--")])
+        if args[0].startswith("--") and ActionTypeHint.supports_prior_init_args(typehint):
+            args = tuple(list(args) + [f"{a}:{m}" for m in prior_init_args_modes for a in args if a.startswith("--")])
         if get_registered_type(typehint) is None and get_help_types(typehint):
             help_option = f"--{args[0]}.help" if args[0][0] != "-" else f"{args[0]}.help"
             help_action = container.add_argument(help_option, action=_ActionHelpClassPath(typehint=typehint))
@@ -580,7 +582,7 @@ class ActionTypeHint(Action):
         return None
 
     @staticmethod
-    def discard_init_args_on_class_path_change(parser_or_action, prev_cfg, cfg):
+    def discard_prior_init_args_in_config(parser_or_action, prev_cfg, cfg):
         if isinstance(prev_cfg, dict):
             return
         keys = list(prev_cfg.keys(branches=True))
@@ -594,13 +596,13 @@ class ActionTypeHint(Action):
                 if not isinstance(parser_or_action, ActionTypeHint):
                     action = find_action(parser_or_action, key)
                 if isinstance(action, ActionTypeHint):
-                    discard_init_args_on_class_path_change(action, prev_val, val)
+                    discard_prior_init_args(action, prev_val, val, get_prior_init_args_mark(val))
                     prev_sub_cfg = prev_val.get("init_args")
                     if prev_sub_cfg:
                         sub_add_kwargs = getattr(action, "sub_add_kwargs", {})
                         subparser = ActionTypeHint.get_class_parser(val["class_path"], sub_add_kwargs)
                         sub_cfg = val.get("init_args", Namespace())
-                        ActionTypeHint.discard_init_args_on_class_path_change(subparser, prev_sub_cfg, sub_cfg)
+                        ActionTypeHint.discard_prior_init_args_in_config(subparser, prev_sub_cfg, sub_cfg)
                     keys = keys[: num + 1] + [k for k in keys[num + 1 :] if not k.startswith(key + ".")]
             num += 1
 
@@ -653,6 +655,33 @@ class ActionTypeHint(Action):
             )
         )
 
+    @staticmethod
+    def supports_prior_init_args(typehint):
+        """Whether the type gets the --option:keep and --option:discard aliases, i.e. a class not in a list."""
+        return ActionTypeHint.is_subclass_typehint(
+            typehint, all_subtypes=False
+        ) or ActionTypeHint.is_return_subclass_typehint(typehint)
+
+    @staticmethod
+    def without_prior_init_args_aliases(action):
+        """A copy of the action without the --option:mode aliases, for help and completions that list each option."""
+        if not isinstance(action, ActionTypeHint):
+            return action
+        option_strings = [o for o in action.option_strings if not action.get_prior_init_args_mode(o)]
+        if option_strings == action.option_strings:
+            return action
+        action = copy(action)
+        action.option_strings = option_strings
+        return action
+
+    def get_prior_init_args_mode(self, opt_str) -> str | None:
+        """The mode of an alias --option:mode, or None for other option strings."""
+        if isinstance(opt_str, str) and opt_str in self.option_strings:
+            option, _, mode = opt_str.rpartition(":")
+            if mode in prior_init_args_modes and option in self.option_strings:
+                return mode
+        return None
+
     def serialize(self, value, dump_kwargs=None):
         sub_add_kwargs = getattr(self, "sub_add_kwargs", {})
         with dump_kwargs_context(dump_kwargs):
@@ -700,16 +729,22 @@ class ActionTypeHint(Action):
                     sub_opt = opt_str[len(f"{option}.") :]
                 val = NestedArg(key=sub_opt, val=val)
             append = isinstance(opt_str, str) and opt_str.endswith("+") and opt_str[:-1] in self.option_strings
-            val = self._check_type_(val, append=append, cfg=cfg, mode=parser.parser_mode)
+            prior_init_args = self.get_prior_init_args_mode(opt_str)
+            val = self._check_type_(
+                val, append=append, cfg=cfg, mode=parser.parser_mode, prior_init_args=prior_init_args
+            )
             if is_subclass_spec(val):
                 prev_val = cfg.get(self.dest)
                 if is_subclass_spec(prev_val) and "init_args" in prev_val:
-                    ActionTypeHint.discard_init_args_on_class_path_change(
+                    ActionTypeHint.discard_prior_init_args_in_config(
                         self,
                         prev_val.init_args,
                         val.get("init_args"),
                     )
-        cfg.update(val, self.dest)
+        if get_prior_init_args_mark(val) == "discard":
+            cfg[self.dest] = val  # replaced, keeping the mark, so that the prior is also discarded in later merges
+        else:
+            cfg.update(val, self.dest)
         return None
 
     def get_option_string_base(self, opt_str) -> str | None:
@@ -718,7 +753,7 @@ class ActionTypeHint(Action):
             return None
         return next((o for o in self.option_strings if opt_str.startswith(f"{o}.")), None)
 
-    def _check_type(self, value, append=False, cfg=None, mode=None):
+    def _check_type(self, value, append=False, cfg=None, mode=None, prior_init_args=None):
         islist = _is_action_value_list(self)
         if not islist:
             value = [value]
@@ -730,6 +765,10 @@ class ActionTypeHint(Action):
                     val, config_path = parse_value_or_config(val, enable_path=enable_path)
                 except get_loader_exceptions():
                     config_path = None
+                if prior_init_args:  # from an alias --option:mode, same as giving the key in a dict
+                    val = {"class_path": val} if isinstance(val, str) else val
+                    if isinstance(val, dict):
+                        val[prior_init_args_key] = prior_init_args
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 # a single sub-config appended to a list becomes one more list item
                 appended_subconfig = append and config_path is not None and not isinstance(val, list)
@@ -754,7 +793,7 @@ class ActionTypeHint(Action):
                     if orig_val == "-" and isinstance(getattr(ex, "parent", None), PathError):
                         raise ex
                     try:
-                        if isinstance(orig_val, str):
+                        if isinstance(orig_val, str) and not prior_init_args:
                             with load_config_path_context(config_path), change_to_path_dir(config_path):
                                 val = adapt_typehints(orig_val, self._typehint, default=self.default, **kwargs)
                             ex = None
@@ -2152,7 +2191,16 @@ def is_instance_factory_protocol(class_type, logger=None):
     return ActionTypeHint.is_subclass_typehint(get_protocol_call_return_type(class_type, logger))
 
 
-_subclass_spec_keys = {"class_path", "init_args", "dict_kwargs", "__path__", subclasses_disabled_meta_key}
+prior_init_args_key = "prior_init_args"
+prior_init_args_modes = ("keep", "discard")
+_subclass_spec_keys = {
+    "class_path",
+    "init_args",
+    "dict_kwargs",
+    prior_init_args_key,
+    "__path__",
+    subclasses_disabled_meta_key,
+}
 
 
 def is_subclass_spec(val):
@@ -2172,7 +2220,7 @@ def subclass_spec_as_namespace(val, prev_val=None):
         return Namespace(class_path=val)
     if isinstance(val, NestedArg):
         key, val = val
-        if "." not in key:
+        if "." not in key and not is_prior_init_args_option(key):
             root_key = key
         else:
             if key.startswith("dict_kwargs."):
@@ -2191,7 +2239,7 @@ def subclass_spec_as_namespace(val, prev_val=None):
     if "init_args" in val and isinstance(val["init_args"], dict):
         val["init_args"] = Namespace(val["init_args"])
     if not is_subclass_spec(val) and isinstance(prev_val, (Namespace, dict)) and "class_path" in prev_val:
-        if "init_args" in val or "dict_kwargs" in val:
+        if "init_args" in val or "dict_kwargs" in val or prior_init_args_key in val:
             val["class_path"] = prev_val["class_path"]
         else:
             val = Namespace(class_path=prev_val["class_path"], init_args=val)
@@ -2447,29 +2495,63 @@ def dump_kwargs_context(kwargs):
     yield
 
 
-def discard_init_args_on_class_path_change(parser_or_action, prev_val, value):
-    if prev_val and "init_args" in prev_val and prev_val["class_path"] != value["class_path"]:
-        parser = parser_or_action
-        if isinstance(parser_or_action, ActionTypeHint):
-            sub_add_kwargs = getattr(parser_or_action, "sub_add_kwargs", {})
-            parser = ActionTypeHint.get_class_parser(value["class_path"], sub_add_kwargs)
-        del_args = {}
-        prev_val = subclass_spec_as_namespace(prev_val)
-        for key, val in list(prev_val.init_args.items(branches=True, nested=False)):
-            action = find_action(parser, key)
-            if action:
-                with parser_context(lenient_check=False, load_value_mode=parser.parser_mode):
-                    try:
-                        parser._check_value_key(action, val, key, Namespace())
-                    except Exception:
-                        action = None
-            if not action:
-                del_args[key] = prev_val.init_args.pop(key)
-        if del_args:
-            parser_or_action.logger.debug(
-                f"Due to class_path change from {prev_val['class_path']!r} to {value['class_path']!r}, "
-                f"discarding init_args: {del_args}."
-            )
+def is_prior_init_args_option(key: str) -> bool:
+    """Whether a nested key is an alias option:mode, e.g. encoder:keep from --model.encoder:keep."""
+    return ":" in key and key.rpartition(":")[2] in prior_init_args_modes
+
+
+def discard_prior_init_args(parser_or_action, prev_val, value, mode=None):
+    """Removes from prev_val what does not carry over to value. Without a mode, it is as with keep.
+
+    Args:
+        parser_or_action: The parser of the class of value, or the action from which to get it.
+        prev_val: The subclass spec given before, which is modified in place.
+        value: The subclass spec being given.
+        mode: The prior_init_args of value, i.e. None, "keep" or "discard".
+    """
+    if not prev_val:
+        return
+    same_class = prev_val["class_path"] == value["class_path"]
+    if same_class and mode != "discard":
+        return
+    prev_val = subclass_spec_as_namespace(prev_val)
+    if same_class:
+        prev_val.pop("dict_kwargs", None)
+    if not prev_val.get("init_args"):
+        return
+    parser = parser_or_action
+    if isinstance(parser_or_action, ActionTypeHint):
+        sub_add_kwargs = getattr(parser_or_action, "sub_add_kwargs", {})
+        parser = ActionTypeHint.get_class_parser(value["class_path"], sub_add_kwargs)
+    if mode == "discard":
+        del_args = dict(prev_val.pop("init_args").items(branches=True, nested=False))
+    else:
+        del_args = keep_prior_init_args(parser, prev_val)
+        if mode is None and prev_val["class_path"] is not None:  # not init_args given without a class
+            from ._deprecated import deprecation_warning_class_path_change_kept_init_args
+
+            deprecation_warning_class_path_change_kept_init_args(parser, prev_val, value)
+    if del_args:
+        reason = f"prior_init_args 'discard' of {value['class_path']!r}"
+        if not same_class:
+            reason = f"class_path change from {prev_val['class_path']!r} to {value['class_path']!r}"
+        parser_or_action.logger.debug(f"Due to {reason}, discarding init_args: {del_args}.")
+
+
+def keep_prior_init_args(parser, prev_val) -> dict:
+    """Keeps the init_args that the new class accepts with a valid value, and returns the discarded ones."""
+    del_args = {}
+    for key, val in list(prev_val.init_args.items(branches=True, nested=False)):
+        action = find_action(parser, key)
+        if action:
+            with parser_context(lenient_check=False, load_value_mode=parser.parser_mode):
+                try:
+                    parser._check_value_key(action, val, key, Namespace())
+                except Exception:
+                    action = None
+        if not action:
+            del_args[key] = prev_val.init_args.pop(key)
+    return del_args
 
 
 def adapt_class_type(
@@ -2483,6 +2565,11 @@ def adapt_class_type(
 ):
     prev_val = subclass_spec_as_namespace(prev_val)
     value = subclass_spec_as_namespace(value)
+    prior_init_args = value.pop(prior_init_args_key, None)
+    if prior_init_args not in (None, *prior_init_args_modes):
+        raise ValueError(f"Expected prior_init_args to be 'keep' or 'discard', got {prior_init_args!r}")
+    if prior_init_args:
+        mark_prior_init_args(value, prior_init_args)  # so that merging it into the prior config does the same
     if is_generic_class(typehint) and not is_protocol(typehint):
         val_class = typehint
     else:
@@ -2506,7 +2593,7 @@ def adapt_class_type(
             sub_add_kwargs.setdefault("linked_targets", set())
             sub_add_kwargs["linked_targets"].add(key)
 
-    discard_init_args_on_class_path_change(parser, prev_val, value)
+    discard_prior_init_args(parser, prev_val, value, prior_init_args)
 
     dict_kwargs = value.pop("dict_kwargs", {})
     init_args = value.get("init_args", Namespace())

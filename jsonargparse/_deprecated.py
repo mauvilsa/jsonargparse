@@ -700,6 +700,31 @@ def deprecation_warning_allow_abbrev(parser, arg_string: str, option_string: str
     )
 
 
+def deprecation_warning_class_path_change_kept_init_args(parser, prev_val, value) -> None:
+    """Warns when a class_path change kept init_args, if v5.0.0 would give something else, i.e. not the defaults."""
+    defaults = parser.get_defaults(skip_validation=True)
+    given = value.get("init_args")
+    if isinstance(given, Namespace):
+        given = dict(given.items(branches=True, nested=False))
+    elif not isinstance(given, dict):  # a single init arg from the command line, e.g. --model.hidden=64
+        given = {getattr(given, "key", "").split(".")[0]: None}
+    kept = {
+        k: v
+        for k, v in prev_val.init_args.items(branches=True, nested=False)
+        if k not in given and defaults.get(k) != v  # what value gives is not kept
+    }
+    if not kept:
+        return
+    deprecation_warning(
+        "prior_init_args",
+        f"Changing class_path from {prev_val['class_path']!r} to {value['class_path']!r} kept init_args that "
+        f"differ from the defaults of the new class: {kept}. From v5.0.0, changing the class_path discards the "
+        "init_args given before. To keep them, give prior_init_args: keep next to the class_path, or "
+        "--option:keep in the command line. To already get the v5.0.0 behavior, give prior_init_args: discard.",
+        stacklevel=stacklevel_outside_parsing(),
+    )
+
+
 def stacklevel_outside_parsing() -> int:
     """Returns the stacklevel, relative to the caller, of the first frame outside jsonargparse and argparse."""
     internal = (os.path.dirname(__file__) + os.sep, argparse.__file__)

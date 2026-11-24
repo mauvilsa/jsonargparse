@@ -38,6 +38,7 @@ from jsonargparse import (
     lazy_instance,
     set_parsing_settings,
 )
+from jsonargparse._completions_jsonschema import prior_init_args_schema
 from jsonargparse._typehints import NotRequired, ReadOnly
 from jsonargparse.typing import (
     ClosedUnitInterval,
@@ -613,6 +614,7 @@ def test_subclass_type_validation(parser):
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"sub": 2}}})
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub"}})
     validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "dict_kwargs": {"extra": 1}}})
+    validate(schema, {"cls": {"class_path": f"{__name__}.Sub", "prior_init_args": "keep"}})
     validate(schema, {"cls": f"{__name__}.Sub"})
     validate(schema, {"cls": "Sub"})
     validate(schema, {"cls": "sub_config.yaml"})
@@ -620,6 +622,7 @@ def test_subclass_type_validation(parser):
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "init_args": {"flag": True}}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.RequiredSub"}})
     assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "bogus": 1}})
+    assert iter_errors(schema, {"cls": {"class_path": f"{__name__}.Sub", "prior_init_args": "maybe"}})
     assert iter_errors(schema, {"cls": {"init_args": {"sub": 2}}})
     # stricter than the parser, so that the known subclasses are suggested and validated
     assert iter_errors(schema, {"cls": {"class_path": "not_imported.Class", "init_args": {"anything": 1}}})
@@ -913,7 +916,16 @@ def test_subclass_type_without_known_class_paths(parser):
         "class_path": {"type": "string"},
         "init_args": {"type": "object"},
         "dict_kwargs": {"type": "object"},
+        **prior_init_args_schema(),
     }
+
+
+@skip_if_jsonschema_unavailable
+def test_subclass_type_without_known_class_paths_prior_init_args(parser):
+    parser.add_argument("--cls", type=AbstractBase)
+    schema = get_schema(parser)
+    validate(schema, {"cls": {"class_path": "not_imported.Class", "prior_init_args": "discard"}})
+    assert iter_errors(schema, {"cls": {"class_path": "not_imported.Class", "prior_init_args": "maybe"}})
 
 
 class UntypedBase:

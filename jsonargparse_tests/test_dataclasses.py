@@ -978,10 +978,10 @@ def test_dataclass_optional_symmetry_subclass_disabled(parser, data_type):
 def test_dataclass_optional_symmetry_subclass_enabled(parser, data_type, enable_subclasses):
     parser.add_argument("--data", type=data_type, default=DataMain(p1=2))
 
-    config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
+    config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}, "prior_init_args": "discard"}
     cfg = parser.parse_args([f"--data={json.dumps(config)}"])
     init = parser.instantiate(cfg)
-    assert init.data == DataSub(p1=2, p2="y")
+    assert init.data == DataSub(p1=1, p2="y")
 
 
 def test_add_subclass_dataclass_subclasses_disabled(parser):
@@ -1025,23 +1025,23 @@ def test_add_argument_dataclass_subclasses_enabled(parser, subtests, enable_subc
         assert dump == {"class_path": f"{__name__}.DataMain", "init_args": {"p1": 2}}
 
     with subtests.test("sub-param"):
-        config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
+        config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}, "prior_init_args": "discard"}
         cfg = parser.parse_args([f"--data={json.dumps(config)}"])
         init = parser.instantiate(cfg)
         assert isinstance(init.data, DataSub)
-        assert dataclasses.asdict(init.data) == {"p1": 2, "p2": "y"}
+        assert dataclasses.asdict(init.data) == {"p1": 1, "p2": "y"}
         dump = json_or_yaml_load(parser.dump(cfg))["data"]
-        assert dump == {"class_path": f"{__name__}.DataSub", "init_args": {"p1": 2, "p2": "y"}}
+        assert dump == {"class_path": f"{__name__}.DataSub", "init_args": {"p1": 1, "p2": "y"}}
 
     with subtests.test("sub-default"):
-        config = {"class_path": "DataSub", "init_args": {"p1": 4}}
+        config = {"class_path": "DataSub", "init_args": {"p1": 4}, "prior_init_args": "discard"}
         cfg = parser.parse_args([f"--data={json.dumps(config)}"])
         init = parser.instantiate(cfg)
         assert isinstance(init.data, DataSub)
         assert dataclasses.asdict(init.data) == {"p1": 4, "p2": "-"}
 
     with subtests.test("mixed params"):
-        config = {"class_path": f"{__name__}.DataSub", "init_args": {"p1": 3, "p2": "x"}}
+        config = {"class_path": f"{__name__}.DataSub", "init_args": {"p1": 3, "p2": "x"}, "prior_init_args": "discard"}
         cfg = parser.parse_args([f"--data={json.dumps(config)}"])
         assert cfg.data == Namespace(class_path=f"{__name__}.DataSub", init_args=Namespace(p1=3, p2="x"))
         assert cfg.data.init_args.p1 == 3
@@ -1050,17 +1050,17 @@ def test_add_argument_dataclass_subclasses_enabled(parser, subtests, enable_subc
         assert dataclasses.asdict(init.data) == {"p1": 3, "p2": "x"}
 
     with subtests.test("empty init_args"):
-        config = {"class_path": f"{__name__}.DataSub", "init_args": {}}
+        config = {"class_path": f"{__name__}.DataSub", "init_args": {}, "prior_init_args": "discard"}
         cfg = parser.parse_args([f"--data={json.dumps(config)}"])
         init = parser.instantiate(cfg)
         assert isinstance(init.data, DataSub)
-        assert dataclasses.asdict(init.data) == {"p1": 2, "p2": "-"}
+        assert dataclasses.asdict(init.data) == {"p1": 1, "p2": "-"}
 
     with subtests.test("class_path"):
-        cfg = parser.parse_args(["--data=DataSub"])
+        cfg = parser.parse_args(["--data:discard=DataSub"])
         init = parser.instantiate(cfg)
         assert isinstance(init.data, DataSub)
-        assert dataclasses.asdict(init.data) == {"p1": 2, "p2": "-"}
+        assert dataclasses.asdict(init.data) == {"p1": 1, "p2": "-"}
 
 
 def test_add_argument_dataclass_single_type_subclasses_enabled(parser, subclass_behavior):
@@ -1069,13 +1069,13 @@ def test_add_argument_dataclass_single_type_subclasses_enabled(parser, subclass_
 
     parser.add_argument("--data", type=DataMain, default=DataMain(p1=2))
 
-    config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}}
+    config = {"class_path": f"{__name__}.DataSub", "init_args": {"p2": "y"}, "prior_init_args": "discard"}
     cfg = parser.parse_args([f"--data={json.dumps(config)}"])
     init = parser.instantiate(cfg)
     assert isinstance(init.data, DataSub)
-    assert dataclasses.asdict(init.data) == {"p1": 2, "p2": "y"}
+    assert dataclasses.asdict(init.data) == {"p1": 1, "p2": "y"}
     dump = json_or_yaml_load(parser.dump(cfg))["data"]
-    assert dump == {"class_path": f"{__name__}.DataSub", "init_args": {"p1": 2, "p2": "y"}}
+    assert dump == {"class_path": f"{__name__}.DataSub", "init_args": {"p1": 1, "p2": "y"}}
 
 
 def test_add_argument_dataclass_single_type_subclasses_disabled(parser, enable_subclasses):

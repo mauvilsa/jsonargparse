@@ -67,7 +67,7 @@ def merge_config(parser, source: Namespace, target: Namespace) -> Namespace:
     source = source.clone()
     target = target.clone()
     with parser_context(parent_parser=parser):
-        ActionTypeHint.discard_init_args_on_class_path_change(parser, target, source)
+        ActionTypeHint.discard_prior_init_args_in_config(parser, target, source)
     target.update(source)
     return target
 
