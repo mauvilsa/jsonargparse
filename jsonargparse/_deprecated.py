@@ -702,16 +702,13 @@ def deprecation_warning_allow_abbrev(parser, arg_string: str, option_string: str
 
 def deprecation_warning_class_path_change_kept_init_args(parser, prev_val, value) -> None:
     """Warns when a class_path change kept init_args, if v5.0.0 would give something else, i.e. not the defaults."""
-    defaults = parser.get_defaults(skip_validation=True)
-    given = value.get("init_args")
-    if isinstance(given, Namespace):
-        given = dict(given.items(branches=True, nested=False))
-    elif not isinstance(given, dict):  # a single init arg from the command line, e.g. --model.hidden=64
-        given = {getattr(given, "key", "").split(".")[0]: None}
+    defaults = flat_init_args(parser.get_defaults(skip_validation=True))
+    given = flat_init_args(value.get("init_args"))
     kept = {
         k: v
-        for k, v in prev_val.init_args.items(branches=True, nested=False)
-        if k not in given and defaults.get(k) != v  # what value gives is not kept
+        for k, v in flat_init_args(prev_val.init_args).items()
+        if not any(k == g or k.startswith(f"{g}.") for g in given)  # what value gives is not kept
+        and defaults.get(k, v is None) != v
     }
     if not kept:
         return
@@ -723,6 +720,17 @@ def deprecation_warning_class_path_change_kept_init_args(parser, prev_val, value
         "--option:keep in the command line. To already get the v5.0.0 behavior, give prior_init_args: discard.",
         stacklevel=stacklevel_outside_parsing(),
     )
+
+
+def flat_init_args(value, prefix: str = "") -> dict:
+    """The leaves of init args without the init_args parts of nested ones, e.g. nested.x for nested.init_args.x."""
+    if not isinstance(value, (Namespace, dict)) or not value:
+        return {prefix[:-1]: value} if prefix else {}
+    items = value.items(branches=True, nested=False) if isinstance(value, Namespace) else value.items()
+    flat: dict = {}
+    for key, val in items:
+        flat.update(flat_init_args(val, prefix if key == "init_args" else f"{prefix}{key}."))
+    return flat
 
 
 def stacklevel_outside_parsing() -> int:

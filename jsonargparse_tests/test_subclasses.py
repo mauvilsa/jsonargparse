@@ -1711,6 +1711,15 @@ def test_prior_init_args_discard_dict_kwargs(parser):
     assert "dict_kwargs" not in cfg.data
 
 
+def test_prior_init_args_discard_dict_kwargs_class_change(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=SwitchBase)
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": {"class_path": "SwitchKwargs", "dict_kwargs": {"extra": 1}}}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_to, "prior_init_args": "discard"}}))
+    cfg = parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert "dict_kwargs" not in cfg.data
+
+
 def test_prior_init_args_discard_nested(parser):
     parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom))
     args = ["--data.size=5", "--data.nested=SwitchNested", "--data.nested.x=9", "--data.nested:discard=SwitchNested"]

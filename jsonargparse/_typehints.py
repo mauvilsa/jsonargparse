@@ -765,10 +765,7 @@ class ActionTypeHint(Action):
                     val, config_path = parse_value_or_config(val, enable_path=enable_path)
                 except get_loader_exceptions():
                     config_path = None
-                if prior_init_args:  # from an alias --option:mode, same as giving the key in a dict
-                    val = {"class_path": val} if isinstance(val, str) else val
-                    if isinstance(val, dict):
-                        val[prior_init_args_key] = prior_init_args
+                val = with_prior_init_args(val, prior_init_args)
                 path_meta = val.pop("__path__", None) if isinstance(val, dict) else None
                 # a single sub-config appended to a list becomes one more list item
                 appended_subconfig = append and config_path is not None and not isinstance(val, list)
@@ -2495,6 +2492,15 @@ def dump_kwargs_context(kwargs):
     yield
 
 
+def with_prior_init_args(val, mode: str | None):
+    """The value of an alias --option:mode, i.e. the same as giving prior_init_args in a dict."""
+    if mode:
+        val = {"class_path": val} if isinstance(val, str) else val
+        if isinstance(val, dict):
+            val[prior_init_args_key] = mode
+    return val
+
+
 def is_prior_init_args_option(key: str) -> bool:
     """Whether a nested key is an alias option:mode, e.g. encoder:keep from --model.encoder:keep."""
     return ":" in key and key.rpartition(":")[2] in prior_init_args_modes
@@ -2515,7 +2521,7 @@ def discard_prior_init_args(parser_or_action, prev_val, value, mode=None):
     if same_class and mode != "discard":
         return
     prev_val = subclass_spec_as_namespace(prev_val)
-    if same_class:
+    if mode == "discard":
         prev_val.pop("dict_kwargs", None)
     if not prev_val.get("init_args"):
         return

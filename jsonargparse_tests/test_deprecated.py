@@ -1669,30 +1669,56 @@ def test_class_path_change_kept_init_args_deprecation(kept_parser):
         f"Changing class_path from '{__name__}.KeptFrom' to '{__name__}.KeptTo' kept init_args that differ from "
         "the defaults of the new class: {'size': 3}. From v5.0.0, changing the class_path discards"
     ) in message
-    assert cfg.data.init_args == Namespace(size=3)
+    assert Namespace(size=3) == cfg.data.init_args
 
 
 def test_class_path_change_kept_init_args_equal_to_defaults_no_warning(kept_parser):
     with catch_warnings(record=True) as w:
         cfg = kept_parser.parse_args(["--data=KeptTo"])
-    assert w == []
-    assert cfg.data.init_args == Namespace(size=1)
+    assert [] == w
+    assert Namespace(size=1) == cfg.data.init_args
+
+
+class KeptNested:
+    def __init__(self, x: int = 1, y: int = 2):
+        pass  # pragma: no cover
+
+
+class KeptFromNested(KeptBase):
+    def __init__(self, nested: Optional[KeptNested] = None):
+        pass  # pragma: no cover
+
+
+class KeptToNested(KeptBase):
+    def __init__(self, nested: Optional[KeptNested] = None):
+        pass  # pragma: no cover
+
+
+def test_class_path_change_kept_nested_init_args_deprecation(parser):
+    parser.add_argument("--data", type=KeptBase, default=lazy_instance(KeptFromNested))
+    value = {"class_path": "KeptToNested", "init_args": {"nested": {"init_args": {"y": 3}}}}
+    args = ["--data.nested=KeptNested", "--data.nested.x=9", f"--data={json.dumps(value)}"]
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(args)
+    assert_deprecation_warn(w, message="Changing class_path from", code="cfg = parser.parse_args(args)")
+    assert "'nested.x': 9}" in " ".join(str(w[-1].message).split())
+    assert Namespace(x=9, y=3) == cfg.data.init_args.nested.init_args
 
 
 def test_class_path_change_kept_init_args_given_again_no_warning(kept_parser):
     value = {"class_path": "KeptTo", "init_args": {"size": 5}}
     with catch_warnings(record=True) as w:
         cfg = kept_parser.parse_args(["--data.size=3", f"--data={json.dumps(value)}"])
-    assert w == []
-    assert cfg.data.init_args == Namespace(size=5)
+    assert [] == w
+    assert Namespace(size=5) == cfg.data.init_args
 
 
 @pytest.mark.parametrize("mode, size", [("keep", 3), ("discard", 1)])
 def test_class_path_change_prior_init_args_no_warning(kept_parser, mode, size):
     with catch_warnings(record=True) as w:
         cfg = kept_parser.parse_args(["--data.size=3", f"--data:{mode}=KeptTo"])
-    assert w == []
-    assert cfg.data.init_args == Namespace(size=size)
+    assert [] == w
+    assert Namespace(size=size) == cfg.data.init_args
 
 
 def test_class_path_change_init_args_without_class_path_no_warning(parser):
@@ -1700,8 +1726,8 @@ def test_class_path_change_init_args_without_class_path_no_warning(parser):
     cfg = parser.parse_args(['--data={"a1": 3}'])
     with catch_warnings(record=True) as w:
         dump = parser.dump(cfg, format="json")
-    assert w == []
-    assert json.loads(dump) == {"data": {"a1": 3, "a2": "2"}}
+    assert [] == w
+    assert {"data": {"a1": 3, "a2": "2"}} == json.loads(dump)
 
 
 def test_class_path_change_prior_init_args_keep_config_no_warning(kept_parser, tmp_cwd):
@@ -1710,8 +1736,8 @@ def test_class_path_change_prior_init_args_keep_config_no_warning(kept_parser, t
     pathlib.Path("config.json").write_text(json.dumps(config))
     with catch_warnings(record=True) as w:
         cfg = kept_parser.parse_args(["--data.size=3", "--cfg=config.json"])
-    assert w == []
-    assert cfg.data.init_args == Namespace(size=3)
+    assert [] == w
+    assert Namespace(size=3) == cfg.data.init_args
 
 
 @pytest.mark.parametrize("data_type", data_main_types)
@@ -1726,10 +1752,10 @@ def test_class_path_change_kept_init_args_dataclass(parser, data_type):
         message="Changing class_path from",
         code='cfg = parser.parse_args([f"--data={json.dumps(config)}"])',
     )
-    assert parser.instantiate(cfg).data == DataSub(p1=2, p2="y")
+    assert DataSub(p1=2, p2="y") == parser.instantiate(cfg).data
     with catch_warnings(record=True) as w:
         cfg = parser.parse_args(["--data=DataSub"])
-    assert parser.instantiate(cfg).data == DataSub(p1=2, p2="-")
+    assert DataSub(p1=2, p2="-") == parser.instantiate(cfg).data
 
 
 def test_class_path_change_kept_init_args_command_line(parser, logger):
@@ -1747,7 +1773,7 @@ def test_class_path_change_kept_init_args_command_line(parser, logger):
         cfg = parser.parse_args(args)
     assert_deprecation_warn(w, message="Changing class_path from", code="cfg = parser.parse_args(args)")
     assert "discarding init_args: {'pa': 'A', 'pc': 'X'}" in logs.getvalue()
-    assert cfg.obj.init_args == Namespace(pb="B", pc=4, p=3)
+    assert Namespace(pb="B", pc=4, p=3) == cfg.obj.init_args
 
 
 def test_class_path_change_kept_init_args_default_config_files(parser, tmp_cwd, logger):
@@ -1761,4 +1787,4 @@ def test_class_path_change_kept_init_args_default_config_files(parser, tmp_cwd, 
         cfg = parser.parse_args([f"--obj={json.dumps(value)}"])
     assert_deprecation_warn(w, message="Changing class_path from", code='cfg = parser.parse_args([f"--obj=')
     assert "discarding init_args: {'param': '0'}" in logs.getvalue()
-    assert cfg.obj.init_args == Namespace(p=2)
+    assert Namespace(p=2) == cfg.obj.init_args
