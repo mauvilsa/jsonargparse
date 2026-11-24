@@ -722,14 +722,21 @@ def deprecation_warning_class_path_change_kept_init_args(parser, prev_val, value
     )
 
 
-def flat_init_args(value, prefix: str = "") -> dict:
-    """The leaves of init args without the init_args parts of nested ones, e.g. nested.x for nested.init_args.x."""
-    if not isinstance(value, (Namespace, dict)) or not value:
+def flat_init_args(value, prefix: str = "", is_args: bool = True) -> dict:
+    """The leaves of init args without the init_args parts of nested ones, e.g. nested.x for nested.init_args.x.
+
+    Plain dicts are leaves, since parsing replaces them as a whole, except for subclass specs given as dicts.
+    """
+    is_spec = isinstance(value, dict) and (is_args or "class_path" in value or "init_args" in value)
+    if not (isinstance(value, Namespace) or is_spec) or not value:
         return {prefix[:-1]: value} if prefix else {}
     items = value.items(branches=True, nested=False) if isinstance(value, Namespace) else value.items()
     flat: dict = {}
     for key, val in items:
-        flat.update(flat_init_args(val, prefix if key == "init_args" else f"{prefix}{key}."))
+        if key == "init_args":
+            flat.update(flat_init_args(val, prefix))
+        else:
+            flat.update(flat_init_args(val, f"{prefix}{key}.", is_args=False))
     return flat
 
 

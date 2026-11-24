@@ -1705,6 +1705,25 @@ def test_class_path_change_kept_nested_init_args_deprecation(parser):
     assert Namespace(x=9, y=3) == cfg.data.init_args.nested.init_args
 
 
+class KeptFromDict(KeptBase):
+    def __init__(self, options: dict = {"a": 9, "b": 2}):
+        pass  # pragma: no cover
+
+
+class KeptToDict(KeptBase):
+    def __init__(self, options: dict = {"a": 1}):
+        pass  # pragma: no cover
+
+
+def test_class_path_change_replaced_dict_no_warning(parser):
+    parser.add_argument("--data", type=KeptBase, default=lazy_instance(KeptFromDict))
+    value = {"class_path": "KeptToDict", "init_args": {"options": {"a": 1}}}
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args([f"--data={json.dumps(value)}"])
+    assert [] == w
+    assert {"a": 1} == cfg.data.init_args.options
+
+
 def test_class_path_change_kept_init_args_given_again_no_warning(kept_parser):
     value = {"class_path": "KeptTo", "init_args": {"size": 5}}
     with catch_warnings(record=True) as w:
