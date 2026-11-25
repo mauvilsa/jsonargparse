@@ -622,7 +622,7 @@ def timedelta_deserializer(value):
     pattern = r"(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d[\.\d+]*)"
     if "day" in value:
         pattern = r"(?P<days>[-\d]+) day[s]*, " + pattern
-    match = re.match(pattern, value)
+    match = re.fullmatch(pattern, value)
     if not match:
         raise_error()
     kwargs = {key: float(val) for key, val in match.groupdict().items()}

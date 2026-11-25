@@ -304,6 +304,13 @@ def test_timedelta_deserializer_failure(delta_in):
         get_registered_type(timedelta).deserializer(delta_in)
 
 
+@pytest.mark.parametrize("delta_in", ["1:2:3 trailing", "1 day, 2:03:04 trailing"])
+def test_timedelta_rejects_trailing_text(parser, delta_in):
+    parser.add_argument("--delta", type=timedelta)
+    with pytest.raises(ArgumentError, match="--delta"):
+        parser.parse_args([f"--delta={delta_in}"])
+
+
 bytes_parametrize = (
     ["serialized", "deserialized"],
     [

@@ -270,6 +270,9 @@ Fixed
   enabled, took time exponential in the depth of nesting, so that a few levels
   could take minutes (`#1036
   <https://github.com/mauvilsa/jsonargparse/pull/1036>`__).
+- ``timedelta`` values with trailing text after a valid duration, e.g.
+  ``1:2:3 trailing``, being accepted with the trailing text silently ignored
+  (`#1039 <https://github.com/mauvilsa/jsonargparse/pull/1039>`__).
 
 Changed
 ^^^^^^^
