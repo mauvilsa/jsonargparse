@@ -700,6 +700,46 @@ def deprecation_warning_allow_abbrev(parser, arg_string: str, option_string: str
     )
 
 
+def deprecation_warning_class_path_change_kept_init_args(parser, prev_val, value) -> None:
+    """Warns when a class_path change kept init_args, if v5.0.0 would give something else, i.e. not the defaults."""
+    defaults = flat_init_args(parser.get_defaults(skip_validation=True))
+    given = flat_init_args(value.get("init_args"))
+    kept = {
+        k: v
+        for k, v in flat_init_args(prev_val.init_args).items()
+        if not any(k == g or k.startswith(f"{g}.") for g in given)  # what value gives is not kept
+        and defaults.get(k, v is None) != v
+    }
+    if not kept:
+        return
+    deprecation_warning(
+        "prior_init_args",
+        f"Changing class_path from {prev_val['class_path']!r} to {value['class_path']!r} kept init_args that "
+        f"differ from the defaults of the new class: {kept}. From v5.0.0, changing the class_path discards the "
+        "init_args given before. To keep them, give prior_init_args: keep next to the class_path, or "
+        "--option:keep in the command line. To already get the v5.0.0 behavior, give prior_init_args: discard.",
+        stacklevel=stacklevel_outside_parsing(),
+    )
+
+
+def flat_init_args(value, prefix: str = "", is_args: bool = True) -> dict:
+    """The leaves of init args without the init_args parts of nested ones, e.g. nested.x for nested.init_args.x.
+
+    Plain dicts are leaves, since parsing replaces them as a whole, except for subclass specs given as dicts.
+    """
+    is_spec = isinstance(value, dict) and (is_args or "class_path" in value or "init_args" in value)
+    if not (isinstance(value, Namespace) or is_spec) or not value:
+        return {prefix[:-1]: value} if prefix else {}
+    items = value.items(branches=True, nested=False) if isinstance(value, Namespace) else value.items()
+    flat: dict = {}
+    for key, val in items:
+        if key == "init_args":
+            flat.update(flat_init_args(val, prefix))
+        else:
+            flat.update(flat_init_args(val, f"{prefix}{key}.", is_args=False))
+    return flat
+
+
 def stacklevel_outside_parsing() -> int:
     """Returns the stacklevel, relative to the caller, of the first frame outside jsonargparse and argparse."""
     internal = (os.path.dirname(__file__) + os.sep, argparse.__file__)

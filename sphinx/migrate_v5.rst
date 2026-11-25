@@ -68,6 +68,14 @@ changes:
   on the working directory, e.g. a custom type that opens a relative path, must
   instead use a path type such as :class:`.Path_fr`, which gives the resolved
   absolute path.
+- **Changing a class_path discards the init_args given before.** Gives a
+  deprecation warning in v4 when the result changes. When a value changes the
+  class of a subclass type, e.g. ``--model=Other`` after a config with
+  ``model: {class_path: Base, init_args: {hidden: 64}}``, ``Other`` no longer
+  gets ``hidden=64``, but its own default. To keep them, give
+  ``prior_init_args: keep`` next to the ``class_path``, or in the command line
+  ``--model:keep=Other``, see :ref:`prior-init-args`. Unlike in v4, ``keep``
+  does not carry over defaults from the signature of the previous class.
 - **Configs can no longer import and instantiate anything.** See `Subclass specs
   and import paths`_ below.
 - **Function and method groups are instantiated.** For a group added by

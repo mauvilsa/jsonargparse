@@ -9,6 +9,7 @@ __all__ = ["Namespace"]
 
 
 subclasses_disabled_meta_key = "__subclasses_disabled__"
+prior_init_args_mark_key = "__prior_init_args__"
 meta_keys = {"__default_config__", "__path__", "__orig__", subclasses_disabled_meta_key}
 
 
@@ -41,13 +42,27 @@ def recreate_branches(data, skip_keys=None):
         for key, val in getattr(data, "__dict__", data).items():
             if skip_keys is None or key not in skip_keys:
                 new_data[key] = recreate_branches(val, skip_keys)
+        mode = get_prior_init_args_mark(data)
+        if mode:
+            mark_prior_init_args(new_data, mode)
     elif isinstance(data, list):
         new_data = [recreate_branches(v, skip_keys) for v in data]
     return new_data
 
 
+def mark_prior_init_args(namespace: "Namespace", mode: str) -> None:
+    """Marks a subclass spec with its prior_init_args, so that merging it treats the prior init_args the same."""
+    object.__setattr__(namespace, prior_init_args_mark_key, mode)
+
+
+def get_prior_init_args_mark(namespace: Any) -> str | None:
+    return getattr(namespace, prior_init_args_mark_key, None)
+
+
 class Namespace(argparse.Namespace):
     """Extension of argparse's Namespace to support nesting and subscript access."""
+
+    __slots__ = (prior_init_args_mark_key,)  # stored outside __dict__, so that it is not seen as a value
 
     def __init__(self, *args, **kwargs):
         """Initializer for Namespace instance.
@@ -247,7 +262,7 @@ class Namespace(argparse.Namespace):
         return parent_ns.__dict__.pop(leaf_key, default)
 
 
-clash_names: set[str] = set(dir(Namespace))
+clash_names: set[str] = set(dir(Namespace)) - {prior_init_args_mark_key}
 clash_mark = "\u200b"
 
 

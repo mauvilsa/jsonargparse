@@ -12,6 +12,24 @@ The semantic versioning only considers the public API as described in
 paths are considered internals and can change in minor and patch releases.
 
 
+v4.54.0 (unreleased)
+--------------------
+
+Added
+^^^^^
+- New ``prior_init_args`` key next to a ``class_path``, and ``--option:keep``
+  and ``--option:discard`` in the command line, to choose whether the
+  ``init_args`` given before are kept or discarded (`#1037
+  <https://github.com/mauvilsa/jsonargparse/pull/1037>`__).
+
+Deprecated
+^^^^^^^^^^
+- Changing the ``class_path`` keeps the ``init_args`` given before that the new
+  class accepts. From v5.0.0 they are discarded. Warns when a kept value differs
+  from the default of the new class. To keep them, give ``prior_init_args:
+  keep`` (`#1037 <https://github.com/mauvilsa/jsonargparse/pull/1037>`__).
+
+
 v4.53.0 (2026-10-23)
 --------------------
 

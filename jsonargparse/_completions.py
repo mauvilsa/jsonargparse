@@ -90,7 +90,7 @@ def patch_argcomplete_support():
 
 
 def get_argcomplete_namespace(parser, namespace):
-    namespace.__class__ = __import__("jsonargparse").Namespace
+    namespace = __import__("jsonargparse").Namespace(namespace)  # since it has __slots__, __class__ can't be set
     return merge_config(parser, parser.get_defaults(skip_validation=True), namespace).as_flat()
 
 
@@ -216,6 +216,8 @@ def shtab_prepare_actions(parser) -> None:
 def shtab_prepare_action(action, parser) -> None:
     import shtab
 
+    if isinstance(action, ActionTypeHint):  # like in the help, the --option:mode aliases are not listed
+        action.option_strings = ActionTypeHint.without_prior_init_args_aliases(action).option_strings
     if action.choices or hasattr(action, "complete"):
         return
 

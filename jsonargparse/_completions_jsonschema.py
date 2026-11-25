@@ -36,6 +36,8 @@ from ._typehints import (
     is_single_subclass_type,
     literal_types,
     mapping_origin_types,
+    prior_init_args_key,
+    prior_init_args_modes,
     sequence_origin_types,
     tuple_set_origin_types,
     typed_dict_key_qualifiers,
@@ -59,6 +61,12 @@ subcommand_description = (
     "Name of the subcommand to run. It can be omitted, in which case it is the only subcommand block "
     "present in the config, or can be given as a command line argument."
 )
+
+
+def prior_init_args_schema() -> dict:
+    description = "What to do with the init_args given before: keep the ones the class accepts, or discard them."
+    return {prior_init_args_key: {"enum": list(prior_init_args_modes), "description": description}}
+
 
 basic_type_schemas = {
     bool: {"type": "boolean"},
@@ -536,6 +544,7 @@ class ParserJsonschema:
                 "class_path": {"const": class_path},
                 "init_args": init_args_schema,
                 "dict_kwargs": {"type": "object"},
+                **prior_init_args_schema(),
             }
         )
         # init_args can only be omitted when none of the init parameters is required
@@ -550,6 +559,7 @@ class ParserJsonschema:
                 "class_path": {"type": "string"},
                 "init_args": {"type": "object"},
                 "dict_kwargs": {"type": "object"},
+                **prior_init_args_schema(),
             }
         )
         schema["required"] = ["class_path"]

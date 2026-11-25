@@ -1299,14 +1299,14 @@ def test_subclass_discard_init_args(parser, logger):
                 "--obj.init_args.pa=A",
                 "--obj.init_args.pc=X",
                 "--obj.init_args.p=3",
-                f"--obj.class_path={__name__}.OverrideB",
+                f"--obj:discard={__name__}.OverrideB",
                 "--obj.init_args.pb=B",
             ]
         )
 
-    assert "discarding init_args: {'pa': 'A', 'pc': 'X'}" in logs.getvalue()
+    assert "discarding init_args: {'pa': 'A', 'pc': 'X', 'p': 3}" in logs.getvalue()
     assert cfg.obj.class_path == f"{__name__}.OverrideB"
-    assert cfg.obj.init_args == Namespace(pb="B", pc=4, p=3)
+    assert cfg.obj.init_args == Namespace(pb="B", pc=4, p=0)
 
 
 class OverrideChildBase:
@@ -1419,8 +1419,9 @@ def test_subclass_discard_init_args_with_default_config_files(parser, tmp_cwd, l
 
     parser.logger = logger
     with capture_logs(logger) as logs:
-        cfg = parser.parse_args([f'--obj={{"class_path": "{__name__}.BaseC", "init_args": {{"p": 3}}}}'])
-    assert "discarding init_args: {'param': '1'}" in logs.getvalue()
+        value = {"class_path": f"{__name__}.BaseC", "init_args": {"p": 3}, "prior_init_args": "discard"}
+        cfg = parser.parse_args([f"--obj={json.dumps(value)}"])
+    assert "discarding init_args: {'param': '1', 'p': 2}" in logs.getvalue()
     assert cfg.obj.init_args == Namespace(p=3)
     with capture_logs(logger) as logs:
         assert type(parser.instantiate(cfg).obj) is BaseC
@@ -1534,6 +1535,242 @@ class DictDiscardSub2(DictDiscardBase):
 class DictDiscardMain:
     def __init__(self, sub: Optional[dict] = None):
         self.sub = sub
+
+
+class SwitchBase:
+    pass
+
+
+class SwitchNested:
+    def __init__(self, x: int = 1, y: int = 2):
+        pass  # pragma: no cover
+
+
+class SwitchFrom(SwitchBase):
+    def __init__(self, path: str = "from.json", size: int = 1, nested: Optional[SwitchNested] = None):
+        pass  # pragma: no cover
+
+
+class SwitchTo(SwitchBase):
+    def __init__(self, path: str = "to.db", size: int = 2, nested: Optional[SwitchNested] = None):
+        pass  # pragma: no cover
+
+
+class SwitchBool(SwitchBase):
+    def __init__(self, size: bool = False):
+        pass  # pragma: no cover
+
+
+class SwitchKwargs(SwitchBase):
+    def __init__(self, size: int = 3, **kwargs):
+        pass  # pragma: no cover
+
+
+switch_from = f"{__name__}.SwitchFrom"
+switch_to = f"{__name__}.SwitchTo"
+
+
+@pytest.fixture
+def switch_parser(parser):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom, path="custom.json"))
+    return parser
+
+
+# default: keep, as in v4
+
+
+def test_class_path_same_keeps_values(switch_parser):
+    cfg = switch_parser.parse_args(["--data.size=5", "--data=SwitchFrom"])
+    assert cfg.data.init_args.size == 5
+    assert cfg.data.init_args.path == "custom.json"
+
+
+def test_class_path_same_layered_configs_merged(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=SwitchBase)
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_to, "init_args": {"size": 3}}}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_to, "init_args": {"path": "b"}}}))
+    cfg = parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert cfg.data.init_args.size == 3
+    assert cfg.data.init_args.path == "b"
+
+
+# keep
+
+
+def test_prior_init_args_keep_command_line(switch_parser):
+    cfg = switch_parser.parse_args(["--data.size=5", "--data:keep=SwitchTo"])
+    assert cfg.data.class_path == switch_to
+    assert cfg.data.init_args == Namespace(path="custom.json", size=5, nested=None)
+
+
+def test_prior_init_args_keep_config(switch_parser, tmp_cwd):
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_from, "init_args": {"size": 5}}}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_to, "prior_init_args": "keep"}}))
+    cfg = switch_parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert cfg.data.class_path == switch_to
+    assert cfg.data.init_args == Namespace(path="custom.json", size=5, nested=None)
+
+
+def test_prior_init_args_keep_default_config_file(parser, tmp_cwd):
+    Path("defaults.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_from, "init_args": {"size": 7}}}))
+    parser.default_config_files = ["defaults.yaml"]
+    parser.add_argument("--data", type=SwitchBase)
+    cfg = parser.parse_args(["--data:keep=SwitchTo"])
+    assert cfg.data.init_args.size == 7
+    assert cfg.data.init_args.path == "from.json"  # in v4 also defaults of the previous class
+
+
+def test_prior_init_args_keep_json_value(switch_parser):
+    value = json.dumps({"class_path": "SwitchTo", "init_args": {"path": "given"}})
+    cfg = switch_parser.parse_args(["--data.size=5", f"--data:keep={value}"])
+    assert cfg.data.init_args == Namespace(path="given", size=5, nested=None)
+
+
+def test_prior_init_args_keep_nested(parser):
+    parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom))
+    cfg = parser.parse_args(["--data.nested=SwitchNested", "--data.nested.x=9", "--data:keep=SwitchTo"])
+    assert cfg.data.init_args.nested.init_args == Namespace(x=9, y=2)
+    assert cfg.data.init_args.size == 1  # in v4 also defaults of the previous class
+
+
+def test_prior_init_args_keep_not_accepted_dropped(parser, logger):
+    parser.logger = logger
+    parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom))
+    with capture_logs(logger) as logs:
+        cfg = parser.parse_args(["--data.path=given", "--data:keep=SwitchBool"])
+    assert cfg.data.init_args == Namespace(size=False)
+    assert "discarding init_args: {'path': 'given', 'size': 1, 'nested': None}" in logs.getvalue()
+
+
+def test_prior_init_args_keep_same_class(switch_parser):
+    cfg = switch_parser.parse_args(["--data.size=5", "--data:keep=SwitchFrom"])
+    assert cfg.data.init_args == Namespace(path="custom.json", size=5, nested=None)
+
+
+def test_prior_init_args_keep_list_item(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=list[SwitchBase])
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": [{"class_path": switch_from, "init_args": {"size": 5}}]}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": [{"class_path": switch_to, "prior_init_args": "keep"}]}))
+    cfg = parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert cfg.data[0].init_args == Namespace(path="to.db", size=5, nested=None)
+
+
+# discard
+
+
+def test_prior_init_args_discard_same_class(switch_parser):
+    cfg = switch_parser.parse_args(["--data.size=5", "--data:discard=SwitchFrom"])
+    assert cfg.data.class_path == switch_from
+    assert cfg.data.init_args == Namespace(path="from.json", size=1, nested=None)
+
+
+def test_prior_init_args_discard_logs(switch_parser, logger):
+    switch_parser.logger = logger
+    with capture_logs(logger) as logs:
+        switch_parser.parse_args(["--data.size=5", "--data:discard=SwitchFrom"])
+    assert f"Due to prior_init_args 'discard' of {switch_from!r}, discarding init_args: {{'path'" in logs.getvalue()
+
+
+def test_prior_init_args_discard_null(parser):
+    parser.add_argument("--data", type=Optional[SwitchBase], default=lazy_instance(SwitchFrom))
+    cfg = parser.parse_args(["--data:discard=null"])
+    assert cfg.data is None
+
+
+def test_prior_init_args_discard_then_value_given(switch_parser):
+    cfg = switch_parser.parse_args(["--data:discard=SwitchFrom", "--data.size=5"])
+    assert cfg.data.init_args == Namespace(path="from.json", size=5, nested=None)
+
+
+def test_prior_init_args_discard_config_same_class(switch_parser, tmp_cwd):
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_from, "init_args": {"size": 5}}}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": {"prior_init_args": "discard", "init_args": {"size": 6}}}))
+    cfg = switch_parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert cfg.data.class_path == switch_from
+    assert cfg.data.init_args == Namespace(path="from.json", size=6, nested=None)
+
+
+def test_prior_init_args_discard_config_without_class_path(switch_parser, tmp_cwd):
+    Path("config.yaml").write_text(json_or_yaml_dump({"data": {"prior_init_args": "discard"}}))
+    cfg = switch_parser.parse_args(["--data.size=5", "--cfg=config.yaml"])
+    assert cfg.data.class_path == switch_from
+    assert cfg.data.init_args == Namespace(path="from.json", size=1, nested=None)
+
+
+def test_prior_init_args_discard_parse_object(switch_parser):
+    cfg = switch_parser.parse_object({"data": {"class_path": switch_from, "prior_init_args": "discard"}})
+    assert cfg.data.init_args.path == "from.json"
+
+
+def test_prior_init_args_discard_dict_kwargs(parser):
+    parser.add_argument("--data", type=SwitchBase)
+    cfg = parser.parse_args(["--data=SwitchKwargs", "--data.dict_kwargs.extra=1", "--data:discard=SwitchKwargs"])
+    assert "dict_kwargs" not in cfg.data
+
+
+def test_prior_init_args_discard_dict_kwargs_class_change(parser, tmp_cwd):
+    parser.add_argument("--cfg", action="config")
+    parser.add_argument("--data", type=SwitchBase)
+    Path("a.yaml").write_text(json_or_yaml_dump({"data": {"class_path": "SwitchKwargs", "dict_kwargs": {"extra": 1}}}))
+    Path("b.yaml").write_text(json_or_yaml_dump({"data": {"class_path": switch_to, "prior_init_args": "discard"}}))
+    cfg = parser.parse_args(["--cfg=a.yaml", "--cfg=b.yaml"])
+    assert "dict_kwargs" not in cfg.data
+
+
+def test_prior_init_args_discard_nested(parser):
+    parser.add_argument("--data", type=SwitchBase, default=lazy_instance(SwitchFrom))
+    args = ["--data.size=5", "--data.nested=SwitchNested", "--data.nested.x=9", "--data.nested:discard=SwitchNested"]
+    cfg = parser.parse_args(args)
+    assert cfg.data.init_args.size == 5
+    assert cfg.data.init_args.nested.init_args == Namespace(x=1, y=2)
+
+
+def test_prior_init_args_discard_not_in_dump(switch_parser):
+    cfg = switch_parser.parse_args(["--data:discard=SwitchFrom"])
+    dump = json_or_yaml_load(switch_parser.dump(cfg))
+    assert dump["data"] == {"class_path": switch_from, "init_args": {"path": "from.json", "size": 1}}
+
+
+# misuse
+
+
+def test_prior_init_args_invalid_value(switch_parser):
+    value = json.dumps({"class_path": "SwitchTo", "prior_init_args": "maybe"})
+    with pytest.raises(ArgumentError, match="Expected prior_init_args to be 'keep' or 'discard', got 'maybe'"):
+        switch_parser.parse_args([f"--data={value}"])
+
+
+def test_prior_init_args_invalid_type(switch_parser):
+    value = json.dumps({"class_path": "SwitchTo", "prior_init_args": ["keep"]})
+    with pytest.raises(ArgumentError, match=r"Expected prior_init_args to be 'keep' or 'discard', got \['keep'\]"):
+        switch_parser.parse_args([f"--data={value}"])
+
+
+def test_prior_init_args_suffix_requires_value(switch_parser):
+    with pytest.raises(ArgumentError, match="expected one argument"):
+        switch_parser.parse_args(["--data:discard"])
+
+
+def test_prior_init_args_suffix_not_for_non_class_option(parser):
+    parser.add_argument("--num", type=int)
+    with pytest.raises(ArgumentError, match="unrecognized arguments: --num:keep"):
+        parser.parse_args(["--num:keep=1"])
+
+
+def test_prior_init_args_suffix_not_for_list_option(parser):
+    parser.add_argument("--data", type=list[SwitchBase])
+    with pytest.raises(ArgumentError, match="unrecognized arguments: --data:keep"):
+        parser.parse_args(["--data:keep=SwitchTo"])
+
+
+def test_prior_init_args_suffix_not_in_help(switch_parser):
+    help_str = get_parser_help(switch_parser)
+    assert "--data DATA" in help_str or "--data " in help_str
+    assert ":keep" not in help_str
+    assert ":discard" not in help_str
 
 
 def test_subclass_discard_init_args_dict_looks_like_subclass(parser, logger, tmp_cwd):

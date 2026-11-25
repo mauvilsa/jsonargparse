@@ -28,6 +28,7 @@ from jsonargparse import (
     auto_cli,
     compose_dataclasses,
     get_config_read_mode,
+    lazy_instance,
     set_config_read_mode,
     set_docstring_parse_options,
     set_parsing_settings,
@@ -62,6 +63,7 @@ from jsonargparse._optionals import (
 from jsonargparse._util import argument_error, import_object
 from jsonargparse.typing import Path
 from jsonargparse_tests.conftest import (
+    capture_logs,
     get_parser_help,
     is_posix,
     patch_parsing_settings,
@@ -72,11 +74,23 @@ from jsonargparse_tests.conftest import (
     skip_if_requests_unavailable,
     skip_if_responses_unavailable,
 )
-from jsonargparse_tests.test_dataclasses import DataClassA
+from jsonargparse_tests.test_dataclasses import (
+    DataClassA,
+    DataMain,
+    DataSub,
+    data_main_types,
+    enable_subclasses,  # noqa: F401
+)
 from jsonargparse_tests.test_jsonnet import example_2_jsonnet
 from jsonargparse_tests.test_paths import paths  # noqa: F401
 from jsonargparse_tests.test_signatures import WithMethods
-from jsonargparse_tests.test_subclasses import CustomInstantiationBase, instantiator
+from jsonargparse_tests.test_subclasses import (
+    BaseC,
+    CustomInstantiationBase,
+    OverrideB,
+    OverrideDefaultConfig,
+    instantiator,
+)
 from jsonargparse_tests.test_subcommands import subcommands_parser  # noqa: F401
 
 
@@ -1617,3 +1631,179 @@ def test_allow_abbrev_explicit_no_deprecation(subparser):
         cfg = parser.parse_args(["--max", "3", "fit", "--learning", "0.2"])
     assert w == []
     assert (cfg.max_epochs, cfg.fit.learning_rate) == (3, 0.2)
+
+
+# class_path change keeping init_args tests
+
+
+class KeptBase:
+    pass
+
+
+class KeptFrom(KeptBase):
+    def __init__(self, size: int = 1, path: str = "from.json"):
+        pass  # pragma: no cover
+
+
+class KeptTo(KeptBase):
+    def __init__(self, size: int = 1):
+        pass  # pragma: no cover
+
+
+@pytest.fixture
+def kept_parser(parser):
+    parser.add_argument("--data", type=KeptBase, default=lazy_instance(KeptFrom))
+    return parser
+
+
+def test_class_path_change_kept_init_args_deprecation(kept_parser):
+    with catch_warnings(record=True) as w:
+        cfg = kept_parser.parse_args(["--data.size=3", "--data=KeptTo"])
+    assert_deprecation_warn(
+        w,
+        message="Changing class_path from",
+        code='cfg = kept_parser.parse_args(["--data.size=3", "--data=KeptTo"])',
+    )
+    message = " ".join(str(w[-1].message).split())
+    assert (
+        f"Changing class_path from '{__name__}.KeptFrom' to '{__name__}.KeptTo' kept init_args that differ from "
+        "the defaults of the new class: {'size': 3}. From v5.0.0, changing the class_path discards"
+    ) in message
+    assert Namespace(size=3) == cfg.data.init_args
+
+
+def test_class_path_change_kept_init_args_equal_to_defaults_no_warning(kept_parser):
+    with catch_warnings(record=True) as w:
+        cfg = kept_parser.parse_args(["--data=KeptTo"])
+    assert [] == w
+    assert Namespace(size=1) == cfg.data.init_args
+
+
+class KeptNested:
+    def __init__(self, x: int = 1, y: int = 2):
+        pass  # pragma: no cover
+
+
+class KeptFromNested(KeptBase):
+    def __init__(self, nested: Optional[KeptNested] = None):
+        pass  # pragma: no cover
+
+
+class KeptToNested(KeptBase):
+    def __init__(self, nested: Optional[KeptNested] = None):
+        pass  # pragma: no cover
+
+
+def test_class_path_change_kept_nested_init_args_deprecation(parser):
+    parser.add_argument("--data", type=KeptBase, default=lazy_instance(KeptFromNested))
+    value = {"class_path": "KeptToNested", "init_args": {"nested": {"init_args": {"y": 3}}}}
+    args = ["--data.nested=KeptNested", "--data.nested.x=9", f"--data={json.dumps(value)}"]
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(args)
+    assert_deprecation_warn(w, message="Changing class_path from", code="cfg = parser.parse_args(args)")
+    assert "'nested.x': 9}" in " ".join(str(w[-1].message).split())
+    assert Namespace(x=9, y=3) == cfg.data.init_args.nested.init_args
+
+
+class KeptFromDict(KeptBase):
+    def __init__(self, options: dict = {"a": 9, "b": 2}):
+        pass  # pragma: no cover
+
+
+class KeptToDict(KeptBase):
+    def __init__(self, options: dict = {"a": 1}):
+        pass  # pragma: no cover
+
+
+def test_class_path_change_replaced_dict_no_warning(parser):
+    parser.add_argument("--data", type=KeptBase, default=lazy_instance(KeptFromDict))
+    value = {"class_path": "KeptToDict", "init_args": {"options": {"a": 1}}}
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args([f"--data={json.dumps(value)}"])
+    assert [] == w
+    assert {"a": 1} == cfg.data.init_args.options
+
+
+def test_class_path_change_kept_init_args_given_again_no_warning(kept_parser):
+    value = {"class_path": "KeptTo", "init_args": {"size": 5}}
+    with catch_warnings(record=True) as w:
+        cfg = kept_parser.parse_args(["--data.size=3", f"--data={json.dumps(value)}"])
+    assert [] == w
+    assert Namespace(size=5) == cfg.data.init_args
+
+
+@pytest.mark.parametrize("mode, size", [("keep", 3), ("discard", 1)])
+def test_class_path_change_prior_init_args_no_warning(kept_parser, mode, size):
+    with catch_warnings(record=True) as w:
+        cfg = kept_parser.parse_args(["--data.size=3", f"--data:{mode}=KeptTo"])
+    assert [] == w
+    assert Namespace(size=size) == cfg.data.init_args
+
+
+def test_class_path_change_init_args_without_class_path_no_warning(parser):
+    parser.add_argument("--data", type=Optional[DataClassA])
+    cfg = parser.parse_args(['--data={"a1": 3}'])
+    with catch_warnings(record=True) as w:
+        dump = parser.dump(cfg, format="json")
+    assert [] == w
+    assert {"data": {"a1": 3, "a2": "2"}} == json.loads(dump)
+
+
+def test_class_path_change_prior_init_args_keep_config_no_warning(kept_parser, tmp_cwd):
+    kept_parser.add_argument("--cfg", action="config")
+    config = {"data": {"class_path": f"{__name__}.KeptTo", "prior_init_args": "keep"}}
+    pathlib.Path("config.json").write_text(json.dumps(config))
+    with catch_warnings(record=True) as w:
+        cfg = kept_parser.parse_args(["--data.size=3", "--cfg=config.json"])
+    assert [] == w
+    assert Namespace(size=3) == cfg.data.init_args
+
+
+@pytest.mark.parametrize("data_type", data_main_types)
+@pytest.mark.usefixtures("enable_subclasses")
+def test_class_path_change_kept_init_args_dataclass(parser, data_type):
+    parser.add_argument("--data", type=data_type, default=DataMain(p1=2))
+    config = {"class_path": "DataSub", "init_args": {"p2": "y"}}
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args([f"--data={json.dumps(config)}"])
+    assert_deprecation_warn(
+        w,
+        message="Changing class_path from",
+        code='cfg = parser.parse_args([f"--data={json.dumps(config)}"])',
+    )
+    assert DataSub(p1=2, p2="y") == parser.instantiate(cfg).data
+    with catch_warnings(record=True) as w:
+        cfg = parser.parse_args(["--data=DataSub"])
+    assert DataSub(p1=2, p2="-") == parser.instantiate(cfg).data
+
+
+def test_class_path_change_kept_init_args_command_line(parser, logger):
+    parser.logger = logger
+    parser.add_subclass_arguments(BaseC, "obj")
+    args = [
+        f"--obj.class_path={OverrideB.__module__}.OverrideA",
+        "--obj.init_args.pa=A",
+        "--obj.init_args.pc=X",
+        "--obj.init_args.p=3",
+        f"--obj.class_path={OverrideB.__module__}.OverrideB",
+        "--obj.init_args.pb=B",
+    ]
+    with capture_logs(logger) as logs, catch_warnings(record=True) as w:
+        cfg = parser.parse_args(args)
+    assert_deprecation_warn(w, message="Changing class_path from", code="cfg = parser.parse_args(args)")
+    assert "discarding init_args: {'pa': 'A', 'pc': 'X'}" in logs.getvalue()
+    assert Namespace(pb="B", pc=4, p=3) == cfg.obj.init_args
+
+
+def test_class_path_change_kept_init_args_default_config_files(parser, tmp_cwd, logger):
+    config = {"class_path": f"{OverrideDefaultConfig.__module__}.OverrideDefaultConfig", "init_args": {"p": 2}}
+    pathlib.Path("config.yaml").write_text(json.dumps({"obj": config}))
+    parser.default_config_files = ["config.yaml"]
+    parser.add_argument("--obj", type=Optional[BaseC])
+    parser.logger = logger
+    value = {"class_path": f"{BaseC.__module__}.BaseC"}
+    with capture_logs(logger) as logs, catch_warnings(record=True) as w:
+        cfg = parser.parse_args([f"--obj={json.dumps(value)}"])
+    assert_deprecation_warn(w, message="Changing class_path from", code='cfg = parser.parse_args([f"--obj=')
+    assert "discarding init_args: {'param': '0'}" in logs.getvalue()
+    assert Namespace(p=2) == cfg.obj.init_args

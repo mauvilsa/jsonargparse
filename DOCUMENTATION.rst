@@ -2630,6 +2630,51 @@ giving directly ``init_args``, for example:
 
 would implicitly use ``calendar.Calendar`` as the class path.
 
+.. _prior-init-args:
+
+Prior init args
+---------------
+
+When a later config or command line argument gives a different ``class_path``,
+the ``init_args`` given before that the new class accepts are kept. This is
+deprecated, since from v5.0.0 they are discarded, so the new class starts from
+its own defaults. Giving the same class again keeps them, so that layered
+configs can refine a class. The ``prior_init_args`` key changes what happens:
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``prior_init_args``
+     - Class changes
+     - Same class
+   * - not given
+     - keep the ones the new class accepts (deprecated)
+     - keep
+   * - ``keep``
+     - keep the ones the new class accepts
+     - keep
+   * - ``discard``
+     - discard
+     - discard
+
+For example, to switch class on top of a base config, keeping the parameters
+that both classes have:
+
+.. code-block:: yaml
+
+    calendar:
+      class_path: calendar.TextCalendar
+      prior_init_args: keep
+
+In the command line, ``--calendar:keep TextCalendar`` and ``--calendar:discard
+TextCalendar`` are the same as giving the key. These are not available for a
+list of classes, but each item can have the key. Without ``class_path``,
+``prior_init_args: discard`` resets the current class to its defaults.
+
+Arguments are applied in order, so ``--calendar.firstweekday 2 --calendar
+TextCalendar`` changes the class after ``firstweekday`` was given, while
+``--calendar TextCalendar --calendar.firstweekday 2`` gives it to the new class.
+
 
 Default values
 --------------
