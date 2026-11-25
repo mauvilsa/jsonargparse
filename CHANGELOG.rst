@@ -386,6 +386,11 @@ Changed
   directory (`#1019 <https://github.com/mauvilsa/jsonargparse/pull/1019>`__).
 - The minimum supported ``omegaconf`` version is now 2.4.0 (`#1028
   <https://github.com/mauvilsa/jsonargparse/pull/1028>`__).
+- Changing the ``class_path`` of a subclass type now discards the ``init_args``
+  given before, instead of keeping the ones that the new class accepts. To keep
+  them, use ``prior_init_args: keep``, which no longer carries over defaults
+  from the signature of the previous class (`#1038
+  <https://github.com/mauvilsa/jsonargparse/pull/1038>`__).
 
 Removed
 ^^^^^^^
@@ -397,6 +402,24 @@ Removed
 - The ``yaml.SafeDumper`` representer for ``Namespace``, which was only added
   for backward compatibility in pytorch-lightning (`#969
   <https://github.com/mauvilsa/jsonargparse/pull/969>`__).
+
+
+v4.54.0 (unreleased)
+--------------------
+
+Added
+^^^^^
+- New ``prior_init_args`` key next to a ``class_path``, and ``--option:keep``
+  and ``--option:discard`` in the command line, to choose whether the
+  ``init_args`` given before are kept or discarded (`#1037
+  <https://github.com/mauvilsa/jsonargparse/pull/1037>`__).
+
+Deprecated
+^^^^^^^^^^
+- Changing the ``class_path`` keeps the ``init_args`` given before that the new
+  class accepts. From v5.0.0 they are discarded. Warns when a kept value differs
+  from the default of the new class. To keep them, give ``prior_init_args:
+  keep`` (`#1037 <https://github.com/mauvilsa/jsonargparse/pull/1037>`__).
 
 
 v4.53.0 (2026-10-23)

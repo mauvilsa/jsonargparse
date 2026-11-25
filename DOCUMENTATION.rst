@@ -1470,7 +1470,7 @@ The included configs, and then the keys that follow, are merged exactly as if
 they had been given one after the other, e.g. as several ``--config``. So the
 same rules apply, for instance a ``dict`` value is replaced, items are appended
 when the key is given with a ``+`` suffix, see :ref:`list-append`, and changing
-a ``class_path`` discards the ``init_args`` that the new class does not accept,
+a ``class_path`` discards the prior ``init_args``, see :ref:`prior-init-args`,
 also for the items of a list of classes. An ``__include__`` is not supported
 within a value that is not validated, e.g. ``Any``, since nothing merges it.
 
@@ -2812,6 +2812,56 @@ giving directly ``init_args``, for example:
     python tool.py --calendar.firstweekday 2
 
 would implicitly use ``calendar.Calendar`` as the class path.
+
+.. _prior-init-args:
+
+Prior init args
+---------------
+
+When a later config or command line argument gives a different ``class_path``,
+the ``init_args`` given before are discarded, so the new class starts from its
+own defaults. Giving the same class again keeps them, so that layered configs
+can refine a class. The ``prior_init_args`` key changes what happens:
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``prior_init_args``
+     - Class changes
+     - Same class
+   * - not given
+     - discard
+     - keep
+   * - ``keep``
+     - keep the ones the new class accepts
+     - keep
+   * - ``discard``
+     - discard
+     - discard
+
+For example, to switch class on top of a base config, keeping the parameters
+that both classes have:
+
+.. code-block:: yaml
+
+    calendar:
+      class_path: calendar.TextCalendar
+      prior_init_args: keep
+
+In the command line, ``--calendar:keep TextCalendar`` and ``--calendar:discard
+TextCalendar``, listed in the help of ``--calendar``, are the same as giving the
+key. These are not available for a list of classes, but each item can have the
+key. Without ``class_path``,
+``prior_init_args: discard`` resets the current class to its defaults.
+
+``keep`` does not carry over the defaults from the signature of the previous
+class, since they belong to it. Anything else is kept, including parser defaults
+and values from default config files. A kept value that is not valid for the
+new class is an error, unless the new value gives it again.
+
+Arguments are applied in order, so ``--calendar.firstweekday 2 --calendar
+TextCalendar`` discards ``firstweekday``, while ``--calendar TextCalendar
+--calendar.firstweekday 2`` gives it.
 
 
 Default values

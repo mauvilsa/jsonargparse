@@ -206,6 +206,8 @@ def shtab_prepare_actions(parser) -> None:
 def shtab_prepare_action(action, parser) -> None:
     import shtab
 
+    if isinstance(action, ActionTypeHint):  # like in the help, the --option:mode aliases are not listed
+        action.option_strings = ActionTypeHint.without_prior_init_args_aliases(action).option_strings
     if action.choices or hasattr(action, "complete"):
         return
 
