@@ -183,7 +183,8 @@ class YAMLCommentFormatter:
             if full_key in group_titles and isinstance(value, dict):
                 text = group_titles[full_key]
             elif action is not None and action.help != SUPPRESS:
-                text = self.help_formatter._expand_help(action)
+                # command line aliases don't apply to a config
+                text = self.help_formatter._expand_help(ActionTypeHint.without_prior_init_args_aliases(action))
             if isinstance(value, dict):
                 if text:
                     self.set_yaml_group_comment(text, cfg, key, depth)

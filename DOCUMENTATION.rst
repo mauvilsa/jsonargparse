@@ -2849,8 +2849,9 @@ that both classes have:
       prior_init_args: keep
 
 In the command line, ``--calendar:keep TextCalendar`` and ``--calendar:discard
-TextCalendar`` are the same as giving the key. These are not available for a
-list of classes, but each item can have the key. Without ``class_path``,
+TextCalendar``, listed in the help of ``--calendar``, are the same as giving the
+key. These are not available for a list of classes, but each item can have the
+key. Without ``class_path``,
 ``prior_init_args: discard`` resets the current class to its defaults.
 
 ``keep`` does not carry over the defaults from the signature of the previous

@@ -891,6 +891,9 @@ class ActionTypeHint(Action):
         class_paths = get_all_subclass_paths(self._typehint, closed_types=False)
         if class_paths:
             extra = ", known subclasses: " + ", ".join(class_paths)
+        aliases = [o for o in self.option_strings if self.get_prior_init_args_mode(o)]
+        if aliases:
+            extra += ", keep or discard prior init_args: " + ", ".join(aliases)
         return extra
 
     def completer(self, prefix, **kwargs):

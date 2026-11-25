@@ -1888,11 +1888,12 @@ def test_prior_init_args_suffix_not_for_list_option(parser):
         parser.parse_args(["--data:keep=SwitchTo"])
 
 
-def test_prior_init_args_suffix_not_in_help(switch_parser):
+def test_prior_init_args_suffix_in_help(switch_parser):
     help_str = get_parser_help(switch_parser)
-    assert "--data DATA" in help_str or "--data " in help_str
-    assert ":keep" not in help_str
-    assert ":discard" not in help_str
+    options = [line.split()[0] for line in help_str.splitlines() if line.startswith("  -")]
+    assert "--data" in options
+    assert not [o for o in options if ":" in o]
+    assert "keep or discard prior init_args: --data:keep, --data:discard)" in " ".join(help_str.split())
 
 
 def test_subclass_discard_init_args_dict_looks_like_subclass(parser, logger, tmp_cwd):
