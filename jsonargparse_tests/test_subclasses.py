@@ -215,6 +215,71 @@ def test_subclass_optional_list(parser, subtests):
             parser.parse_args(["--op=[1]"])
 
 
+@pytest.mark.parametrize(
+    ["typehint", "wrap"],
+    [
+        (Tuple[BaseC, ...], lambda s: [s]),
+        (Optional[Tuple[BaseC, ...]], lambda s: [s]),
+        (List[List[BaseC]], lambda s: [[s]]),
+        (Dict[str, List[BaseC]], lambda s: {"k": [s]}),
+    ],
+)
+def test_subclass_nested_containers_sub_defaults(parser, typehint, wrap):
+    parser.add_argument("--op", type=typehint)
+    cfg = parser.parse_object({"op": wrap({"class_path": f"{__name__}.BaseC"})})
+    expected = wrap({"class_path": f"{__name__}.BaseC", "init_args": {"p": 0}})
+    assert json_or_yaml_load(parser.dump(cfg))["op"] == expected
+
+
+class NestedContainersBase:
+    def __init__(self, v: int = 0):
+        self.v = v
+
+
+class NestedContainersNode(NestedContainersBase):
+    def __init__(
+        self,
+        lists: Optional[List[List[NestedContainersBase]]] = None,
+        dicts: Optional[Dict[str, List[NestedContainersBase]]] = None,
+        v: int = 0,
+    ):
+        self.lists = lists
+        self.dicts = dicts
+        super().__init__(v)
+
+
+@pytest.mark.parametrize(
+    ["key", "wrap"],
+    [
+        ("lists", lambda s: [[s]]),
+        ("dicts", lambda s: {"k": [s]}),
+    ],
+)
+def test_subclass_nested_containers_parse_linear_in_depth(parser, key, wrap):
+    def nested_spec(depth):
+        spec = {"class_path": f"{__name__}.NestedContainersBase"}
+        for _ in range(depth):
+            spec = {"class_path": f"{__name__}.NestedContainersNode", "init_args": {key: wrap(spec)}}
+        return spec
+
+    calls = 0
+    parse_object = ArgumentParser.parse_object
+
+    def counted_parse_object(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return parse_object(self, *args, **kwargs)
+
+    parser.add_argument("--op", type=NestedContainersBase)
+    counts = {}
+    with patch.object(ArgumentParser, "parse_object", counted_parse_object):
+        for depth in [2, 8]:
+            calls = 0
+            parser.parse_object({"op": nested_spec(depth)})
+            counts[depth] = calls
+    assert counts[8] < 4 * counts[2]
+
+
 def test_subclass_union_with_str(parser):
     parser.add_argument("--op", type=Optional[Union[str, BaseC]])
     cfg = parser.parse_args(["--op=value"])
