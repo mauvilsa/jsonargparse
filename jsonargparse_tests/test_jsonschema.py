@@ -167,6 +167,6 @@ def test_action_jsonschema_init_failures():
     with pytest.raises((ValueError, SchemaError), match="Problems parsing schema"):
         ActionJsonSchema(schema=":")
     with pytest.raises((ValueError, SchemaError), match="is not of type 'object', 'boolean'"):
-        ActionJsonSchema(schema=".")
+        ActionJsonSchema(schema='"."')
     with pytest.raises(ValueError, match="does not accept the following parameters: {'unexpected'}"):
         ActionJsonSchema(schema=schema_array, unexpected=True)

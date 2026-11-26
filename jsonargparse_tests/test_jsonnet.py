@@ -333,4 +333,4 @@ def test_action_jsonnet_init_failures():
     with pytest.raises((ValueError, SchemaError), match="Problems parsing schema"):
         ActionJsonnet(schema=schema)
     with pytest.raises((ValueError, SchemaError), match="is not of type 'object', 'boolean'"):
-        ActionJsonnet(schema=".")
+        ActionJsonnet(schema='"."')
