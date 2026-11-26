@@ -150,8 +150,8 @@ def test_get_params_object_instance_method():
 
 def test_get_params_conditional_python_version():
     params = get_params(Random, "seed")
-    assert ["a", "version"] == get_param_names(params)
-    assert "int | float | str | bytes | bytearray | None" == str(params[0].annotation)
+    assert get_param_names(params) == ["a", "version"]
+    assert str(params[0].annotation) == "int | float | str | bytes | bytearray | None"
     assert int is params[1].annotation
     with mock_stubs_missing_types():
         params = get_params(Random, "seed")
@@ -210,7 +210,7 @@ def test_get_params_staticmethod():
 
 def test_get_params_function(parametrize_allow_py_files):
     params = get_params(ip_network)
-    assert ["address", "strict"] == get_param_names(params)
+    assert get_param_names(params) == ["address", "strict"]
     assert "int | str | bytes | ipaddress.IPv4Address | " in str(params[0].annotation)
     assert bool is params[1].annotation
     with mock_stubs_missing_types():
@@ -223,11 +223,11 @@ def test_get_params_relative_import_from_init():
     import yaml
 
     params = get_params(yaml.safe_load)
-    assert ["stream"] == get_param_names(params)
+    assert get_param_names(params) == ["stream"]
     assert params[0].annotation is not inspect._empty
     with mock_stubs_missing_types():
         params = get_params(yaml.safe_load)
-    assert ["stream"] == get_param_names(params)
+    assert get_param_names(params) == ["stream"]
     assert params[0].annotation is inspect._empty
 
 
@@ -297,7 +297,7 @@ def test_get_params_complex_function_requests_get(parser):
     assert all(p.annotation is not inspect._empty for p in params)
 
     parser.add_function_arguments(get, fail_untyped=False)
-    assert ["url", "params"] == list(parser.get_defaults().keys())
+    assert list(parser.get_defaults().keys()) == ["url", "params"]
     help_str = get_parser_help(parser)
     assert "default: Unknown<stubs-resolver>" in help_str
     assert "--cookies.help [CLASS_PATH_OR_NAME]" in help_str
@@ -309,7 +309,7 @@ def test_get_params_complex_function_requests_get(parser):
 def test_get_params_inspect_signature_failure_function(logger):
     with inspect_signature_failure(ip_network), capture_logs(logger) as logs:
         params = get_params(ip_network, logger=logger)
-    assert ["address", "strict"] == get_param_names(params)
+    assert get_param_names(params) == ["address", "strict"]
     assert params[1].annotation == bool
     assert "int | str | bytes | ipaddress.IPv4Address | " in str(params[0].annotation)
     assert "get_parameters_from_ast failed" in logs.getvalue()
@@ -325,7 +325,7 @@ def test_get_params_inspect_signature_failure_function(logger):
 def test_get_params_inspect_signature_failure_var_keyword():
     with inspect_signature_failure(json_dumps):
         params = get_params(json_dumps, include_var_keyword=True)
-    assert "obj" == params[0].name
+    assert params[0].name == "obj"
     assert accepts_unresolved_kwargs(params)
 
 
@@ -360,7 +360,7 @@ def get_arg_type_bool_fail():
 def test_get_params_inspect_signature_failure_missing_type(logger):
     with inspect_signature_failure(ip_network), get_arg_type_bool_fail(), capture_logs(logger) as logs:
         params = get_params(ip_network, logger=logger)
-    assert ["address", "strict"] == get_param_names(params)
+    assert get_param_names(params) == ["address", "strict"]
     assert params[1].annotation == inspect._empty
     assert "int | str | bytes | ipaddress.IPv4Address | " in str(params[0].annotation)
     assert "get_parameters_from_ast failed" in logs.getvalue()

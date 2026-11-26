@@ -182,9 +182,9 @@ def test_path_dir_access_mode(paths):
 
 
 def test_path_read_text(paths):
-    assert "file contents" == Path(paths.file_r, "fr").read_text()
-    assert "file contents" == Path(f"file://{paths.tmp_path}/{paths.file_r}", "fr").read_text()
-    assert "file contents" == Path(f"file://{paths.tmp_path}/{paths.file_r}", "ur").read_text()
+    assert Path(paths.file_r, "fr").read_text() == "file contents"
+    assert Path(f"file://{paths.tmp_path}/{paths.file_r}", "fr").read_text() == "file contents"
+    assert Path(f"file://{paths.tmp_path}/{paths.file_r}", "ur").read_text() == "file contents"
 
 
 @skip_if_running_as_root
@@ -407,7 +407,7 @@ def test_path_open_local(tmp_cwd):
     pathlib.Path("file.txt").write_text("content")
     path = Path("file.txt", mode="fr")
     with path.open() as f:
-        assert "content" == f.read()
+        assert f.read() == "content"
 
 
 @skip_if_responses_unavailable
@@ -418,7 +418,7 @@ def test_path_open_url():
     responses.add(responses.HEAD, url, status=200)
     path = Path(url, mode="ur")
     with path.open() as f:
-        assert "content" == f.read()
+        assert f.read() == "content"
 
 
 @skip_if_fsspec_unavailable
@@ -428,7 +428,7 @@ def test_path_open_fsspec():
         f.write("content")
     path = Path("memory://nested/file.txt", mode="sr")
     with path.open() as f:
-        assert "content" == f.read()
+        assert f.read() == "content"
 
 
 # path relative path context tests
@@ -438,7 +438,7 @@ def test_path_open_fsspec():
 def test_path_relative_path_context_url():
     path1 = Path("http://example.com/nested/path/file1.txt", mode="u")
     with path1.relative_path_context() as dir:
-        assert "http://example.com/nested/path" == dir
+        assert dir == "http://example.com/nested/path"
         path2 = Path("../file2.txt", mode="u")
         assert path2.absolute == "http://example.com/nested/file2.txt"
 
@@ -454,23 +454,23 @@ def test_relative_path_context_fsspec(tmp_cwd, subtests):
 
     with Path("memory://one/two/three/file1.txt", mode="sc").relative_path_context() as dir1:
         with subtests.test("get current path dir"):
-            assert "memory://one/two/three" == dir1
-            assert "memory://one/two/three" == _current_path_dir.get()
+            assert dir1 == "memory://one/two/three"
+            assert _current_path_dir.get() == "memory://one/two/three"
 
         with subtests.test("absolute local path"):
             path0 = Path(local_path, mode="fr")
-            assert "zero" == path0.read_text()
+            assert path0.read_text() == "zero"
 
         with subtests.test("relative fsspec path"):
             path1 = Path("../file1.txt", mode="fsr")
-            assert "one" == path1.read_text()
+            assert path1.read_text() == "one"
             assert str(path1) == "../file1.txt"
             assert path1.absolute == "memory://one/two/file1.txt"
             assert path1._url_data is not None
 
         with subtests.test("nested fsspec dir"):
             with path1.relative_path_context() as dir2:
-                assert "memory://one/two" == dir2
+                assert dir2 == "memory://one/two"
                 path2 = Path("four/five/six/../file2.txt", mode="fsc")
                 assert path2.absolute == "memory://one/two/four/five/file2.txt"
 
@@ -514,7 +514,7 @@ def test_secret_in_union_relative_path_not_resolved_as_remote(fsspec_secrets_con
     parser = secrets_config_parser(Union[Path_fsr, SecretStr])
     cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
     assert isinstance(cfg.password, SecretStr)
-    assert "PASSWORD" == cfg.password.get_secret_value()
+    assert cfg.password.get_secret_value() == "PASSWORD"
     assert cfg.cfg == [fsspec_secrets_config]
 
 
@@ -531,7 +531,7 @@ def test_secret_in_union_relative_path_skip_logged(fsspec_secrets_config, logger
 
     assert isinstance(cfg.password, SecretStr)
     skip_logs = [x for x in logs.getvalue().split("\n") if "not resolved against remote parent" in x]
-    assert 1 == len(skip_logs)
+    assert len(skip_logs) == 1
     assert "Relative path not resolved against remote parent 'memory://secrets/item'" in skip_logs[0]
     assert "SECRET_VALUE" not in skip_logs[0]
 
@@ -555,7 +555,7 @@ def test_secret_in_union_absolute_remote_path_resolved(fsspec_secrets_config):
     parser = secrets_config_parser(Union[Path_fsr, SecretStr])
     cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
     assert isinstance(cfg.password, Path_fsr)
-    assert "sibling file content" == cfg.password.read_text()
+    assert cfg.password.read_text() == "sibling file content"
 
 
 @skip_if_fsspec_unavailable
@@ -566,7 +566,7 @@ def test_secret_in_union_local_relative_path_unaffected(fsspec_secrets_config, t
     parser = secrets_config_parser(Union[Path_fsr, SecretStr])
     cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
     assert isinstance(cfg.password, Path_fsr)
-    assert "local file content" == cfg.password.read_text()
+    assert cfg.password.read_text() == "local file content"
 
 
 @skip_if_fsspec_unavailable
@@ -575,7 +575,7 @@ def test_no_secret_in_union_relative_path_resolved_as_remote(fsspec_secrets_conf
     parser = secrets_config_parser(Union[Path_fsr, str])
     cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
     assert isinstance(cfg.password, Path_fsr)
-    assert "memory://secrets/item/PASSWORD" == cfg.password.absolute
+    assert cfg.password.absolute == "memory://secrets/item/PASSWORD"
 
 
 @skip_if_fsspec_unavailable
@@ -587,7 +587,7 @@ def test_secret_in_nested_union_relative_path_not_resolved_as_remote(fsspec_secr
     parser = secrets_config_parser(List[Union[Path_fsr, SecretStr]])
     cfg = parser.parse_args([f"--cfg={fsspec_secrets_config}"])
     assert isinstance(cfg.password[0], SecretStr)
-    assert "PASSWORD" == cfg.password[0].get_secret_value()
+    assert cfg.password[0].get_secret_value() == "PASSWORD"
 
 
 @skip_if_responses_unavailable
@@ -604,7 +604,7 @@ def test_secret_in_union_relative_url_not_resolved_as_remote():
     parser = secrets_config_parser(Union[path_type("fur"), SecretStr])
     cfg = parser.parse_args([f"--cfg={config_url}"])
     assert isinstance(cfg.password, SecretStr)
-    assert "PASSWORD" == cfg.password.get_secret_value()
+    assert cfg.password.get_secret_value() == "PASSWORD"
 
 
 # relative path context and working directory tests
@@ -739,21 +739,21 @@ def test_path_fc_nargs_plus(parser, tmp_cwd):
     (tmp_cwd / "subdir").mkdir()
     cfg = parser.parse_args(["--files", "file1", "subdir/file2"])
     assert isinstance(cfg.files, list)
-    assert 2 == len(cfg.files)
+    assert len(cfg.files) == 2
     assert str(tmp_cwd / "subdir" / "file2") == os.path.realpath(cfg.files[1])
 
 
 def test_list_path_fc(parser, tmp_cwd):
     parser.add_argument("--paths", type=List[Path_fc])
     cfg = parser.parse_args(['--paths=["file1", "file2"]'])
-    assert ["file1", "file2"] == cfg.paths
+    assert cfg.paths == ["file1", "file2"]
     assert isinstance(cfg.paths[0], Path_fc)
     assert isinstance(cfg.paths[1], Path_fc)
 
 
 def test_optional_path_fr(parser, file_r):
     parser.add_argument("--path", type=Optional[Path_fr])
-    assert None is parser.parse_args(["--path=null"]).path
+    assert parser.parse_args(["--path=null"]).path is None
     cfg = parser.parse_args([f"--path={file_r}"])
     assert file_r == cfg.path
     assert isinstance(cfg.path, Path_fr)
@@ -765,7 +765,7 @@ def test_register_path_dcc_default_path(parser, tmp_cwd):
     path_dcc = path_type("dcc")
     parser.add_argument("--path", type=path_dcc, default=path_dcc("test"))
     cfg = parser.parse_args([])
-    assert {"path": "test"} == json_or_yaml_load(parser.dump(cfg))
+    assert json_or_yaml_load(parser.dump(cfg)) == {"path": "test"}
     help_str = get_parser_help(parser)
     assert "(type: Path_dcc, default: test)" in help_str
 
@@ -840,7 +840,7 @@ def test_sub_configs_dict(parser, tmp_cwd):
 
     parser.add_argument("--data", type=Dict[str, Any], sub_configs=True)
     cfg = parser.parse_args(["--data=data.yaml"])
-    assert "data.yaml" == str(cfg["data"].pop("__path__"))
+    assert str(cfg["data"].pop("__path__")) == "data.yaml"
     assert data == cfg["data"]
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--data=does-not-exist.yaml"])
@@ -1206,14 +1206,14 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
     with subtests.test("paths list from file"):
         cfg = parser.parse_args([f"--list={list_file1}"])
         assert all(isinstance(x, Path_fr) for x in cfg.list)
-        assert ["file1", "file2", "file3", "file4"] == [str(x) for x in cfg.list]
+        assert [str(x) for x in cfg.list] == ["file1", "file2", "file3", "file4"]
 
     with subtests.test("paths list from stdin"):
         with mock_stdin("file1\nfile2\n"):
             with Path_drw("subdir").relative_path_context():
                 cfg = parser.parse_args(["--list", "-"])
         assert all(isinstance(x, Path_fr) for x in cfg.list)
-        assert ["file1", "file2"] == [str(x) for x in cfg.list]
+        assert [str(x) for x in cfg.list] == ["file1", "file2"]
 
     with subtests.test("paths list from stdin path not exist"):
         with mock_stdin("file1\nfile2\n"):
@@ -1223,19 +1223,19 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
 
     with subtests.test("paths list nargs='+' single"):
         cfg = parser.parse_args(["--lists", str(list_file1)])
-        assert 1 == len(cfg.lists)
-        assert ["file1", "file2", "file3", "file4"] == [str(x) for x in cfg.lists[0]]
+        assert len(cfg.lists) == 1
+        assert [str(x) for x in cfg.lists[0]] == ["file1", "file2", "file3", "file4"]
         assert all(isinstance(x, Path_fr) for x in cfg.lists[0])
 
     with subtests.test("paths list nargs='+' multiple"):
         cfg = parser.parse_args(["--lists", str(list_file1), str(list_file2)])
-        assert 2 == len(cfg.lists)
-        assert ["file1", "file2", "file3", "file4"] == [str(x) for x in cfg.lists[0]]
-        assert ["file5"] == [str(x) for x in cfg.lists[1]]
+        assert len(cfg.lists) == 2
+        assert [str(x) for x in cfg.lists[0]] == ["file1", "file2", "file3", "file4"]
+        assert [str(x) for x in cfg.lists[1]] == ["file5"]
 
     with subtests.test("paths list nargs='+' empty"):
         cfg = parser.parse_args(["--lists", str(list_file3)])
-        assert [[]] == cfg.lists
+        assert cfg.lists == [[]]
 
     with subtests.test("paths list nargs='+' path not exist"):
         with pytest.raises(ArgumentError, match=r'(?s)"lists" element 1:.*Not of type Path_fr: File does not exist'):
@@ -1329,13 +1329,13 @@ def test_sub_configs_list_path_fr_default_stdin(parser, tmp_cwd, validate_defaul
         with mock_stdin("file1\nfile2\n"):
             cfg = parser.parse_args([])
         assert all(isinstance(x, Path_fr) for x in cfg.list)
-        assert ["file1", "file2"] == [str(x) for x in cfg.list]
+        assert [str(x) for x in cfg.list] == ["file1", "file2"]
 
     with subtests.test("stdin arg"):
         with mock_stdin("file1\nfile2\n"):
             cfg = parser.parse_args(["--list=-"])
         assert all(isinstance(x, Path_fr) for x in cfg.list)
-        assert ["file1", "file2"] == [str(x) for x in cfg.list]
+        assert [str(x) for x in cfg.list] == ["file1", "file2"]
 
     with subtests.test("help"):
         help_str = get_parser_help(parser)
@@ -1357,7 +1357,7 @@ def test_add_class_list_path(parser, tmp_cwd):
 
     cfg = parser.parse_args([f"--cls.files={list_file1}"])
     assert all(isinstance(x, Path_fr) for x in cfg.cls.files)
-    assert ["file1", "file2"] == [str(x) for x in cfg.cls.files]
+    assert [str(x) for x in cfg.cls.files] == ["file1", "file2"]
 
     help_str = get_parser_help(parser)
     assert "'[\"PATH1\",...]' | LIST_OF_PATHS_FILE | -" in help_str

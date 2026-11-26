@@ -63,7 +63,7 @@ def test_logger_false():
     assert test.logger is null_logger
     with capture_logs(test.logger) as logs:
         test.logger.error(log_message)
-    assert "" == logs.getvalue()
+    assert logs.getvalue() == ""
 
 
 def test_no_init_logger():
@@ -114,7 +114,7 @@ def test_logger_levels(num, level):
     if level != "DEBUG":
         with capture_logs(test.logger) as logs:
             getattr(test.logger, levels[num - 1].lower())(log_message)
-        assert "" == logs.getvalue()
+        assert logs.getvalue() == ""
 
 
 @patch.dict(os.environ, {"JSONARGPARSE_DEBUG": "true"})

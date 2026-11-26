@@ -189,7 +189,7 @@ def test_on_parse_add_class_arguments(subtests):
 
     with subtests.test("dump removal of targets"):
         cfg = parser.parse_args(["--a.v1=11", "--a.v2=7"])
-        assert 7 == cfg.b.v1
+        assert cfg.b.v1 == 7
         assert 11 + 7 == cfg.b.v2
         dump = json_or_yaml_load(parser.dump(cfg))
         assert dump == {"a": {"v1": 11, "v2": 7}, "b": {"v3": 2}}
@@ -1627,5 +1627,5 @@ def test_on_instantiate_linking_deep_targets_multiple(parser):
     parser.link_arguments("Source.a", "Node.init_args.sub_class.init_args.b", apply_on="instantiate")
     cfg = parser.parse_args(["--Node=Node", "--Node.init_args.sub_class=DeepTarget"])
     init = parser.instantiate(cfg)
-    assert 1 == init.Node.sub_class.a
-    assert 1 == init.Node.sub_class.b
+    assert init.Node.sub_class.a == 1
+    assert init.Node.sub_class.b == 1

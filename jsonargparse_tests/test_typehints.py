@@ -127,14 +127,14 @@ def test_namespace_unsupported_as_type(parser, typehint):
 @parser_modes
 def test_str_no_strip(parser):
     parser.add_argument("--op", type=Optional[str])
-    assert "  " == parser.parse_args(["--op", "  "]).op
-    assert "" == parser.parse_args(["--op", ""]).op
-    assert " abc " == parser.parse_args(["--op= abc "]).op
-    assert "xyz: " == parser.parse_args(["--op=xyz: "]).op
-    assert None is parser.parse_args(["--op=null"]).op
+    assert parser.parse_args(["--op", "  "]).op == "  "
+    assert parser.parse_args(["--op", ""]).op == ""
+    assert parser.parse_args(["--op= abc "]).op == " abc "
+    assert parser.parse_args(["--op=xyz: "]).op == "xyz: "
+    assert parser.parse_args(["--op=null"]).op is None
     if parser.parser_mode != "toml":
         parser.add_argument("--cfg", action="config")
-        assert " " == parser.parse_args(['--cfg={"op":" "}']).op
+        assert parser.parse_args(['--cfg={"op":" "}']).op == " "
 
 
 @parser_modes
@@ -177,19 +177,19 @@ def test_str_edge_cases(parser):
 
 def test_str_union_default_comment_like(parser):
     parser.add_argument("--val", type=Union[str, int], default="#default")
-    assert "#default" == parser.get_defaults().val
-    assert "#default" == parser.parse_args([]).val
+    assert parser.get_defaults().val == "#default"
+    assert parser.parse_args([]).val == "#default"
 
 
 def test_bool_parse(parser):
     parser.add_argument("--val", type=bool)
-    assert None is parser.get_defaults().val
-    assert True is parser.parse_args(["--val", "true"]).val
+    assert parser.get_defaults().val is None
+    assert parser.parse_args(["--val", "true"]).val is True
     if pyyaml_available:
-        assert True is parser.parse_args(["--val", "TRUE"]).val
-    assert False is parser.parse_args(["--val", "false"]).val
+        assert parser.parse_args(["--val", "TRUE"]).val is True
+    assert parser.parse_args(["--val", "false"]).val is False
     if pyyaml_available:
-        assert False is parser.parse_args(["--val", "FALSE"]).val
+        assert parser.parse_args(["--val", "FALSE"]).val is False
     with pytest.raises(ArgumentError, match=r"Expected type: bool\. Got value: 1"):
         parser.parse_args(["--val", "1"])
 
@@ -205,14 +205,14 @@ def test_bool_not_a_number(parser, num_type):
 @parser_modes
 def test_float_scientific_notation(parser):
     parser.add_argument("--num", type=float)
-    assert 1e-3 == parser.parse_args(["--num=1e-3"]).num
+    assert parser.parse_args(["--num=1e-3"]).num == 1e-3
 
 
 @parser_modes
 def test_float_implicit_leading_zero(parser):
     parser.add_argument("--num", type=float)
-    assert 0.5 == parser.parse_args(["--num=.5"]).num
-    assert -0.5 == parser.parse_args(["--num=-.5"]).num
+    assert parser.parse_args(["--num=.5"]).num == 0.5
+    assert parser.parse_args(["--num=-.5"]).num == -0.5
 
 
 @pytest.mark.parametrize("parser", ["json"], indirect=True)
@@ -244,18 +244,18 @@ def test_literal(parser):
     parser.add_argument("--int", type=Literal[3, 4])
     parser.add_argument("--true", type=Literal[True])
     parser.add_argument("--false", type=Literal[False])
-    assert "a" == parser.parse_args(["--str=a"]).str
-    assert "b" == parser.parse_args(["--str=b"]).str
+    assert parser.parse_args(["--str=a"]).str == "a"
+    assert parser.parse_args(["--str=b"]).str == "b"
     with pytest.raises(ArgumentError, match=r"Expected type: Literal\['a', 'b', null\]\. Got value: x"):
         parser.parse_args(["--str=x"])
-    assert None is parser.parse_args(["--str=null"]).str
-    assert 4 == parser.parse_args(["--int=4"]).int
+    assert parser.parse_args(["--str=null"]).str is None
+    assert parser.parse_args(["--int=4"]).int == 4
     with pytest.raises(ArgumentError, match=r"Expected type: Literal\[3, 4\]\. Got value: 5"):
         parser.parse_args(["--int=5"])
-    assert True is parser.parse_args(["--true=true"]).true
+    assert parser.parse_args(["--true=true"]).true is True
     with pytest.raises(ArgumentError, match=r"Expected type: Literal\[True\]\. Got value: False"):
         parser.parse_args(["--true=false"])
-    assert False is parser.parse_args(["--false=false"]).false
+    assert parser.parse_args(["--false=false"]).false is False
     with pytest.raises(ArgumentError, match=r"Expected type: Literal\[False\]\. Got value: True"):
         parser.parse_args(["--false=true"])
     help_str = get_parser_help(parser)
@@ -265,8 +265,8 @@ def test_literal(parser):
 
 def test_union_of_literals(parser):
     parser.add_argument("--literal", type=Union[Literal[1, 2], Literal["a", "b"]])
-    assert "a" == parser.parse_args(["--literal=a"]).literal
-    assert 2 == parser.parse_args(["--literal=2"]).literal
+    assert parser.parse_args(["--literal=a"]).literal == "a"
+    assert parser.parse_args(["--literal=2"]).literal == 2
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--literal=x"])
     assert "Expected type: " + type_to_str(Union[Literal[1, 2], Literal["a", "b"]]) in str(ctx.value)
@@ -276,30 +276,30 @@ def test_union_of_literals(parser):
 @parser_modes
 def test_type_any(parser):
     parser.add_argument("--any", type=Any)
-    assert "abc" == parser.parse_args(["--any=abc"]).any
-    assert 123 == parser.parse_args(["--any=123"]).any
-    assert 5.6 == parser.parse_args(["--any=5.6"]).any
-    assert [7, 8] == parser.parse_args(["--any=[7, 8]"]).any
-    assert {"a": 0, "b": 1} == parser.parse_args(['--any={"a":0, "b":1}']).any
-    assert True is parser.parse_args(["--any=true"]).any
-    assert False is parser.parse_args(["--any=false"]).any
-    assert None is parser.parse_args(["--any=null"]).any
-    assert " " == parser.parse_args(["--any= "]).any
-    assert " xyz " == parser.parse_args(["--any= xyz "]).any
-    assert "[[[" == parser.parse_args(["--any=[[["]).any
+    assert parser.parse_args(["--any=abc"]).any == "abc"
+    assert parser.parse_args(["--any=123"]).any == 123
+    assert parser.parse_args(["--any=5.6"]).any == 5.6
+    assert parser.parse_args(["--any=[7, 8]"]).any == [7, 8]
+    assert parser.parse_args(['--any={"a":0, "b":1}']).any == {"a": 0, "b": 1}
+    assert parser.parse_args(["--any=true"]).any is True
+    assert parser.parse_args(["--any=false"]).any is False
+    assert parser.parse_args(["--any=null"]).any is None
+    assert parser.parse_args(["--any= "]).any == " "
+    assert parser.parse_args(["--any= xyz "]).any == " xyz "
+    assert parser.parse_args(["--any=[[["]).any == "[[["
 
 
 @parser_modes
 def test_type_object(parser):
     # object is the top of the class hierarchy, thus like Any it accepts any value
     parser.add_argument("--obj", type=object)
-    assert "abc" == parser.parse_args(["--obj=abc"]).obj
-    assert 123 == parser.parse_args(["--obj=123"]).obj
-    assert 5.6 == parser.parse_args(["--obj=5.6"]).obj
-    assert [7, 8] == parser.parse_args(["--obj=[7, 8]"]).obj
-    assert {"a": 0, "b": 1} == parser.parse_args(['--obj={"a":0, "b":1}']).obj
-    assert True is parser.parse_args(["--obj=true"]).obj
-    assert None is parser.parse_args(["--obj=null"]).obj
+    assert parser.parse_args(["--obj=abc"]).obj == "abc"
+    assert parser.parse_args(["--obj=123"]).obj == 123
+    assert parser.parse_args(["--obj=5.6"]).obj == 5.6
+    assert parser.parse_args(["--obj=[7, 8]"]).obj == [7, 8]
+    assert parser.parse_args(['--obj={"a":0, "b":1}']).obj == {"a": 0, "b": 1}
+    assert parser.parse_args(["--obj=true"]).obj is True
+    assert parser.parse_args(["--obj=null"]).obj is None
 
 
 def test_type_object_dump(parser):
@@ -307,7 +307,7 @@ def test_type_object_dump(parser):
     cfg = parser.parse_args([])
     with assert_dump_warnings(serialized_as("EnumABC", "str")):
         dump = parser.dump(cfg)
-    assert {"obj": "B"} == json_or_yaml_load(dump)
+    assert json_or_yaml_load(dump) == {"obj": "B"}
 
 
 @contextmanager
@@ -331,7 +331,7 @@ def test_type_any_dump(parser):
     cfg = parser.parse_args([])
     with assert_dump_warnings(serialized_as("EnumABC", "str")):
         dump = parser.dump(cfg)
-    assert {"any": "B"} == json_or_yaml_load(dump)
+    assert json_or_yaml_load(dump) == {"any": "B"}
 
 
 class NotSerializable:
@@ -731,7 +731,7 @@ def test_enum_parse(parser):
 def test_enum_dump(parser):
     parser.add_argument("--enum", type=EnumABC)
     cfg = parser.parse_args(["--enum=C"])
-    assert {"enum": "C"} == json_or_yaml_load(parser.dump(cfg))
+    assert json_or_yaml_load(parser.dump(cfg)) == {"enum": "C"}
     with pytest.raises(TypeError):
         parser.dump(Namespace(enum="x"))
 
@@ -748,7 +748,7 @@ def test_enum_help(parser):
 def test_enum_optional(parser):
     parser.add_argument("--enum", type=Optional[EnumABC])
     assert EnumABC.B == parser.parse_args(["--enum=B"]).enum
-    assert None is parser.parse_args(["--enum=null"]).enum
+    assert parser.parse_args(["--enum=null"]).enum is None
     help_str = get_parser_help(parser)
     assert "--enum {A,B,C,null}" in help_str
 
@@ -760,15 +760,15 @@ class EnumStr(str, Enum):
 
 def test_enum_str_optional(parser):
     parser.add_argument("--enum", type=Optional[EnumStr])
-    assert "B" == parser.parse_args(["--enum=B"]).enum
-    assert None is parser.parse_args(["--enum=null"]).enum
+    assert parser.parse_args(["--enum=B"]).enum == "B"
+    assert parser.parse_args(["--enum=null"]).enum is None
 
 
 def test_literal_enum_values(parser):
     parser.add_argument("--enum", type=Literal[EnumABC.A, EnumABC.C, "X"])
     assert EnumABC.A == parser.parse_args(["--enum=A"]).enum
     assert EnumABC.C == parser.parse_args(["--enum=C"]).enum
-    assert "X" == parser.parse_args(["--enum=X"]).enum
+    assert parser.parse_args(["--enum=X"]).enum == "X"
     with pytest.raises(ArgumentError, match=r"Expected type: Literal\[EnumABC.A, EnumABC.C, 'X'\]"):
         parser.parse_args(["--enum=B"])
 
@@ -829,7 +829,7 @@ def test_union_error_with_informative_subtype_errors(parser):
 @parser_modes
 def test_set(parser):
     parser.add_argument("--set", type=Set[int])
-    assert {1, 2} == parser.parse_args(["--set=[1, 2]"]).set
+    assert parser.parse_args(["--set=[1, 2]"]).set == {1, 2}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--set=["a", "b"]'])
 
@@ -847,7 +847,7 @@ def test_frozenset(parser):
 def test_abstract_set(parser, set_type):
     parser.add_argument("--set", type=set_type[int])
     cfg = parser.parse_args(["--set=[1, 2]"])
-    assert {1, 2} == cfg.set
+    assert cfg.set == {1, 2}
     assert parser.dump(cfg, format="json_compact") == '{"set":[1,2]}'
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--set=["a", "b"]'])
@@ -860,7 +860,7 @@ def test_abstract_set(parser, set_type):
 def test_tuple_without_arg(parser):
     parser.add_argument("--tuple", type=tuple)
     cfg = parser.parse_args(['--tuple=[1, "a", true]'])
-    assert (1, "a", True) == cfg.tuple
+    assert cfg.tuple == (1, "a", True)
     help_str = get_parser_help(parser, strip=True)
     assert "--tuple [ITEM,...] (type: tuple, default: null)" in help_str
 
@@ -869,15 +869,15 @@ def test_tuple_without_arg(parser):
 def test_tuples_nested(parser):
     parser.add_argument("--tuple", type=Tuple[Tuple[str, str], Tuple[Tuple[int, float], Tuple[int, float]]])
     cfg = parser.parse_args(['--tuple=[["foo", "bar"], [[1, 2.02], [3, 3.09]]]'])
-    assert (("foo", "bar"), ((1, 2.02), (3, 3.09))) == cfg.tuple
+    assert cfg.tuple == (("foo", "bar"), ((1, 2.02), (3, 3.09)))
 
 
 @parser_modes
 def test_tuple_ellipsis(parser):
     parser.add_argument("--tuple", type=Tuple[float, ...])
-    assert (1.2,) == parser.parse_args(["--tuple=[1.2]"]).tuple
-    assert (1.2, 3.4) == parser.parse_args(["--tuple=[1.2, 3.4]"]).tuple
-    assert () == parser.parse_args(["--tuple=[]"]).tuple
+    assert parser.parse_args(["--tuple=[1.2]"]).tuple == (1.2,)
+    assert parser.parse_args(["--tuple=[1.2, 3.4]"]).tuple == (1.2, 3.4)
+    assert parser.parse_args(["--tuple=[]"]).tuple == ()
     with pytest.raises(ArgumentError, match=r"Expected type: float\. Got value: a"):
         parser.parse_args(['--tuple=[2, "a"]'])
 
@@ -885,7 +885,7 @@ def test_tuple_ellipsis(parser):
 def test_tuples_nested_ellipsis(parser):
     parser.add_argument("--tuple", type=Tuple[Tuple[str, str], Tuple[Tuple[int, float], ...]])
     cfg = parser.parse_args(['--tuple=[["foo", "bar"], [[1, 2.02], [3, 3.09]]]'])
-    assert (("foo", "bar"), ((1, 2.02), (3, 3.09))) == cfg.tuple
+    assert cfg.tuple == (("foo", "bar"), ((1, 2.02), (3, 3.09)))
 
 
 TypeVarTuple = typing_extensions_import("TypeVarTuple")
@@ -933,7 +933,7 @@ def test_star_unpacked_tuple_unvalidated():
 def test_tuple_union(parser, tmp_cwd):
     parser.add_argument("--tuple", type=Tuple[Union[int, EnumABC], Path_fc, NotEmptyStr])
     cfg = parser.parse_args(['--tuple=[2, "a", "b"]'])
-    assert (2, "a", "b") == cfg.tuple
+    assert cfg.tuple == (2, "a", "b")
     assert isinstance(cfg.tuple[1], Path_fc)
     with pytest.raises(ArgumentError, match=r"Expected a tuple with 3 elements\. Got value: \[\]"):
         parser.parse_args(["--tuple=[]"])
@@ -962,7 +962,7 @@ def test_tuple_union(parser, tmp_cwd):
 def test_list_variants(parser, list_type):
     parser.add_argument("--list", type=list_type[int])
     cfg = parser.parse_args(["--list=[1, 2]"])
-    assert [1, 2] == cfg.list
+    assert cfg.list == [1, 2]
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--list=["a"]'])
 
@@ -993,7 +993,7 @@ def test_deque(parser):
 def test_list_dump(parser):
     parser.add_argument("--list", type=Union[PositiveInt, List[PositiveInt]])
     dump = json_or_yaml_load(parser.dump(Namespace(list=[1, 2])))
-    assert [1, 2] == dump["list"]
+    assert dump["list"] == [1, 2]
     with pytest.raises(TypeError):
         parser.dump(Namespace(list=[1, -2]))
 
@@ -1007,13 +1007,13 @@ def test_list_enum(parser):
 def test_list_tuple(parser):
     parser.add_argument("--list", type=List[Tuple[int, float]])
     cfg = parser.parse_args(["--list=[[1, 2.02], [3, 3.09]]"])
-    assert [(1, 2.02), (3, 3.09)] == cfg.list
+    assert cfg.list == [(1, 2.02), (3, 3.09)]
 
 
 def test_list_union(parser):
     parser.add_argument("--list1", type=List[Union[float, str, type(None)]])
     parser.add_argument("--list2", type=List[Union[int, EnumABC]])
-    assert [1.2, "B"] == parser.parse_args(['--list1=[1.2, "B"]']).list1
+    assert parser.parse_args(['--list1=[1.2, "B"]']).list1 == [1.2, "B"]
     assert [3, EnumABC.B] == parser.parse_args(['--list2=[3, "B"]']).list2
     with pytest.raises(ArgumentError, match=r"Got value: \{'a': 1, 'b': '2'\}"):
         parser.parse_args(['--list1={"a":1, "b":"2"}'])
@@ -1038,12 +1038,12 @@ def test_sequence_default_tuple(parser):
 @parser_modes
 def test_list_append(parser):
     parser.add_argument("--val", type=Union[int, float, List[int]])
-    assert 0 == parser.parse_args(["--val=0"]).val
-    assert [0] == parser.parse_args(["--val+=0"]).val
-    assert [1, 2, 3] == parser.parse_args(["--val=1", "--val+=2", "--val+=3"]).val
-    assert [1, 2, 3] == parser.parse_args(["--val=[1,2]", "--val+=3"]).val
-    assert [1] == parser.parse_args(["--val=0.1", "--val+=1"]).val
-    assert 3 == parser.parse_args(["--val=[1,2]", "--val=3"]).val
+    assert parser.parse_args(["--val=0"]).val == 0
+    assert parser.parse_args(["--val+=0"]).val == [0]
+    assert parser.parse_args(["--val=1", "--val+=2", "--val+=3"]).val == [1, 2, 3]
+    assert parser.parse_args(["--val=[1,2]", "--val+=3"]).val == [1, 2, 3]
+    assert parser.parse_args(["--val=0.1", "--val+=1"]).val == [1]
+    assert parser.parse_args(["--val=[1,2]", "--val=3"]).val == 3
     with pytest.raises(ArgumentError, match="Got value: a"):
         parser.parse_args(["--val=a", "--val+=1"])
 
@@ -1108,20 +1108,20 @@ def test_get_class_parser_does_not_modify_sub_add_kwargs(parser):
 @parser_modes
 def test_list_append_default_empty(parser):
     parser.add_argument("--list", type=List[str], default=[])
-    assert [] == parser.get_defaults().list
-    assert ["a"] == parser.parse_args(['--list=["a"]']).list
-    assert [] == parser.get_defaults().list
-    assert ["b", "c"] == parser.parse_args(['--list+=["b", "c"]']).list
-    assert [] == parser.get_defaults().list
+    assert parser.get_defaults().list == []
+    assert parser.parse_args(['--list=["a"]']).list == ["a"]
+    assert parser.get_defaults().list == []
+    assert parser.parse_args(['--list+=["b", "c"]']).list == ["b", "c"]
+    assert parser.get_defaults().list == []
 
 
 @parser_modes
 def test_list_append_config(parser):
     parser.add_argument("--cfg", action="config")
     parser.add_argument("--val", type=List[int], default=[1, 2])
-    assert [3, 4] == parser.parse_args(["--cfg", '{"val": [3, 4]}']).val
-    assert [1, 2, 3] == parser.parse_args(["--cfg", '{"val+": 3}']).val
-    assert [1, 2, 3, 4] == parser.parse_args(["--cfg", '{"val+": [3, 4]}']).val
+    assert parser.parse_args(["--cfg", '{"val": [3, 4]}']).val == [3, 4]
+    assert parser.parse_args(["--cfg", '{"val+": 3}']).val == [1, 2, 3]
+    assert parser.parse_args(["--cfg", '{"val+": [3, 4]}']).val == [1, 2, 3, 4]
     with pytest.raises(ArgumentError, match=r"Expected type: int\. Got value: a\n  Source: config string"):
         parser.parse_args(["--cfg", '{"val+": "a"}'])
     with pytest.raises(ArgumentError, match=r"Expected type: List\[int\]\. Got value: 2"):
@@ -1221,8 +1221,8 @@ def test_list_append_dicts_nested_without_default(parser):
 @parser_modes
 def test_dict_without_arg(parser):
     parser.add_argument("--dict", type=dict)
-    assert {} == parser.parse_args(["--dict={}"])["dict"]
-    assert {"a": 1, "b": "2"} == parser.parse_args(['--dict={"a":1, "b":"2"}'])["dict"]
+    assert parser.parse_args(["--dict={}"])["dict"] == {}
+    assert parser.parse_args(['--dict={"a":1, "b":"2"}'])["dict"] == {"a": 1, "b": "2"}
     with pytest.raises(ArgumentError, match=r"Expected type: dict\. Got value: 1"):
         parser.parse_args(["--dict=1"])
 
@@ -1242,19 +1242,19 @@ def test_dict_union(parser, tmp_cwd):
     parser.add_argument("--dict2", type=Dict[str, Union[bool, Path_fc]])
     cfg = parser.parse_args(['--dict1={"2":4.5, "6":"C"}', '--dict2={"a":true, "b":"f"}'])
     assert {2: 4.5, 6: EnumABC.C} == cfg.dict1
-    assert {"a": True, "b": "f"} == cfg.dict2
+    assert cfg.dict2 == {"a": True, "b": "f"}
     assert isinstance(cfg.dict2["b"], Path_fc)
-    assert {5: None} == parser.parse_args(['--dict1={"5":null}']).dict1
+    assert parser.parse_args(['--dict1={"5":null}']).dict1 == {5: None}
     with pytest.raises(ArgumentError, match=r"Got value: \['a', 'b'\]"):
         parser.parse_args(['--dict1=["a", "b"]'])
     cfg = json_or_yaml_load(parser.dump(cfg))
-    assert {"dict1": {"2": 4.5, "6": "C"}, "dict2": {"a": True, "b": "f"}} == cfg
+    assert cfg == {"dict1": {"2": 4.5, "6": "C"}, "dict2": {"a": True, "b": "f"}}
 
 
 def test_dict_union_int_keys(parser):
     parser.add_argument("--dict", type=Union[int, Dict[int, int]], default=1)
-    assert 1 == parser.get_defaults().dict
-    assert {2: 7, 4: 9} == parser.parse_args(['--dict={"2": 7, "4": 9}']).dict
+    assert parser.get_defaults().dict == 1
+    assert parser.parse_args(['--dict={"2": 7, "4": 9}']).dict == {2: 7, 4: 9}
 
 
 def test_dict_command_line_set_items(parser):
@@ -1293,20 +1293,20 @@ def test_nested_dict_command_line_set_items(parser):
 def test_dict_command_line_set_items_with_space(parser):
     parser.add_argument("--dict", type=dict)
     cfg = parser.parse_args(["--dict.a=x y"])
-    assert {"a": "x y"} == cfg.dict
+    assert cfg.dict == {"a": "x y"}
 
 
 @parser_modes
 def test_mapping_nested_without_args(parser):
     parser.add_argument("--map", type=Mapping[str, Union[int, Mapping]])
-    assert {"a": 1} == parser.parse_args(['--map={"a": 1}']).map
-    assert {"b": {"c": 2}} == parser.parse_args(['--map={"b": {"c": 2}}']).map
+    assert parser.parse_args(['--map={"a": 1}']).map == {"a": 1}
+    assert parser.parse_args(['--map={"b": {"c": 2}}']).map == {"b": {"c": 2}}
 
 
 @parser_modes
 def test_typeddict_without_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {}))
-    assert {} == parser.parse_args(["--typeddict={}"])["typeddict"]
+    assert parser.parse_args(["--typeddict={}"])["typeddict"] == {}
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1}'])
     with pytest.raises(ArgumentError, match="Expected type: MyDict. Got value: 1"):
@@ -1315,7 +1315,7 @@ def test_typeddict_without_arg(parser):
 
 def test_typeddict_with_args(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": int}))
-    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1}'])["typeddict"] == {"a": 1}
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2}'])
     with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'b'\}"):
@@ -1330,8 +1330,8 @@ def test_typeddict_with_args(parser):
 
 def test_typeddict_with_args_ntotal(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": int}, total=False))
-    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
-    assert {} == parser.parse_args(["--typeddict={}"])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1}'])["typeddict"] == {"a": 1}
+    assert parser.parse_args(["--typeddict={}"])["typeddict"] == {}
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2}'])
     with pytest.raises(ArgumentError, match="Expected type: int"):
@@ -1348,8 +1348,8 @@ def test_not_required_support():
 @pytest.mark.skipif(not NotRequired, reason="NotRequired introduced in python 3.11 or backported in typing_extensions")
 def test_typeddict_with_not_required_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": int, "b": NotRequired[int]}))
-    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
-    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1}'])["typeddict"] == {"a": 1}
+    assert parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"] == {"a": 1, "b": 2}
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2, "c": 3}'])
     with pytest.raises(ArgumentError, match="Missing required keys"):
@@ -1387,7 +1387,7 @@ def test_read_only_support():
 @skip_if_no_read_only
 def test_typeddict_with_read_only_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": ReadOnly[int], "b": int}))
-    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"] == {"a": 1, "b": 2}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": "x", "b": 2}'])
     with pytest.raises(ArgumentError, match="Missing required keys"):
@@ -1398,8 +1398,8 @@ def test_typeddict_with_read_only_arg(parser):
 @pytest.mark.parametrize("annotation", read_only_not_required, ids=type_to_str)
 def test_typeddict_read_only_not_required(parser, annotation):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": annotation, "b": int}))
-    assert {"b": 2} == parser.parse_args(['--typeddict={"b": 2}'])["typeddict"]
-    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"b": 2}'])["typeddict"] == {"b": 2}
+    assert parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"] == {"a": 1, "b": 2}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": "x", "b": 2}'])
 
@@ -1408,7 +1408,7 @@ def test_typeddict_read_only_not_required(parser, annotation):
 @pytest.mark.parametrize("annotation", read_only_required, ids=type_to_str)
 def test_typeddict_read_only_required(parser, annotation):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": annotation}, total=False))
-    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1}'])["typeddict"] == {"a": 1}
     with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--typeddict={}"])
 
@@ -1417,7 +1417,7 @@ def test_typeddict_read_only_required(parser, annotation):
 def test_typeddict_read_only_add_class_arguments(parser):
     parser.add_class_arguments(TypedDict("MyDict", {"a": ReadOnly[int]}), "data")
     assert "--data.a A     (required, type: int)" in get_parser_help(parser)
-    assert {"a": 1} == parser.instantiate(parser.parse_args(["--data.a=1"])).data
+    assert parser.instantiate(parser.parse_args(["--data.a=1"])).data == {"a": 1}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(["--data.a=x"])
 
@@ -1441,8 +1441,8 @@ skip_if_no_extra_items = pytest.mark.skipif(
 @skip_if_no_extra_items
 def test_typeddict_extra_items(parser):
     parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, extra_items=int))
-    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
-    assert {"a": 1, "b": 2} == parser.parse_args(["--typeddict.a=1", "--typeddict.b=2"])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"] == {"a": 1, "b": 2}
+    assert parser.parse_args(["--typeddict.a=1", "--typeddict.b=2"])["typeddict"] == {"a": 1, "b": 2}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": 1, "b": "x"}'])
     with pytest.raises(ArgumentError, match="Missing required keys"):
@@ -1454,8 +1454,8 @@ def test_typeddict_extra_items_none_and_read_only(parser):
     parser.add_argument("--none", type=ExtraItemsTypedDict("NoneDict", {}, extra_items=None))
     parser.add_argument("--read_only", type=ExtraItemsTypedDict("ReadOnlyDict", {}, extra_items=ReadOnly[int]))
     cfg = parser.parse_args(['--none={"a": null}', '--read_only={"a": 1}'])
-    assert {"a": None} == cfg.none
-    assert {"a": 1} == cfg.read_only
+    assert cfg.none == {"a": None}
+    assert cfg.read_only == {"a": 1}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--read_only={"a": "x"}'])
 
@@ -1469,7 +1469,7 @@ def test_typeddict_extra_items_inherited(parser):
         b: str
 
     parser.add_argument("--typeddict", type=Child)
-    assert {"a": 1, "b": "x", "c": 3} == parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": 3}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": 3}'])["typeddict"] == {"a": 1, "b": "x", "c": 3}
     with pytest.raises(ArgumentError, match="Expected type: int"):
         parser.parse_args(['--typeddict={"a": 1, "b": "x", "c": "y"}'])
 
@@ -1489,7 +1489,7 @@ def test_typeddict_extra_items_generic(parser):
     parser.add_argument("--inherits_subscripted", type=InheritsSubscripted)
     parser.add_argument("--inherits_generic", type=InheritsGeneric[int])
     for key in ["subscripted", "inherits_subscripted", "inherits_generic"]:
-        assert {"a": 1, "b": 2} == parser.parse_args([f'--{key}={{"a": 1, "b": 2}}'])[key]
+        assert parser.parse_args([f'--{key}={{"a": 1, "b": 2}}'])[key] == {"a": 1, "b": 2}
         with pytest.raises(ArgumentError, match="Expected type: int"):
             parser.parse_args([f'--{key}={{"a": 1, "b": "x"}}'])
 
@@ -1497,7 +1497,7 @@ def test_typeddict_extra_items_generic(parser):
 @skip_if_no_extra_items
 def test_typeddict_closed(parser):
     parser.add_argument("--typeddict", type=ExtraItemsTypedDict("MyDict", {"a": int}, closed=True))
-    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1}'])["typeddict"] == {"a": 1}
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a": 1, "b": 2}'])
 
@@ -2050,8 +2050,8 @@ def test_typevar_default_subscripted_generic_typeddict(parser):
 @pytest.mark.skipif(not Required, reason="Required introduced in python 3.11 or backported in typing_extensions")
 def test_typeddict_with_required_arg(parser):
     parser.add_argument("--typeddict", type=TypedDict("MyDict", {"a": Required[int], "b": int}, total=False))
-    assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
-    assert {"a": 1, "b": 2} == parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"]
+    assert parser.parse_args(['--typeddict={"a": 1}'])["typeddict"] == {"a": 1}
+    assert parser.parse_args(['--typeddict={"a": 1, "b": 2}'])["typeddict"] == {"a": 1, "b": 2}
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2, "c": 3}'])
     with pytest.raises(ArgumentError, match="Missing required keys"):
@@ -2836,14 +2836,14 @@ class TopDict(MiddleDict, total=True):
 def test_typeddict_totality_inheritance(parser):
     parser.add_argument("--middledict", type=MiddleDict, required=False)
     parser.add_argument("--topdict", type=TopDict, required=False)
-    assert {"a": 1} == parser.parse_args(['--middledict={"a": 1}'])["middledict"]
-    assert {"a": 1, "b": 2} == parser.parse_args(['--middledict={"a": 1, "b": 2}'])["middledict"]
+    assert parser.parse_args(['--middledict={"a": 1}'])["middledict"] == {"a": 1}
+    assert parser.parse_args(['--middledict={"a": 1, "b": 2}'])["middledict"] == {"a": 1, "b": 2}
     with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--middledict={}"])
     with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--middledict={"b": 2}'])
-    assert {"a": 1, "c": 2} == parser.parse_args(['--topdict={"a": 1, "c": 2}'])["topdict"]
-    assert {"a": 1, "b": 2, "c": 3} == parser.parse_args(['--topdict={"a": 1, "b": 2, "c": 3}'])["topdict"]
+    assert parser.parse_args(['--topdict={"a": 1, "c": 2}'])["topdict"] == {"a": 1, "c": 2}
+    assert parser.parse_args(['--topdict={"a": 1, "b": 2, "c": 3}'])["topdict"] == {"a": 1, "b": 2, "c": 3}
     with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(['--topdict={"a": 1, "b": 2}'])
     with pytest.raises(ArgumentError, match="Missing required keys"):
@@ -3122,7 +3122,7 @@ def test_union_subtypes_sorted_accept_any_last_parse(parser, typehint):
     # without the sorting the value would be accepted as is by the first subtype
     parser.add_argument("--val", type=typehint)
     assert EnumABC.A == parser.parse_args(["--val=A"]).val
-    assert "X" == parser.parse_args(["--val=X"]).val
+    assert parser.parse_args(["--val=X"]).val == "X"
 
 
 def test_union_subtypes_sorted_nested_parse(parser):
@@ -3154,8 +3154,8 @@ def test_union_unsupported_subtype(parser, logger):
 
 def test_union_new_syntax_simple_types(parser):
     parser.add_argument("--val", type=int | None)
-    assert 123 == parser.parse_args(["--val=123"]).val
-    assert None is parser.parse_args(["--val=null"]).val
+    assert parser.parse_args(["--val=123"]).val == 123
+    assert parser.parse_args(["--val=null"]).val is None
     with pytest.raises(ArgumentError, match="Got value: abc"):
         parser.parse_args(["--val=abc"])
 
@@ -3282,7 +3282,7 @@ def test_callable_class_path_simple(parser):
     assert value == json_or_yaml_load(parser.dump(cfg))["callable"]
     init = parser.instantiate(cfg)
     assert isinstance(init.callable, CallableClassPath)
-    assert 2 == init.callable()
+    assert init.callable() == 2
 
     with pytest.raises(ArgumentError, match=r"Dict must include a class_path and optionally init_args, but got \{\}"):
         parser.parse_args(["--callable={}"])
@@ -3384,9 +3384,9 @@ def test_callable_args_return_type_class(parser, subtests):
         init = parser.instantiate(cfg)
         optimizer = init.optimizer([0.1, 2, 3])
         assert isinstance(optimizer, SGD)
-        assert [0.1, 2, 3] == optimizer.params
-        assert 1e-3 == optimizer.lr
-        assert 0.0 == optimizer.momentum
+        assert optimizer.params == [0.1, 2, 3]
+        assert optimizer.lr == 1e-3
+        assert optimizer.momentum == 0.0
 
     with subtests.test("parse dict"):
         value = {
@@ -3396,14 +3396,14 @@ def test_callable_args_return_type_class(parser, subtests):
             },
         }
         cfg = parser.parse_args([f"--optimizer={json.dumps(value)}"])
-        assert f"{__name__}.Adam" == cfg.optimizer.class_path
+        assert cfg.optimizer.class_path == f"{__name__}.Adam"
         assert Namespace(lr=0.01, momentum=0.0) == cfg.optimizer.init_args
         init = parser.instantiate(cfg)
         optimizer = init.optimizer([4.5, 6.7])
         assert isinstance(optimizer, Adam)
-        assert [4.5, 6.7] == optimizer.params
-        assert 0.01 == optimizer.lr
-        assert 0.0 == optimizer.momentum
+        assert optimizer.params == [4.5, 6.7]
+        assert optimizer.lr == 0.01
+        assert optimizer.momentum == 0.0
         dump = parser.dump(cfg)
         assert json_or_yaml_load(dump) == cfg.as_dict()
 
@@ -4065,9 +4065,9 @@ def test_callable_multiple_args_return_type_class(parser, subtests):
         init = parser.instantiate(cfg)
         optimizer = init.optimizer([0.1, 2, 3], 1e-3)
         assert isinstance(optimizer, SGD)
-        assert [0.1, 2, 3] == optimizer.params
-        assert 1e-3 == optimizer.lr
-        assert 0.0 == optimizer.momentum
+        assert optimizer.params == [0.1, 2, 3]
+        assert optimizer.lr == 1e-3
+        assert optimizer.momentum == 0.0
 
     with subtests.test("parse dict"):
         value = {
@@ -4075,14 +4075,14 @@ def test_callable_multiple_args_return_type_class(parser, subtests):
             "init_args": {"momentum": 0.9},
         }
         cfg = parser.parse_args([f"--optimizer={json.dumps(value)}"])
-        assert f"{__name__}.Adam" == cfg.optimizer.class_path
+        assert cfg.optimizer.class_path == f"{__name__}.Adam"
         assert Namespace(momentum=0.9) == cfg.optimizer.init_args
         init = parser.instantiate(cfg)
         optimizer = init.optimizer([4.5, 6.7], 0.01)
         assert isinstance(optimizer, Adam)
-        assert [4.5, 6.7] == optimizer.params
-        assert 0.01 == optimizer.lr
-        assert 0.9 == optimizer.momentum
+        assert optimizer.params == [4.5, 6.7]
+        assert optimizer.lr == 0.01
+        assert optimizer.momentum == 0.9
         dump = parser.dump(cfg)
         assert json_or_yaml_load(dump) == cfg.as_dict()
 
@@ -4174,7 +4174,7 @@ def test_callable_args_return_type_union_of_classes(parser, subtests):
         scheduler = init.scheduler(optimizer)
         assert isinstance(scheduler, StepLR)
         assert scheduler.optimizer is optimizer
-        assert -1 == scheduler.last_epoch
+        assert scheduler.last_epoch == -1
 
     with subtests.test("parse"):
         value = {
@@ -4184,13 +4184,13 @@ def test_callable_args_return_type_union_of_classes(parser, subtests):
             },
         }
         cfg = parser.parse_args([f"--scheduler={json.dumps(value)}"])
-        assert f"{__name__}.ReduceLROnPlateau" == cfg.scheduler.class_path
+        assert cfg.scheduler.class_path == f"{__name__}.ReduceLROnPlateau"
         assert Namespace(monitor="loss", factor=0.1) == cfg.scheduler.init_args
         init = parser.instantiate(cfg)
         scheduler = init.scheduler(optimizer)
         assert isinstance(scheduler, ReduceLROnPlateau)
         assert scheduler.optimizer is optimizer
-        assert "loss" == scheduler.monitor
+        assert scheduler.monitor == "loss"
 
     with subtests.test("help"):
         help_str = get_parser_help(parser)

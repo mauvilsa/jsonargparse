@@ -95,7 +95,7 @@ def test_pydantic_secret_str_in_union_relative_path_not_resolved_as_remote():
 
     cfg = parser.parse_args([f"--cfg={config_path}"])
     assert isinstance(cfg.password, pydantic.SecretStr)
-    assert "PASSWORD" == cfg.password.get_secret_value()
+    assert cfg.password.get_secret_value() == "PASSWORD"
 
 
 if annotated and pydantic_support > 1:

@@ -91,7 +91,7 @@ def test_subclass_basics(parser, type):
     cfg = parser.parse_args([f"--op={json.dumps(value)}"])
     init = parser.instantiate(cfg)
     assert isinstance(init["op"], BaseC)
-    assert 3 == init["op"].p
+    assert init["op"].p == 3
 
     init = parser.instantiate(parser.parse_args([]))
     assert init["op"] is None
@@ -167,8 +167,8 @@ def test_subclass_within_class_instantiate(parser):
 
     init = parser.instantiate(cfg)
     assert isinstance(init.c1, Instantiate1)
-    assert 7 == init.c1.a1
-    assert 2.3 == init.c1.a2
+    assert init.c1.a1 == 7
+    assert init.c1.a2 == 2.3
 
 
 class SetDefaults:
@@ -208,7 +208,7 @@ def test_subclass_optional_list(parser, subtests):
         assert cfg["op"][0]["init_args"].as_dict() == {"p": 3}
         init = parser.instantiate(cfg)
         assert isinstance(init["op"][0], BaseC)
-        assert 3 == init["op"][0].p
+        assert init["op"][0].p == 3
 
     with subtests.test("error"):
         with pytest.raises(ArgumentError, match="Not a valid subclass of BaseC"):
@@ -1222,12 +1222,12 @@ def test_subclass_list_append_nonclass_default(parser):
 
     cfg = parser.parse_args([f"--cls.obj={__name__}.SubA", "--cls.obj.p=2"])
     assert not isinstance(cfg.cls.obj, list)
-    assert f"{__name__}.SubA" == cfg.cls.obj.class_path
-    assert 2 == cfg.cls.obj.init_args.p
+    assert cfg.cls.obj.class_path == f"{__name__}.SubA"
+    assert cfg.cls.obj.init_args.p == 2
 
     cfg = parser.parse_args([f"--cls.obj={__name__}.SubA", f"--cls.obj+={__name__}.SubB"])
     assert isinstance(cfg.cls.obj, list)
-    assert [f"{__name__}.SubA", f"{__name__}.SubB"] == [c.class_path for c in cfg.cls.obj]
+    assert [c.class_path for c in cfg.cls.obj] == [f"{__name__}.SubA", f"{__name__}.SubB"]
 
 
 class ListAppendObjs:
@@ -1245,8 +1245,8 @@ def test_subclass_list_append_multiple(parser):
             "--a.objs.p=1",
         ]
     )
-    assert [f"{__name__}.BaseC", f"{__name__}.SubA"] == [x.class_path for x in cfg.a.objs]
-    assert [3, 1] == [x.init_args.p for x in cfg.a.objs]
+    assert [x.class_path for x in cfg.a.objs] == [f"{__name__}.BaseC", f"{__name__}.SubA"]
+    assert [x.init_args.p for x in cfg.a.objs] == [3, 1]
     cfg = parser.parse_args([f"--a={json.dumps(cfg.a.as_dict())}", "--a.objs.p=4"])
     assert Namespace(p=4) == cfg.a.objs[-1].init_args
     args = ["--a.objs+=Invalid", "--a.objs+=SubA"]
@@ -1269,8 +1269,8 @@ def test_subcommand_subclass_list_append_multiple(parser, subparser):
             "--a.objs.p=1",
         ]
     )
-    assert [f"{__name__}.BaseC", f"{__name__}.SubA"] == [x.class_path for x in cfg.cmd.a.objs]
-    assert [3, 1] == [x.init_args.p for x in cfg.cmd.a.objs]
+    assert [x.class_path for x in cfg.cmd.a.objs] == [f"{__name__}.BaseC", f"{__name__}.SubA"]
+    assert [x.init_args.p for x in cfg.cmd.a.objs] == [3, 1]
     cfg = parser.parse_args(["cmd", f"--a={json.dumps(cfg.cmd.a.as_dict())}", "--a.objs.p=4"])
     assert Namespace(p=4) == cfg.cmd.a.objs[-1].init_args
     args = ["cmd", "--a.objs+=Invalid", "--a.objs+=SubA"]
@@ -1311,8 +1311,8 @@ def test_type_any_subclasses(parser, parsing_settings_patch):
     assert isinstance(init.any, AnySubclasses)
     assert isinstance(init.any.obj1, SubA)
     assert isinstance(init.any.obj2, SubB)
-    assert 1 == init.any.obj1.p
-    assert 2 == init.any.obj2.p
+    assert init.any.obj1.p == 1
+    assert init.any.obj2.p == 2
 
     value["init_args"]["obj2"]["class_path"] = "does.not.exist"
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
@@ -1322,8 +1322,8 @@ def test_type_any_subclasses(parser, parsing_settings_patch):
     assert isinstance(init.any, AnySubclasses)
     assert isinstance(init.any.obj1, SubA)
     assert isinstance(init.any.obj2, dict)
-    assert 1 == init.any.obj1.p
-    assert 2 == init.any.obj2["init_args"]["p"]
+    assert init.any.obj1.p == 1
+    assert init.any.obj2["init_args"]["p"] == 2
 
     value["init_args"]["obj1"]["class_path"] = "does.not.exist"
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
@@ -1347,11 +1347,11 @@ def test_type_any_list_of_subclasses(parser, parsing_settings_patch):
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
     init = parser.instantiate(cfg)
     assert isinstance(init.any, list)
-    assert 2 == len(init.any)
+    assert len(init.any) == 2
     assert isinstance(init.any[0], SubA)
     assert isinstance(init.any[1], SubB)
-    assert 1 == init.any[0].p
-    assert 2 == init.any[1].p
+    assert init.any[0].p == 1
+    assert init.any[1].p == 2
 
 
 def test_type_any_dict_of_subclasses(parser, parsing_settings_patch):
@@ -1371,11 +1371,11 @@ def test_type_any_dict_of_subclasses(parser, parsing_settings_patch):
     cfg = parser.parse_args([f"--any={json.dumps(value)}"])
     init = parser.instantiate(cfg)
     assert isinstance(init.any, dict)
-    assert 2 == len(init.any)
+    assert len(init.any) == 2
     assert isinstance(init.any["k1"], SubA)
     assert isinstance(init.any["k2"], SubB)
-    assert 1 == init.any["k1"].p
-    assert 2 == init.any["k2"].p
+    assert init.any["k1"].p == 1
+    assert init.any["k2"].p == 2
 
 
 # override tests
@@ -3258,7 +3258,7 @@ def test_subclass_multifile_save(parser, tmp_cwd):
     cfg = parser.parse_args([f"--obj={obj_cfg_path}"])
     parser.save(cfg, out_main_cfg, multifile=True)
 
-    assert {"obj": "obj.yaml"} == json_or_yaml_load(out_main_cfg.read_text())
+    assert json_or_yaml_load(out_main_cfg.read_text()) == {"obj": "obj.yaml"}
     obj = json_or_yaml_load(Path("out", "obj.yaml").read_text())
     assert obj == {"class_path": f"{__name__}.BaseC", "init_args": {"p": 0}}
 

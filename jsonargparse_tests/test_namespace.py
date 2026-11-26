@@ -17,14 +17,14 @@ skip_if_no_setattr_insertion_order = pytest.mark.skipif(
 def test_shallow_dot_set_get():
     ns = Namespace()
     ns.a = 1
-    assert 1 == ns.a
+    assert ns.a == 1
     assert ns == Namespace(a=1)
 
 
 def test_shallow_attr_set_get_del():
     ns = Namespace()
     setattr(ns, "a", 1)
-    assert 1 == getattr(ns, "a")
+    assert getattr(ns, "a") == 1
     assert ns == Namespace(a=1)
     delattr(ns, "a")
     with pytest.raises(AttributeError):
@@ -34,7 +34,7 @@ def test_shallow_attr_set_get_del():
 def test_shallow_item_set_get_del():
     ns = Namespace()
     ns["a"] = 1
-    assert 1 == ns["a"]
+    assert ns["a"] == 1
     assert ns == Namespace(a=1)
     del ns["a"]
     with pytest.raises(KeyError):
@@ -45,12 +45,12 @@ def test_nested_item_set_get():
     ns = Namespace()
     ns["x.y.z"] = 1
     assert Namespace(x=Namespace(y=Namespace(z=1))) == ns
-    assert 1 == ns["x.y.z"]
-    assert 1 == ns["x"]["y"]["z"]
+    assert ns["x.y.z"] == 1
+    assert ns["x"]["y"]["z"] == 1
     assert Namespace(z=1) == ns["x.y"]
     assert Namespace(z=1) == ns["x"]["y"]
     ns["x.y"] = 2
-    assert 2 == ns["x.y"]
+    assert ns["x.y"] == 2
 
 
 def test_nested_item_set_del():
@@ -64,9 +64,9 @@ def test_nested_item_set_del():
 def test_get():
     ns = Namespace()
     ns["x.y"] = 1
-    assert 1 == ns.get("x.y")
+    assert ns.get("x.y") == 1
     assert Namespace(y=1) == ns.get("x")
-    assert 2 == ns.get("z", 2)
+    assert ns.get("z", 2) == 2
     assert ns.get("z") is None
 
 
@@ -80,7 +80,7 @@ def test_get_non_str_key(key):
 def test_set_item_nested_dict():
     ns = Namespace(d={"a": 1})
     ns["d.b"] = 2
-    assert 2 == ns["d"]["b"]
+    assert ns["d"]["b"] == 2
 
 
 @pytest.mark.parametrize("key", [None, True, False, 1, 2.3])
@@ -92,7 +92,7 @@ def test_contains_non_str_key(key):
 def test_pop():
     ns = Namespace()
     ns["x.y.z"] = 1
-    assert 1 == ns.pop("x.y.z")
+    assert ns.pop("x.y.z") == 1
     assert ns == Namespace(x=Namespace(y=Namespace()))
 
 

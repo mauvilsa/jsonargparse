@@ -662,7 +662,7 @@ def test_get_params_class_with_kwargs_in_dict_attribute():
 )
 def test_get_params_local_import_with_kwargs_in_dict_attribute(cls):
     params = get_params(cls)
-    assert ["mode", "loader_fn", "exceptions", "json_superset"] == [p.name for p in params]
+    assert [p.name for p in params] == ["mode", "loader_fn", "exceptions", "json_superset"]
     with source_unavailable():
         assert get_params(cls) == []
 
@@ -801,7 +801,7 @@ def test_get_params_class_instance_defaults_kw_only():
 
 def test_get_params_class_conditional_global_constant():
     params = get_params(ConditionalGlobalConstant)
-    assert ["p1", "p3"] == [p.name for p in params]
+    assert [p.name for p in params] == ["p1", "p3"]
     assert "GLOBAL_CONSTANT" not in ConditionalGlobalConstant.__init__.__globals__
 
 
@@ -907,7 +907,7 @@ def test_get_params_partialmethod_placeholder():
 
 def test_get_params_function_no_args_no_kwargs():
     params = get_params(function_no_args_no_kwargs)
-    assert ["pk1", "k2"] == [p.name for p in params]
+    assert [p.name for p in params] == ["pk1", "k2"]
     with source_unavailable():
         assert params == get_params(function_no_args_no_kwargs)
 
@@ -974,12 +974,12 @@ def test_get_params_function_pop_from_kwargs_and_forward():
 
 def test_get_params_function_module_class():
     params = get_params(function_module_class)
-    assert ["firstweekday"] == [p.name for p in params]
+    assert [p.name for p in params] == ["firstweekday"]
 
 
 def test_get_params_function_local_import():
     params = get_params(function_local_import)
-    assert ["mode", "loader_fn", "exceptions", "json_superset"] == [p.name for p in params]
+    assert [p.name for p in params] == ["mode", "loader_fn", "exceptions", "json_superset"]
 
 
 def function_nested_module_attr(**kwargs):  # pragma: no cover
@@ -992,7 +992,7 @@ def test_get_params_function_nested_module_attr():
     params = get_params(function_nested_module_attr)
     assert "string" in [p.name for p in params]
     with source_unavailable():
-        assert [] == get_params(function_nested_module_attr)
+        assert get_params(function_nested_module_attr) == []
 
 
 class ClassNestedModuleAttr:
@@ -1006,7 +1006,7 @@ def test_get_params_class_nested_module_attr():
     params = get_params(ClassNestedModuleAttr)
     assert "string" in [p.name for p in params]
     with source_unavailable():
-        assert [] == get_params(ClassNestedModuleAttr)
+        assert get_params(ClassNestedModuleAttr) == []
 
 
 class ClassNestedLocalFromImport:
@@ -1020,7 +1020,7 @@ def test_get_params_class_nested_local_from_import():
     params = get_params(ClassNestedLocalFromImport)
     assert "string" in [p.name for p in params]
     with source_unavailable():
-        assert [] == get_params(ClassNestedLocalFromImport)
+        assert get_params(ClassNestedLocalFromImport) == []
 
 
 def test_get_params_function_constant_boolean():
@@ -1084,7 +1084,7 @@ def test_get_params_some_ignored():
 
 def test_unsupported_component(logger):
     with capture_logs(logger) as logs:
-        assert [] == get_params(function_unsupported_component, logger=logger)
+        assert get_params(function_unsupported_component, logger=logger) == []
     assert "not supported" in logs.getvalue()
 
 
@@ -1120,7 +1120,7 @@ def test_unsupported_kwarg_attr_as_keyword(logger):
 
 def test_get_params_non_existent_call(logger):
     with capture_logs(logger) as logs:
-        assert [] == get_params(function_with_bug, logger=logger)
+        assert get_params(function_with_bug, logger=logger) == []
     assert "does_not_exist" in logs.getvalue()
 
 

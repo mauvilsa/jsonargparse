@@ -326,7 +326,7 @@ def test_subcommand_logger_set_after_adding(parser, subparser, logger):
     assert subparser.logger is logger
     with pytest.raises(ArgumentError), capture_logs(logger) as logs:
         parser.parse_args(["foo", "--int=invalid"])
-    assert 1 == logs.getvalue().count('Parser key "int"')
+    assert logs.getvalue().count('Parser key "int"') == 1
 
 
 def test_subcommand_without_options(parser, subparser):

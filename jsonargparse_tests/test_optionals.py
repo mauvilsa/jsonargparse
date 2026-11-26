@@ -175,53 +175,53 @@ def test_print_config_flag_requires_ruamel(print_parser, flag):
 
 @skip_if_requests_unavailable
 def test_config_read_mode_url_support_true():
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     set_parsing_settings(config_read_mode_urls_enabled=True)
-    assert "fur" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fur"
     set_parsing_settings(config_read_mode_urls_enabled=False)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
 
 
 @pytest.mark.skipif(url_support, reason="request package should not be installed")
 def test_config_read_mode_url_support_false():
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     with pytest.raises(ImportError):
         set_parsing_settings(config_read_mode_urls_enabled=True)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     set_parsing_settings(config_read_mode_urls_enabled=False)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
 
 
 @skip_if_fsspec_unavailable
 def test_config_read_mode_fsspec_support_true():
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     set_parsing_settings(config_read_mode_fsspec_enabled=True)
-    assert "fsr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fsr"
     set_parsing_settings(config_read_mode_fsspec_enabled=False)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
 
 
 @skip_if_requests_unavailable
 @skip_if_fsspec_unavailable
 def test_config_read_mode_urls_and_fsspec_independent():
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     set_parsing_settings(config_read_mode_urls_enabled=True)
     set_parsing_settings(config_read_mode_fsspec_enabled=True)
-    assert "fsur" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fsur"
     set_parsing_settings(config_read_mode_urls_enabled=False)
-    assert "fsr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fsr"
     set_parsing_settings(config_read_mode_fsspec_enabled=False)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
 
 
 @pytest.mark.skipif(fsspec_support, reason="fsspec package should not be installed")
 def test_config_read_mode_fsspec_support_false():
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     with pytest.raises(ImportError):
         set_parsing_settings(config_read_mode_fsspec_enabled=True)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
     set_parsing_settings(config_read_mode_fsspec_enabled=False)
-    assert "fr" == _get_config_read_mode()
+    assert _get_config_read_mode() == "fr"
 
 
 # final decorator tests

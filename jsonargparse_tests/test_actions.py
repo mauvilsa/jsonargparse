@@ -28,11 +28,11 @@ def test_action_config_file(parser, tmp_cwd):
     parser.add_argument("--val")
 
     cfg = parser.parse_args([f"--cfg={abs_yaml_file}", f"--cfg={rel_yaml_file}", "--cfg", '{"val": "arg"}'])
-    assert 3 == len(cfg.cfg)
-    assert "arg" == cfg.val
+    assert len(cfg.cfg) == 3
+    assert cfg.val == "arg"
     assert str(abs_yaml_file) == cfg.cfg[0]
     assert str(rel_yaml_file) == cfg.cfg[1]
-    assert None is cfg.cfg[2]
+    assert cfg.cfg[2] is None
 
 
 def test_action_config_file_set_defaults_error(parser):
@@ -109,8 +109,8 @@ def test_yes_no_action_defaults(parser):
     parser.add_argument("--default_false", default=False, action=ActionYesNo)
     parser.add_argument("--default_true", default=True, action=ActionYesNo)
     defaults = parser.get_defaults()
-    assert False is defaults.default_false
-    assert True is defaults.default_true
+    assert defaults.default_false is False
+    assert defaults.default_true is True
 
 
 @pytest.mark.parametrize(
@@ -144,7 +144,7 @@ def test_yes_no_action_with_argument(parser, args, expected):
 
 def test_yes_no_action_double_negative(parser):
     parser.add_argument("--default_true", default=True, nargs=1, action=ActionYesNo)
-    assert True is parser.parse_args(["--no_default_true=no"]).default_true
+    assert parser.parse_args(["--no_default_true=no"]).default_true is True
 
 
 def test_yes_no_action_invalid_value(parser):
@@ -155,22 +155,22 @@ def test_yes_no_action_invalid_value(parser):
 
 def test_yes_no_action_unspecified_default_and_nargs(parser):
     parser.add_argument("--arg", action=ActionYesNo)
-    assert False is parser.get_defaults().arg
+    assert parser.get_defaults().arg is False
     help_str = get_parser_help(parser)
     assert "--arg, --no_arg  (type: bool, default: False)" in help_str
 
 
 def test_yes_no_action_nested(parser):
     parser.add_argument("--g.arg", action=ActionYesNo)
-    assert False is parser.get_defaults().g.arg
-    assert True is parser.parse_args(["--g.arg"]).g.arg
-    assert False is parser.parse_args(["--no_g.arg"]).g.arg
+    assert parser.get_defaults().g.arg is False
+    assert parser.parse_args(["--g.arg"]).g.arg is True
+    assert parser.parse_args(["--no_g.arg"]).g.arg is False
 
 
 def test_yes_no_action_prefixes(parser):
     parser.add_argument("--with-arg", action=ActionYesNo(yes_prefix="with-", no_prefix="without-"))
-    assert True is parser.parse_args(["--with-arg"]).with_arg
-    assert False is parser.parse_args(["--without-arg"]).with_arg
+    assert parser.parse_args(["--with-arg"]).with_arg is True
+    assert parser.parse_args(["--without-arg"]).with_arg is False
 
 
 def test_yes_no_action_invalid_yes_prefix(parser):
@@ -247,9 +247,9 @@ def composed_parsers(tmp_path_factory):
 def test_action_parser_defaults(composed_parsers):
     parser = composed_parsers[0]
     defaults = parser.get_defaults()
-    assert "opt1_def" == defaults.opt1
-    assert "opt2_def" == defaults.inner2.opt2
-    assert "opt3_def" == defaults.inner2.inner3.opt3
+    assert defaults.opt1 == "opt1_def"
+    assert defaults.inner2.opt2 == "opt2_def"
+    assert defaults.inner2.inner3.opt3 == "opt3_def"
 
 
 def test_action_parser_unexpected_group_value(composed_parsers):
@@ -262,8 +262,8 @@ def test_action_parser_parse_path(composed_parsers):
     parser, yaml_main = composed_parsers[:2]
     expected = {"opt1": "opt1_yaml", "inner2": {"opt2": "opt2_yaml", "inner3": {"opt3": "opt3_yaml"}}}
     cfg = parser.parse_path(yaml_main)
-    assert "inner2.yaml" == str(cfg.inner2.__path__)
-    assert "inner3.yaml" == str(cfg.inner2.inner3.__path__)
+    assert str(cfg.inner2.__path__) == "inner2.yaml"
+    assert str(cfg.inner2.inner3.__path__) == "inner3.yaml"
     assert expected == cfg.clone(with_meta=False).as_dict()
 
     yaml_main2 = yaml_main.parent / "main2.yaml"
@@ -294,12 +294,12 @@ def test_action_parser_config_loop(composed_parsers):
 
 def test_action_parser_parse_env_inner(composed_parsers):
     parser, _, yaml_inner2, yaml_inner3 = composed_parsers
-    assert "opt2_env" == parser.parse_env({"LV1_INNER2__OPT2": "opt2_env"}).inner2.opt2
-    assert "opt3_env" == parser.parse_env({"LV1_INNER2__INNER3__OPT3": "opt3_env"}).inner2.inner3.opt3
+    assert parser.parse_env({"LV1_INNER2__OPT2": "opt2_env"}).inner2.opt2 == "opt2_env"
+    assert parser.parse_env({"LV1_INNER2__INNER3__OPT3": "opt3_env"}).inner2.inner3.opt3 == "opt3_env"
     expected = {"opt1": "opt1_def", "inner2": {"opt2": "opt2_def", "inner3": {"opt3": "opt3_yaml"}}}
     cfg = parser.parse_env({"LV1_INNER2__INNER3": str(yaml_inner3)}).clone(with_meta=False)
     assert expected == cfg.as_dict()
-    assert "opt2_yaml" == parser.parse_env({"LV1_INNER2": str(yaml_inner2)}).inner2.opt2
+    assert parser.parse_env({"LV1_INNER2": str(yaml_inner2)}).inner2.opt2 == "opt2_yaml"
 
 
 def test_action_parser_parse_args_subconfig_path(composed_parsers):
@@ -342,14 +342,14 @@ def test_action_parser_parse_args_global_config(composed_parsers):
     assert expected == cfg.as_dict()
 
     cfg = parser.parse_args([f"--cfg={yaml_main}", "--inner2.opt2", "opt2_arg", "--inner2.inner3.opt3", "opt3_arg"])
-    assert "opt2_arg" == cfg.inner2.opt2
-    assert "opt3_arg" == cfg.inner2.inner3.opt3
+    assert cfg.inner2.opt2 == "opt2_arg"
+    assert cfg.inner2.inner3.opt3 == "opt3_arg"
 
 
 def test_action_parser_required_argument(parser, subparser):
     subparser.add_argument("--op1", required=True)
     parser.add_argument("--op2", action=ActionParser(parser=subparser))
-    assert "1" == parser.parse_args(["--op2.op1=1"]).op2.op1
+    assert parser.parse_args(["--op2.op1=1"]).op2.op1 == "1"
     with pytest.raises(ArgumentError, match=r"the following arguments are required: op2\.op1"):
         parser.parse_args([])
 
@@ -387,9 +387,9 @@ def test_action_parser_conflict_subparser_key(parser, subparser):
 def test_action_parser_nested_dash_names(parser, subparser, subsubparser):
     subsubparser.add_argument("--op1-like")
     subparser.add_argument("--op2-like", action=ActionParser(parser=subsubparser))
-    assert "a" == subparser.parse_args(["--op2-like.op1-like=a"]).op2_like.op1_like
+    assert subparser.parse_args(["--op2-like.op1-like=a"]).op2_like.op1_like == "a"
     parser.add_argument("--op3", action=ActionParser(parser=subparser))
-    assert "b" == parser.parse_args(["--op3.op2-like.op1-like=b"]).op3.op2_like.op1_like
+    assert parser.parse_args(["--op3.op2-like.op1-like=b"]).op3.op2_like.op1_like == "b"
 
 
 def get_parser_subgroup():

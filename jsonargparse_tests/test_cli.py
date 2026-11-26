@@ -78,11 +78,11 @@ def single_function(a1: float):
 
 @pytest.mark.parametrize("cli_fn", [CLI, auto_cli])
 def test_single_function_return(cli_fn):
-    assert 1.2 == cli_fn(single_function, args=["1.2"])
+    assert cli_fn(single_function, args=["1.2"]) == 1.2
 
 
 def test_single_function_in_list_no_subcommand():
-    assert 1.2 == auto_cli([single_function], args=["1.2"])
+    assert auto_cli([single_function], args=["1.2"]) == 1.2
 
 
 def test_single_function_set_defaults():
@@ -90,7 +90,7 @@ def test_single_function_set_defaults():
         auto_cli(single_function, set_defaults={"a1": 3.4})
 
     parser = capture_parser(run_cli)
-    assert 3.4 == parser.get_defaults().a1
+    assert parser.get_defaults().a1 == 3.4
 
 
 def test_single_function_help():
@@ -108,7 +108,7 @@ def function_with_config_param(p1: int = 1, config: dict = {}):
 
 def test_single_function_with_config_parameter():
     out = get_cli_stdout(function_with_config_param, args=["--p1=2"])
-    assert "p1: 2, config: {}" == out.strip()
+    assert out.strip() == "p1: 2, config: {}"
 
 
 # callable class tests
@@ -125,7 +125,7 @@ callable_instance = CallableClass()
 
 
 def test_callable_instance():
-    assert 3 == auto_cli(callable_instance, as_positional=False, args=["--x=3"])
+    assert auto_cli(callable_instance, as_positional=False, args=["--x=3"]) == 3
 
 
 # multiple functions tests
@@ -141,8 +141,8 @@ def cmd2(a2: str = "X"):
 
 
 def test_multiple_functions_return():
-    assert 5 == auto_cli([cmd1, cmd2], args=["cmd1", "5"])
-    assert "Y" == auto_cli([cmd1, cmd2], args=["cmd2", "--a2=Y"])
+    assert auto_cli([cmd1, cmd2], args=["cmd1", "5"]) == 5
+    assert auto_cli([cmd1, cmd2], args=["cmd2", "--a2=Y"]) == "Y"
 
 
 def test_multiple_functions_set_defaults():
@@ -150,11 +150,11 @@ def test_multiple_functions_set_defaults():
         auto_cli([cmd1, cmd2], set_defaults={"cmd2.a2": "Z"})
 
     parser = capture_parser(run_cli)
-    assert "Z" == parser.parse_args(["cmd2"]).cmd2.a2
+    assert parser.parse_args(["cmd2"]).cmd2.a2 == "Z"
 
 
 def test_multiple_functions_allow_abbrev():
-    assert "Y" == auto_cli([cmd1, cmd2], args=["cmd2", "--a=Y"], allow_abbrev=True)
+    assert auto_cli([cmd1, cmd2], args=["cmd2", "--a=Y"], allow_abbrev=True) == "Y"
     with redirect_stderr(StringIO()) as err, pytest.raises(SystemExit):
         auto_cli([cmd1, cmd2], args=["cmd2", "--a=Y"])
     assert "--a=Y" in err.getvalue()
@@ -220,9 +220,9 @@ class Class1:
 
 
 def test_single_class_return():
-    assert ("0", 2) == auto_cli(Class1, args=["0", "method1", "2"])
-    assert ("3", 4) == auto_cli(Class1, args=['--config={"i1": "3", "method1": {"m1": 4}}'])
-    assert ("5", 6) == auto_cli(Class1, args=["5", "method1", '--config={"m1": 6}'])
+    assert auto_cli(Class1, args=["0", "method1", "2"]) == ("0", 2)
+    assert auto_cli(Class1, args=['--config={"i1": "3", "method1": {"m1": 4}}']) == ("3", 4)
+    assert auto_cli(Class1, args=["5", "method1", '--config={"m1": 6}']) == ("5", 6)
 
 
 def test_single_class_return_instance():
@@ -279,7 +279,7 @@ def test_single_class_help_docstring_parse_error():
 
 def test_single_class_print_config_after_subcommand():
     out = get_cli_stdout(Class1, args=["0", "method1", "2", "--print_config"])
-    assert {"m1": 2} == json_or_yaml_load(out)
+    assert json_or_yaml_load(out) == {"m1": 2}
 
 
 def test_single_class_print_config_before_subcommand():
@@ -295,7 +295,7 @@ class MethodWithConfigParam:
 
 def test_method_with_config_parameter():
     out = get_cli_stdout(MethodWithConfigParam, args=["cmd"])
-    assert "p1: 1, config: {}" == out.strip()
+    assert out.strip() == "p1: 1, config: {}"
 
 
 class ClassWithConfigInitParam:
@@ -308,7 +308,7 @@ class ClassWithConfigInitParam:
 
 def test_single_class_with_config_init_parameter():
     out = get_cli_stdout(ClassWithConfigInitParam, args=["cmd", "--p1=3"])
-    assert "p1: 3, config: {}" == out.strip()
+    assert out.strip() == "p1: 3, config: {}"
 
 
 class WithProperty:
@@ -322,7 +322,7 @@ class WithProperty:
 
 
 def test_class_property_value():
-    assert 3 == auto_cli(WithProperty, args=["--num=2", "prop"])
+    assert auto_cli(WithProperty, args=["--num=2", "prop"]) == 3
     if docstring_parser_support:
         help_str = get_cli_stdout(WithProperty, args=["--help"])
         assert "Description of property" in help_str
@@ -351,23 +351,23 @@ class PositionalOnlyAndVarPositional:
 
 
 def test_function_positional_only():
-    assert (1, "-") == auto_cli(function_positional_only, args=["1"])
+    assert auto_cli(function_positional_only, args=["1"]) == (1, "-")
 
 
 def test_function_var_positional():
-    assert (1, (2.5, 3.0), False) == auto_cli(function_var_positional, args=["1", "2.5", "3"])
-    assert (1, (), True) == auto_cli(function_var_positional, args=["1", "--flag=true"])
+    assert auto_cli(function_var_positional, args=["1", "2.5", "3"]) == (1, (2.5, 3.0), False)
+    assert auto_cli(function_var_positional, args=["1", "--flag=true"]) == (1, (), True)
     config = '--config={"first": 1, "rest": [2.5]}'
-    assert (1, (2.5,), False) == auto_cli(function_var_positional, args=[config])
-    assert (1, (3.0,), False) == auto_cli(function_var_positional, args=[config, "1", "3"])
-    assert (1, (2.5,), False) == auto_cli(function_var_positional, as_positional=False, args=[config])
+    assert auto_cli(function_var_positional, args=[config]) == (1, (2.5,), False)
+    assert auto_cli(function_var_positional, args=[config, "1", "3"]) == (1, (3.0,), False)
+    assert auto_cli(function_var_positional, as_positional=False, args=[config]) == (1, (2.5,), False)
     help_str = get_cli_stdout(function_var_positional, args=["--help"])
     assert "first [rest ...]" in help_str
 
 
 def test_class_positional_only_and_var_positional():
     args = ["--x=1", '--extra=["a"]', "method", "--a=2", "--rest=[3,4]"]
-    assert (1, ("a",), 2, (3, 4)) == auto_cli(PositionalOnlyAndVarPositional, as_positional=False, args=args)
+    assert auto_cli(PositionalOnlyAndVarPositional, as_positional=False, args=args) == (1, ("a",), 2, (3, 4))
     obj = auto_cli(PositionalOnlyAndVarPositional, args=["1", "a", "b"], return_instance=True)
     assert (obj.x, obj.extra) == (1, ("a", "b"))
 
@@ -381,8 +381,8 @@ def test_class_var_positional_and_subcommands_unsupported():
 
 def test_subcommands_positional_only_and_var_positional():
     components = {"fn": {"po": function_positional_only}, "cls": PositionalOnlyAndVarPositional}
-    assert (1, "-") == auto_cli(components, as_positional=False, args=["fn", "po", "--a=1"])
-    assert (1, (), 2, ()) == auto_cli(components, as_positional=False, args=["cls", "--x=1", "method", "--a=2"])
+    assert auto_cli(components, as_positional=False, args=["fn", "po", "--a=1"]) == (1, "-")
+    assert auto_cli(components, as_positional=False, args=["cls", "--x=1", "method", "--a=2"]) == (1, (), 2, ())
 
 
 # function and class tests
@@ -457,17 +457,17 @@ def test_function_and_class_subsubcommand_help():
 
 def test_function_and_class_print_config_after_subsubcommand():
     out = get_cli_stdout([cmd1, Cmd2, cmd3], args=["Cmd2", "method2", "--print_config"])
-    assert {"m2": 0} == json_or_yaml_load(out)
+    assert json_or_yaml_load(out) == {"m2": 0}
 
 
 def test_function_and_class_print_config_in_between_subcommands():
     out = get_cli_stdout([cmd1, Cmd2, cmd3], args=["Cmd2", "--print_config", "method2"])
-    assert {"i1": "d", "method2": {"m2": 0}} == json_or_yaml_load(out)
+    assert json_or_yaml_load(out) == {"i1": "d", "method2": {"m2": 0}}
 
 
 def test_function_and_class_print_config_before_subcommands():
     out = get_cli_stdout([cmd1, Cmd2, cmd3], args=["--print_config", "Cmd2", "method2"])
-    assert {"Cmd2": {"i1": "d", "method2": {"m2": 0}}} == json_or_yaml_load(out)
+    assert json_or_yaml_load(out) == {"Cmd2": {"i1": "d", "method2": {"m2": 0}}}
 
 
 @skip_if_yaml_comments_unavailable
@@ -553,7 +553,7 @@ def test_call_scoped_instantiators_parser_class_instantiate_override():
         def instantiate(self, cfg, instantiate_groups=True):
             return super().instantiate(cfg, instantiate_groups=instantiate_groups)
 
-    assert 1.5 == auto_cli(single_function, args=["1.5"], parser_class=InstantiateOverride)
+    assert auto_cli(single_function, args=["1.5"], parser_class=InstantiateOverride) == 1.5
     injected = auto_cli(
         use_injected,
         args=[f"--injected={__name__}.ScopedInjected"],
@@ -622,8 +622,8 @@ def test_global_instantiator_class_component(clear_instantiators):
 
 def test_named_components_shallow():
     components = {"cmd1": single_function, "cmd2": callable_instance}
-    assert 3.4 == auto_cli(components, args=["cmd1", "3.4"])
-    assert 5 == auto_cli(components, as_positional=False, args=["cmd2", "--x=5"])
+    assert auto_cli(components, args=["cmd1", "3.4"]) == 3.4
+    assert auto_cli(components, as_positional=False, args=["cmd2", "--x=5"]) == 5
     out = get_cli_stdout(components, args=["--help"])
     if docstring_parser_support:
         assert "Description of single_function" in out
@@ -688,9 +688,9 @@ def test_named_components_deep():
     if docstring_parser_support:
         assert "Description of method1" in out
 
-    assert 5.6 == auto_cli(components, args=["lv1_a", "lv2_x", "--a1=5.6"], **kw)
-    assert 7 == auto_cli(components, args=["lv1_a", "lv2_y", "lv3_p", "--x=7"], **kw)
-    assert ("w", 9) == auto_cli(components, args=["lv1_b", "lv2_z", "lv3_q", "--i1=w", "method1", "--m1=9"], **kw)
+    assert auto_cli(components, args=["lv1_a", "lv2_x", "--a1=5.6"], **kw) == 5.6
+    assert auto_cli(components, args=["lv1_a", "lv2_y", "lv3_p", "--x=7"], **kw) == 7
+    assert auto_cli(components, args=["lv1_b", "lv2_z", "lv3_q", "--i1=w", "method1", "--m1=9"], **kw) == ("w", 9)
 
 
 def test_named_components_deep_return_instance():
@@ -732,7 +732,7 @@ def test_subclass_type_config_file(tmp_cwd):
     Path("a.yaml").write_text(json_or_yaml_dump(a_conf))
 
     out = get_cli_stdout(C, args=["--config=config.yaml", "cmd_a"])
-    assert "a yaml\n" == out
+    assert out == "a yaml\n"
 
     out = get_cli_stdout(C, args=["cmd_a", "--help"])
     assert "--config" not in out
@@ -742,7 +742,7 @@ def test_subclass_type_config_file(tmp_cwd):
     Path("b.yaml").write_text(json_or_yaml_dump(b_conf))
 
     out = get_cli_stdout(C, args=["--config=config.yaml", "cmd_b"])
-    assert "a yaml\n" == out
+    assert out == "a yaml\n"
 
 
 @final
@@ -762,7 +762,7 @@ def test_final_and_subclass_type_config_file(tmp_cwd):
     Path("a.yaml").write_text(json_or_yaml_dump(a_conf))
 
     out = auto_cli(run_bf, args=["--config=config.yaml"])
-    assert "a yaml" == out
+    assert out == "a yaml"
 
 
 # async tests
@@ -774,7 +774,7 @@ async def run_async(time: float = 0.1):
 
 
 def test_async_function():
-    assert "done" == auto_cli(run_async, args=["--time=0.0"])
+    assert auto_cli(run_async, args=["--time=0.0"]) == "done"
 
 
 class AsyncMethod:
@@ -789,7 +789,7 @@ class AsyncMethod:
 
 
 def test_async_method():
-    assert "done" == auto_cli(AsyncMethod, args=["--time=0.0", "run"])
+    assert auto_cli(AsyncMethod, args=["--time=0.0", "run"]) == "done"
 
 
 async def run_async_instance(cls: Callable[[], AsyncMethod]):
@@ -803,4 +803,4 @@ def test_async_instance():
             "init_args": {"time": 0.0, "require_async": True},
         }
     }
-    assert "done" == auto_cli(run_async_instance, args=[f"--config={json.dumps(config)}"])
+    assert auto_cli(run_async_instance, args=[f"--config={json.dumps(config)}"]) == "done"

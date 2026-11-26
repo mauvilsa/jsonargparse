@@ -69,8 +69,8 @@ def test_public_api():
 
 
 def test_positive_int():
-    assert 1 == PositiveInt(1)
-    assert 2 == PositiveInt("2")
+    assert PositiveInt(1) == 1
+    assert PositiveInt("2") == 2
     with pytest.raises(ValueError, match="0 does not conform to restriction v>0"):
         PositiveInt(0)
     with pytest.raises(ValueError, match="-3 does not conform to restriction v>0"):
@@ -82,8 +82,8 @@ def test_positive_int():
 
 
 def test_non_negative_int():
-    assert 0 == NonNegativeInt(0)
-    assert 1 == NonNegativeInt("1")
+    assert NonNegativeInt(0) == 0
+    assert NonNegativeInt("1") == 1
     with pytest.raises(ValueError, match="-1 does not conform to restriction v>=0"):
         NonNegativeInt(-1)
     with pytest.raises(ValueError, match="-2 does not conform to restriction v>=0"):
@@ -95,9 +95,9 @@ def test_non_negative_int():
 
 
 def test_positive_float():
-    assert 0.1 == PositiveFloat(0.1)
-    assert 0.2 == PositiveFloat("0.2")
-    assert 3.0 == PositiveFloat(3)
+    assert PositiveFloat(0.1) == 0.1
+    assert PositiveFloat("0.2") == 0.2
+    assert PositiveFloat(3) == 3.0
     with pytest.raises(ValueError, match="0 does not conform to restriction v>0"):
         PositiveFloat(0)
     with pytest.raises(ValueError, match=r"-0\.4 does not conform to restriction v>0"):
@@ -105,9 +105,9 @@ def test_positive_float():
 
 
 def test_non_negative_float():
-    assert 0.0 == NonNegativeFloat(0.0)
-    assert 0.1 == NonNegativeFloat("0.1")
-    assert 2.0 == NonNegativeFloat(2)
+    assert NonNegativeFloat(0.0) == 0.0
+    assert NonNegativeFloat("0.1") == 0.1
+    assert NonNegativeFloat(2) == 2.0
     with pytest.raises(ValueError, match=r"-0\.1 does not conform to restriction v>=0"):
         NonNegativeFloat(-0.1)
     with pytest.raises(ValueError, match="-2 does not conform to restriction v>=0"):
@@ -115,9 +115,9 @@ def test_non_negative_float():
 
 
 def test_closed_unit_interval():
-    assert 0.0 == ClosedUnitInterval(0.0)
-    assert 1.0 == ClosedUnitInterval("1")
-    assert 0.5 == ClosedUnitInterval(0.5)
+    assert ClosedUnitInterval(0.0) == 0.0
+    assert ClosedUnitInterval("1") == 1.0
+    assert ClosedUnitInterval(0.5) == 0.5
     with pytest.raises(ValueError, match=r"-0\.1 does not conform to restriction v>=0 and v<=1"):
         ClosedUnitInterval(-0.1)
     with pytest.raises(ValueError, match=r"1\.1 does not conform to restriction v>=0 and v<=1"):
@@ -125,9 +125,9 @@ def test_closed_unit_interval():
 
 
 def test_open_unit_interval():
-    assert 0.1 == OpenUnitInterval(0.1)
-    assert 0.9 == OpenUnitInterval("0.9")
-    assert 0.5 == OpenUnitInterval(0.5)
+    assert OpenUnitInterval(0.1) == 0.1
+    assert OpenUnitInterval("0.9") == 0.9
+    assert OpenUnitInterval(0.5) == 0.5
     with pytest.raises(ValueError, match="0 does not conform to restriction v>0 and v<1"):
         OpenUnitInterval(0)
     with pytest.raises(ValueError, match=r"1\.0 does not conform to restriction v>0 and v<1"):
@@ -153,14 +153,14 @@ def test_restricted_number_already_registered():
 def test_restricted_number_name_from_restrictions():
     NumberType = restricted_number_type(None, float, [(">=", 0.5), ("<", 2)], join="and")
     assert NumberType.__name__ == "float_ge05_and_lt2"
-    assert 1.0 == NumberType(1)
+    assert NumberType(1) == 1.0
     with pytest.raises(ValueError, match=r"0\.4 does not conform to restriction v>=0\.5 and v<2"):
         NumberType(0.4)
 
 
 def test_restricted_number_not_equal_operator():
     NotTwoOrThree = restricted_number_type("NotTwoOrThree", float, [("!=", 2), ("!=", 3)])
-    assert 1.0 == NotTwoOrThree(1)
+    assert NotTwoOrThree(1) == 1.0
     with pytest.raises(ValueError, match="2 does not conform to restriction v!=2 and v!=3"):
         NotTwoOrThree(2)
     with pytest.raises(ValueError, match="3 does not conform to restriction v!=2 and v!=3"):
@@ -169,8 +169,8 @@ def test_restricted_number_not_equal_operator():
 
 def test_restricted_number_operator_join():
     PositiveOrMinusOne = restricted_number_type("PositiveOrMinusOne", float, [(">", 0), ("==", -1)], join="or")
-    assert 1.0 == PositiveOrMinusOne(1)
-    assert -1.0 == PositiveOrMinusOne("-1.0")
+    assert PositiveOrMinusOne(1) == 1.0
+    assert PositiveOrMinusOne("-1.0") == -1.0
     with pytest.raises(ValueError, match=r"-0\.5 does not conform to restriction v>0 or v==-1"):
         PositiveOrMinusOne(-0.5)
     with pytest.raises(ValueError, match="-2 does not conform to restriction v>0 or v==-1"):
@@ -179,8 +179,8 @@ def test_restricted_number_operator_join():
 
 def test_non_negative_float_add_argument(parser):
     parser.add_argument("--le0", type=NonNegativeFloat)
-    assert 0.0 == parser.parse_args(["--le0", "0"]).le0
-    assert 5.6 == parser.parse_args(["--le0", "5.6"]).le0
+    assert parser.parse_args(["--le0", "0"]).le0 == 0.0
+    assert parser.parse_args(["--le0", "5.6"]).le0 == 5.6
     with pytest.raises(ArgumentError, match=r"NonNegativeFloat: -2\.1 does not conform to restriction v>=0"):
         parser.parse_args(["--le0", "-2.1"])
 
@@ -201,7 +201,7 @@ def test_restricted_number_add_argument_optional(parser):
 def test_restricted_number_add_argument_optional_nargs_plus(parser):
     TenToTwenty = restricted_number_type("TenToTwenty", int, [(">=", 10), ("<=", 20)])
     parser.add_argument("--f10t20", type=TenToTwenty, nargs="+")
-    assert [11, 14, 16] == parser.parse_args(["--f10t20", "11", "14", "16"]).f10t20
+    assert parser.parse_args(["--f10t20", "11", "14", "16"]).f10t20 == [11, 14, 16]
     with pytest.raises(ArgumentError, match="Not of type TenToTwenty: 9 does not conform to restriction"):
         parser.parse_args(["--f10t20", "9"])
     with pytest.raises(ArgumentError, match="Not of type TenToTwenty: 21 does not conform to restriction"):
@@ -213,19 +213,19 @@ def test_restricted_number_add_argument_optional_nargs_plus(parser):
 def test_restricted_number_positional_nargs_questionmark(parser):
     parser.add_argument("p1")
     parser.add_argument("p2", nargs="?", type=OpenUnitInterval)
-    assert None is parser.parse_args(["a"]).p2
-    assert 0.5 == parser.parse_args(["a", "0.5"]).p2
+    assert parser.parse_args(["a"]).p2 is None
+    assert parser.parse_args(["a", "0.5"]).p2 == 0.5
     with pytest.raises(ArgumentError, match="Not of type OpenUnitInterval: could not convert string to float: 'b'"):
         parser.parse_args(["a", "b"])
 
 
 def test_restricted_number_optional_union(parser):
     parser.add_argument("--num", type=Optional[Union[PositiveInt, OpenUnitInterval]])
-    assert 0.1 == parser.parse_args(["--num", "0.1"]).num
-    assert 0.9 == parser.parse_args(["--num", "0.9"]).num
-    assert 1 == parser.parse_args(["--num", "1"]).num
-    assert 12 == parser.parse_args(["--num", "12"]).num
-    assert None is parser.parse_args(["--num=null"]).num
+    assert parser.parse_args(["--num", "0.1"]).num == 0.1
+    assert parser.parse_args(["--num", "0.9"]).num == 0.9
+    assert parser.parse_args(["--num", "1"]).num == 1
+    assert parser.parse_args(["--num", "12"]).num == 12
+    assert parser.parse_args(["--num=null"]).num is None
     with pytest.raises(ArgumentError, match=r"PositiveInt.*OpenUnitInterval.*Got value: 0\.0"):
         parser.parse_args(["--num", "0.0"])
     with pytest.raises(ArgumentError, match=r"PositiveInt.*OpenUnitInterval.*Got value: 4\.5"):
@@ -234,7 +234,7 @@ def test_restricted_number_optional_union(parser):
 
 def test_restricted_number_dump(parser):
     parser.add_argument("--float", type=PositiveFloat)
-    assert {"float": 1.1} == json_or_yaml_load(parser.dump(parser.parse_args(["--float", "1.1"])))
+    assert json_or_yaml_load(parser.dump(parser.parse_args(["--float", "1.1"]))) == {"float": 1.1}
 
 
 def test_type_function_parse(parser):
@@ -244,14 +244,14 @@ def test_type_function_parse(parser):
     parser.add_argument("--gt0_or_off", type=gt0_or_off)
     parser.add_argument("--multi_gt0_or_off", type=gt0_or_off, nargs="+")
 
-    assert 1 == parser.parse_args(["--gt0_or_off", "1"]).gt0_or_off
-    assert "off" == parser.parse_args(["--gt0_or_off", "off"]).gt0_or_off
+    assert parser.parse_args(["--gt0_or_off", "1"]).gt0_or_off == 1
+    assert parser.parse_args(["--gt0_or_off", "off"]).gt0_or_off == "off"
     with pytest.raises(ArgumentError, match="invalid gt0_or_off value: '0'"):
         parser.parse_args(["--gt0_or_off", "0"])
     with pytest.raises(ArgumentError, match="invalid gt0_or_off value: 'on'"):
         parser.parse_args(["--gt0_or_off", "on"])
 
-    assert [1, "off"] == parser.parse_args(["--multi_gt0_or_off", "1", "off"]).multi_gt0_or_off
+    assert parser.parse_args(["--multi_gt0_or_off", "1", "off"]).multi_gt0_or_off == [1, "off"]
     with pytest.raises(ArgumentError, match="argument --multi_gt0_or_off: invalid gt0_or_off value: '0'"):
         parser.parse_args(["--multi_gt0_or_off", "1", "0"])
     with pytest.raises(ArgumentError, match='Parser key "multi_gt0_or_off": 0 does not conform to restriction v>0'):
@@ -265,7 +265,7 @@ def test_extend_base_type(parser):
 
     EvenInt = extend_base_type("EvenInt", int, is_even)
     parser.add_argument("--even_int", type=EvenInt)
-    assert 2 == parser.parse_args(["--even_int=2"]).even_int
+    assert parser.parse_args(["--even_int=2"]).even_int == 2
     with pytest.raises(ArgumentError, match="Not of type EvenInt: 3 is not even"):
         parser.parse_args(["--even_int=3"])
 
@@ -274,7 +274,7 @@ def test_extend_base_type(parser):
 
 
 def test_email():
-    assert "name@eg.org" == Email("name@eg.org")
+    assert Email("name@eg.org") == "name@eg.org"
     with pytest.raises(ValueError, match="^ does not match regular expression"):
         Email("")
     with pytest.raises(ValueError, match=r"^name @ eg\.org does not match regular expression"):
@@ -285,14 +285,14 @@ def test_email():
 
 def test_optional_email_parse(parser):
     parser.add_argument("--email", type=Optional[Email])
-    assert "a@b.c" == parser.parse_args(["--email", "a@b.c"]).email
-    assert None is parser.parse_args(["--email=null"]).email
+    assert parser.parse_args(["--email", "a@b.c"]).email == "a@b.c"
+    assert parser.parse_args(["--email=null"]).email is None
     with pytest.raises(ArgumentError, match="Not of type Email: does not match regular expression"):
         parser.parse_args(["--email", "abc"])
 
 
 def test_non_empty_string():
-    assert " value " == NotEmptyStr(" value ")
+    assert NotEmptyStr(" value ") == " value "
     with pytest.raises(ValueError, match="^ does not match regular expression"):
         NotEmptyStr("")
     with pytest.raises(ValueError, match="^  does not match regular expression"):
@@ -309,7 +309,7 @@ def test_restricted_string_already_registered():
 def test_restricted_string_parse(parser):
     FourDigits = restricted_string_type("FourDigits", "^[0-9]{4}$")
     parser.add_argument("--op", type=FourDigits)
-    assert "1234" == parser.parse_args(["--op", "1234"]).op
+    assert parser.parse_args(["--op", "1234"]).op == "1234"
     with pytest.raises(ArgumentError, match="Not of type FourDigits: 123 does not match regular expression"):
         parser.parse_args(["--op", "123"])
     with pytest.raises(ArgumentError, match="Not of type FourDigits: 12345 does not match regular expression"):
@@ -321,7 +321,7 @@ def test_restricted_string_parse(parser):
 def test_restricted_string_dump(parser):
     ThreeChars = restricted_string_type("ThreeChars", "^[A-Z]{3}$")
     parser.add_argument("--op", type=ThreeChars)
-    assert {"op": "ABC"} == json_or_yaml_load(parser.dump(parser.parse_args(["--op", "ABC"])))
+    assert json_or_yaml_load(parser.dump(parser.parse_args(["--op", "ABC"]))) == {"op": "ABC"}
 
 
 # other types
@@ -593,7 +593,7 @@ def test_register_type_alias_and_skip_subclass_help(parser):
 
     cfg = parser.parse_args(["--item=ignored"])
     assert cfg.item is Impl
-    assert {"item": "Impl"} == json_or_yaml_load(parser.dump(cfg))
+    assert json_or_yaml_load(parser.dump(cfg)) == {"item": "Impl"}
 
 
 def test_decimal(parser):

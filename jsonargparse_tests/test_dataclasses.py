@@ -106,7 +106,7 @@ def test_add_class_arguments(parser, subtests):
         assert isinstance(init["b"].b2, DataClassA)
 
     with subtests.test("parse_args"):
-        assert 5 == parser.parse_args(["--b.b2.a1=5"]).b.b2.a1
+        assert parser.parse_args(["--b.b2.a1=5"]).b.b2.a1 == 5
         with pytest.raises(ArgumentError, match="Not of type PositiveInt"):
             parser.parse_args(["--b.b2.a1=x"])
 
@@ -356,8 +356,8 @@ class DataFieldFactory:
 def test_dataclass_field_default_factory(parser):
     parser.add_class_arguments(DataFieldFactory)
     cfg = parser.get_defaults()
-    assert [1, 2, 3] == cfg.a1
-    assert {"a": 1.2, "b": 3.4} == cfg.a2
+    assert cfg.a1 == [1, 2, 3]
+    assert cfg.a2 == {"a": 1.2, "b": 3.4}
 
 
 class UntypedClass:
@@ -746,7 +746,7 @@ def test_dataclass_in_list_type(parser):
     parser.add_argument("--list", type=List[Data])
     cfg = parser.parse_args(['--list=[{"p1": "a"},{"p1": "b"}]'])
     init = parser.instantiate(cfg)
-    assert ["a", "b"] == [d.p1 for d in init.list]
+    assert [d.p1 for d in init.list] == ["a", "b"]
     assert isinstance(init.list[0], Data)
     assert isinstance(init.list[1], Data)
 
