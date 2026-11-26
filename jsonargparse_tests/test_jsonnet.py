@@ -89,12 +89,13 @@ def test_parser_mode_jsonnet(tmp_path):
     jsonnet_file.write_text(example_1_jsonnet)
 
     cfg = parser.parse_args([f"--cfg={jsonnet_file}"])
-    assert 654 == cfg.param
-    assert 9 == len(cfg.records)
-    assert "#8" == cfg.records[-2]["ref"]
-    assert 15.5 == cfg.records[-2]["val"]
+    assert cfg.param == 654
+    assert len(cfg.records) == 9
+    assert cfg.records[-2]["ref"] == "#8"
+    assert cfg.records[-2]["val"] == 15.5
 
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cfg", "{}}"]))
+    with pytest.raises(ArgumentError, match="Failed to parse as Jsonnet"):
+        parser.parse_args(["--cfg", "{}}"])
 
 
 @skip_if_no_pyyaml
@@ -187,10 +188,10 @@ def test_action_jsonnet(parser):
     )
 
     cfg2 = parser.parse_args(["--input.ext_vars", '{"param": 123}', "--input.jsonnet", example_2_jsonnet])
-    assert 123 == cfg2.input.jsonnet["param"]
-    assert 9 == len(cfg2.input.jsonnet["records"])
-    assert "#8" == cfg2.input.jsonnet["records"][-2]["ref"]
-    assert 15.5 == cfg2.input.jsonnet["records"][-2]["val"]
+    assert cfg2.input.jsonnet["param"] == 123
+    assert len(cfg2.input.jsonnet["records"]) == 9
+    assert cfg2.input.jsonnet["records"][-2]["ref"] == "#8"
+    assert cfg2.input.jsonnet["records"][-2]["val"] == 15.5
 
     cfg1 = parser.parse_args(["--input.jsonnet", example_1_jsonnet])
     assert cfg1.input.jsonnet["records"] == cfg2.input.jsonnet["records"]
@@ -260,46 +261,50 @@ def test_action_jsonnet_in_help(parser):
 
 def test_action_jsonnet_parse_method():
     parsed = ActionJsonnet().parse(example_2_jsonnet, ext_vars={"param": 123})
-    assert 123 == parsed["param"]
-    assert 9 == len(parsed["records"])
-    assert "#8" == parsed["records"][-2]["ref"]
-    assert 15.5 == parsed["records"][-2]["val"]
+    assert parsed["param"] == 123
+    assert len(parsed["records"]) == 9
+    assert parsed["records"][-2]["ref"] == "#8"
+    assert parsed["records"][-2]["val"] == 15.5
 
 
 def test_action_jsonnet_parse_method_path(tmp_cwd):
     Path("example.jsonnet").write_text(example_2_jsonnet)
     path = jsonargparse.Path("example.jsonnet", mode="fr")
     parsed = ActionJsonnet().parse(path, ext_vars={"param": 123}, with_meta=True)
-    assert 123 == parsed["param"]
+    assert parsed["param"] == 123
     assert path == parsed["__path__"]
+    action = ActionJsonnet()
     with pytest.raises(ArgumentError, match="Problems evaluating Jsonnet 'example.jsonnet'"):
-        ActionJsonnet().parse(path)
+        action.parse(path)
 
 
 def test_action_jsonnet_ext_vars_default(parser):
     parser.add_argument("--ext_vars", type=dict, default={"param": 432})
     parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
     cfg = parser.parse_args(["--jsonnet", example_2_jsonnet])
-    assert 432 == cfg.jsonnet["param"]
+    assert cfg.jsonnet["param"] == 432
 
 
 def test_action_jsonnet_ext_vars_not_defined(parser):
+    action = ActionJsonnet(ext_vars="ext_vars")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
+        parser.add_argument("--jsonnet", action=action)
     ctx.match("No argument found for ext_vars")
 
 
 def test_action_jsonnet_ext_vars_invalid_type(parser):
     parser.add_argument("--ext_vars", type=list)
+    action = ActionJsonnet(ext_vars="ext_vars")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
+        parser.add_argument("--jsonnet", action=action)
     ctx.match("Type for ext_vars='ext_vars' argument must be dict")
 
 
 def test_action_jsonnet_ext_vars_invalid_default(parser):
     parser.add_argument("--ext_vars", type=dict, default="none")
+    action = ActionJsonnet(ext_vars="ext_vars")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
+        parser.add_argument("--jsonnet", action=action)
     ctx.match("Default value for the ext_vars='ext_vars' argument must be dict or None")
 
 
@@ -320,8 +325,12 @@ def test_action_jsonnet_unexpected_parameters():
 
 @skip_if_jsonschema_unavailable
 def test_action_jsonnet_init_failures():
-    pytest.raises(ValueError, lambda: ActionJsonnet(ext_vars=2))
+    with pytest.raises(ValueError, match="ext_vars has to be either None or a string"):
+        ActionJsonnet(ext_vars=2)
     from jsonschema.exceptions import SchemaError
 
-    pytest.raises((ValueError, SchemaError), lambda: ActionJsonnet(schema="." + json.dumps(example_schema)))
-    pytest.raises((ValueError, SchemaError), lambda: ActionJsonnet(schema="."))
+    schema = "." + json.dumps(example_schema)
+    with pytest.raises((ValueError, SchemaError), match="Problems parsing schema"):
+        ActionJsonnet(schema=schema)
+    with pytest.raises((ValueError, SchemaError), match="is not of type 'object', 'boolean'"):
+        ActionJsonnet(schema='"."')

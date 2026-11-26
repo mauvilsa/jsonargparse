@@ -169,7 +169,6 @@ root_types = {
     Union,
     List,
     list,
-    FrozenSet,
     Deque,
     deque,
     Collection,

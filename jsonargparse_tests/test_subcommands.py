@@ -67,7 +67,8 @@ def test_subcommands_get_defaults(subcommands_parser):
 
 
 def test_subcommands_undefined_subcommand(subcommands_parser):
-    pytest.raises(ArgumentError, lambda: subcommands_parser.parse_args(["c"]))
+    with pytest.raises(ArgumentError, match="invalid choice: 'c'"):
+        subcommands_parser.parse_args(["c"])
 
 
 def test_subcommands_not_given_when_few_subcommands(subcommands_parser):
@@ -89,7 +90,8 @@ def test_subcommands_missing_required_subargument(subcommands_parser):
 
 
 def test_subcommands_undefined_subargument(subcommands_parser):
-    pytest.raises(ArgumentError, lambda: subcommands_parser.parse_args(["b", "--unk"]))
+    with pytest.raises(ArgumentError, match="unrecognized arguments: --unk"):
+        subcommands_parser.parse_args(["b", "--unk"])
 
 
 def test_subcommands_parse_args_basics(subcommands_parser):
@@ -119,7 +121,8 @@ def test_subcommands_parse_args_alias(subcommands_parser):
     assert cfg["subcommand"] == "b"
     assert cfg["b.nums.val1"] == 3
     assert "B" not in cfg
-    pytest.raises(ArgumentError, lambda: subcommands_parser.parse_args(["A"]))
+    with pytest.raises(ArgumentError, match="invalid choice: 'A'"):
+        subcommands_parser.parse_args(["A"])
 
 
 @pytest.mark.parametrize("config", [{"subcommand": "B"}, {"B": {}}, {"subcommand": "B", "B": {}}])
@@ -136,8 +139,9 @@ def test_subcommands_parse_config_alias(subcommands_parser, config):
 def test_subcommands_parse_config_alias_collision(subcommands_parser, config):
     subcommands_parser.add_argument("--cfg", action="config")
     config = {**config, "b": {"nums": {"val1": 2}}, "B": {"nums": {"val1": 3}}}
+    arg = f"--cfg={json.dumps(config)}"
     with pytest.raises(ArgumentError) as ctx:
-        subcommands_parser.parse_args([f"--cfg={json.dumps(config)}"])
+        subcommands_parser.parse_args([arg])
     ctx.match("Subcommand 'b' settings given more than once, as 'b' and alias 'B'")
 
 
@@ -323,7 +327,7 @@ def test_subcommand_logger_set_after_adding(parser, subparser, logger):
     assert subparser.logger is logger
     with pytest.raises(ArgumentError), capture_logs(logger) as logs:
         parser.parse_args(["foo", "--int=invalid"])
-    assert 1 == logs.getvalue().count('Parser key "int"')
+    assert logs.getvalue().count('Parser key "int"') == 1
 
 
 def test_subcommand_without_options(parser, subparser):
@@ -509,8 +513,10 @@ def test_subsubcommands_parse_args(subtests):
     subcommands2.add_subcommand("b", parser_s2_b)
 
     with subtests.test("errors"):
-        pytest.raises(ArgumentError, lambda: parser.parse_args([]))
-        pytest.raises(ArgumentError, lambda: parser.parse_args(["a"]))
+        with pytest.raises(ArgumentError, match=r'expected "subcommand" to be one of \{a\}, but it was not provided'):
+            parser.parse_args([])
+        with pytest.raises(ArgumentError, match=r'expected "a\.subcommand" to be one of \{b\}, but it was not'):
+            parser.parse_args(["a"])
 
     with subtests.test("subsubcommand"):
         cfg = parser.parse_args(["a", "b"]).as_dict()

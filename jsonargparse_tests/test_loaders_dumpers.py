@@ -45,8 +45,8 @@ def test_set_dumper_custom_yaml(parser):
 
 def test_yaml_implicit_mapping_values_disabled(parser):
     parser.add_argument("--val", type=str)
-    assert "{one}" == parser.parse_args(["--val={one}"]).val
-    assert "{one,two,three}" == parser.parse_args(["--val={one,two,three}"]).val
+    assert parser.parse_args(["--val={one}"]).val == "{one}"
+    assert parser.parse_args(["--val={one,two,three}"]).val == "{one,two,three}"
 
 
 class Bar:
@@ -57,7 +57,7 @@ class Bar:
 def test_yaml_implicit_null_disabled(parser):
     parser.add_argument("--bar", type=Bar)
     cfg = parser.parse_args(["--bar=Bar", "--bar.x=Foo:"])
-    assert "Foo:" == cfg.bar.init_args.x
+    assert cfg.bar.init_args.x == "Foo:"
 
 
 @skip_if_no_pyyaml
@@ -75,7 +75,8 @@ def test_yaml_implicit_numbers(parser, value, expected):
 
 
 def test_invalid_parser_mode():
-    pytest.raises(ValueError, lambda: ArgumentParser(parser_mode="invalid"))
+    with pytest.raises(ValueError, match="The only accepted values for parser_mode are"):
+        ArgumentParser(parser_mode="invalid")
 
 
 def test_parser_mode_none():
@@ -213,8 +214,9 @@ def test_without_pyyaml_parser_mode_yaml_error():
 @pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
 def test_without_pyyaml_dump_yaml_error(parser):
     parser.add_argument("--int", type=int, default=1)
+    cfg = parser.get_defaults()
     with pytest.raises(ImportError) as ctx:
-        parser.dump(parser.get_defaults(), format="yaml")
+        parser.dump(cfg, format="yaml")
     ctx.match("PyYAML package is required by yaml_dump")
 
 
@@ -231,8 +233,8 @@ def test_set_loader_parser_mode_subparsers(parser, subparser):
     with patch.dict("jsonargparse._loaders_dumpers.loaders"):
         set_loader("custom", yaml.safe_load if pyyaml_available else json.loads)
         parser.parser_mode = "custom"
-        assert "custom" == parser.parser_mode
-        assert "custom" == subparser.parser_mode
+        assert parser.parser_mode == "custom"
+        assert subparser.parser_mode == "custom"
 
 
 def test_dump_parser_mode_without_dumper(parser):
@@ -293,8 +295,8 @@ def test_dump_header_invalid(parser):
 @skip_if_no_pyyaml
 def test_load_value_dash():
     with parser_context(load_value_mode="yaml"):
-        assert "-" == load_value("-")
-        assert " -  " == load_value(" -  ")
+        assert load_value("-") == "-"
+        assert load_value(" -  ") == " -  "
 
 
 @dataclass

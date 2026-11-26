@@ -95,7 +95,7 @@ def test_pydantic_secret_str_in_union_relative_path_not_resolved_as_remote():
 
     cfg = parser.parse_args([f"--cfg={config_path}"])
     assert isinstance(cfg.password, pydantic.SecretStr)
-    assert "PASSWORD" == cfg.password.get_secret_value()
+    assert cfg.password.get_secret_value() == "PASSWORD"
 
 
 if annotated and pydantic_support > 1:
@@ -610,8 +610,9 @@ def test_model_argument_symmetry_subclasses_disabled(parser, optional):
     assert cfg.cat == Namespace(name="cc", meows=2)
 
     value["class_path"] = f"{__name__}.SpecialCat"
+    arg = f"--cat={json.dumps(value)}"
     with pytest.raises(ArgumentError, match="Subclasses are disabled for Cat"):
-        parser.parse_args([f"--cat={json.dumps(value)}"])
+        parser.parse_args([arg])
 
 
 # abstract models
@@ -687,8 +688,9 @@ def test_abstract_model_subclasses_explicitly_disabled(parser, subclass_behavior
     parser.add_argument("--model", type=AbstractModel)
 
     value = {"class_path": f"{__name__}.AbstractModelImpl"}
+    arg = f"--model={json.dumps(value)}"
     with pytest.raises(ArgumentError, match="Subclasses are disabled for AbstractModel"):
-        parser.parse_args([f"--model={json.dumps(value)}"])
+        parser.parse_args([arg])
 
 
 def test_abc_declared_model_subclasses_enabled_by_default(parser):

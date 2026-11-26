@@ -189,7 +189,7 @@ def test_on_parse_add_class_arguments(subtests):
 
     with subtests.test("dump removal of targets"):
         cfg = parser.parse_args(["--a.v1=11", "--a.v2=7"])
-        assert 7 == cfg.b.v1
+        assert cfg.b.v1 == 7
         assert 11 + 7 == cfg.b.v2
         dump = json_or_yaml_load(parser.dump(cfg))
         assert dump == {"a": {"v1": 11, "v2": 7}, "b": {"v3": 2}}
@@ -200,7 +200,8 @@ def test_on_parse_add_class_arguments(subtests):
         assert dump == {"a": {"v1": 11, "v2": 7}, "b": {"v3": 2, "v1": 7, "v2": 18}}
 
     with subtests.test("argument error"):
-        pytest.raises(ArgumentError, lambda: parser.parse_args(["--b.v1=5"]))
+        with pytest.raises(ArgumentError, match=r'Linked "b\.v1" must be given via "a\.v2"'):
+            parser.parse_args(["--b.v1=5"])
 
 
 class ClassS1:
@@ -685,8 +686,8 @@ def test_on_instantiate_failing_compute_fn(parser):
     parser.add_class_arguments(FailingComputeFn2, "c2")
     parser.link_arguments("c1.a", "c2.b", compute_fn=_to_str_empty_error, apply_on="instantiate")
 
+    cfg = parser.parse_args([])
     with pytest.raises(ValueError) as ctx:
-        cfg = parser.parse_args([])
         parser.instantiate(cfg)
     ctx.match("Call to compute_fn of link '_to_str_empty_error.*failed: value is empty")
 
@@ -1626,5 +1627,5 @@ def test_on_instantiate_linking_deep_targets_multiple(parser):
     parser.link_arguments("Source.a", "Node.init_args.sub_class.init_args.b", apply_on="instantiate")
     cfg = parser.parse_args(["--Node=Node", "--Node.init_args.sub_class=DeepTarget"])
     init = parser.instantiate(cfg)
-    assert 1 == init.Node.sub_class.a
-    assert 1 == init.Node.sub_class.b
+    assert init.Node.sub_class.a == 1
+    assert init.Node.sub_class.b == 1

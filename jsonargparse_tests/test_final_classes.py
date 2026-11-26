@@ -30,6 +30,10 @@ def test_add_class_final(parser):
     assert isinstance(cfg["b"], NotFinalClass)
     assert isinstance(cfg["b"].b2, FinalClass)
 
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--b.b2={"bad": "value"}']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--b.b2="bad"']))
-    pytest.raises(ValueError, lambda: parser.add_class_arguments(FinalClass, "a", default=FinalClass()))
+    with pytest.raises(ArgumentError, match=r"Group 'b' does not accept option 'b2\.bad'"):
+        parser.parse_args(['--b.b2={"bad": "value"}'])
+    with pytest.raises(ArgumentError, match=r"""Unable to load config '"bad"'"""):
+        parser.parse_args(['--b.b2="bad"'])
+    default = FinalClass()
+    with pytest.raises(ValueError, match="Expected 'default' to be dict, Namespace, lazy instance or dataclass-like"):
+        parser.add_class_arguments(FinalClass, "a", default=default)

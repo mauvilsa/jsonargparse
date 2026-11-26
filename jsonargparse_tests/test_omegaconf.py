@@ -77,8 +77,9 @@ def test_omegaconf_interpolation_in_subcommands(mode, parser, subparser):
     }
 
     if mode == "omegaconf+absolute":
+        arg = f"--config={yaml_dump(config)}"
         with pytest.raises(errors.InterpolationKeyError):
-            parser.parse_args(["sub", f"--config={yaml_dump(config)}"])
+            parser.parse_args(["sub", arg])
         set_parsing_settings(omegaconf_absolute_to_relative_paths=True)
 
     cfg = parser.parse_args(["sub", f"--config={yaml_dump(config)}"])

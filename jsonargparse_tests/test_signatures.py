@@ -125,27 +125,27 @@ def test_add_class_without_nesting(parser):
         "c3_a7": ("7", 7, 7.0),
         "c3_a8": None,
     }
-    assert [1, 2] == parser.parse_args(["--c3_a0=0", "--c3_a5=[1,2]"]).c3_a5
-    assert {"k": 5.0} == parser.parse_args(["--c3_a0=0", '--c3_a5={"k": 5.0}']).c3_a5
-    assert ("3", 3, 3.0) == parser.parse_args(["--c3_a0=0", '--c3_a7=["3", 3, 3.0]']).c3_a7
-    assert "a" == Class3(**cfg.as_dict())()
+    assert parser.parse_args(["--c3_a0=0", "--c3_a5=[1,2]"]).c3_a5 == [1, 2]
+    assert parser.parse_args(["--c3_a0=0", '--c3_a5={"k": 5.0}']).c3_a5 == {"k": 5.0}
+    assert parser.parse_args(["--c3_a0=0", '--c3_a7=["3", 3, 3.0]']).c3_a7 == ("3", 3, 3.0)
+    assert Class3(**cfg.as_dict())() == "a"
 
     with pytest.raises(ArgumentError, match="the following arguments are required: c3_a0"):
         parser.parse_args([])
 
     if docstring_parser_support:
-        assert "Class3 short description" == parser.groups["Class3"].title
+        assert parser.groups["Class3"].title == "Class3 short description"
         for key in ["c3_a0", "c3_a1", "c3_a2", "c3_a4", "c3_a5", "c1_a2"]:
-            assert f"{key} description" == find_action(parser, key).help
+            assert find_action(parser, key).help == f"{key} description"
         for key in ["c3_a3", "c3_a7", "c1_a4"]:
-            assert f"{key} description" != find_action(parser, key).help
+            assert find_action(parser, key).help != f"{key} description"
 
 
 def test_add_class_nested_as_group_false(parser):
     added_args = parser.add_class_arguments(Class3, "g", as_group=False)
 
     assert "g" not in parser.groups
-    assert 13 == len(added_args)
+    assert len(added_args) == 13
     assert all(a.startswith("g.") for a in added_args)
 
     for key in "c3_a0 c3_a1 c3_a2 c3_a3 c3_a4 c3_a5 c3_a6 c3_a7 c3_a8 c1_a2 c1_a3 c1_a4 c1_a5".split():
@@ -201,8 +201,9 @@ def test_add_class_without_parameters(parser):
     assert isinstance(init.no_params, NoParams)
 
     config = {"no_params": {"class_path": f"{__name__}.NoParams"}}
+    arg = f"--cfg={json.dumps(config)}"
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args([f"--cfg={json.dumps(config)}"])
+        parser.parse_args([arg])
     ctx.match("Group 'no_params' does not accept option 'class_path'")
 
 
@@ -235,7 +236,7 @@ class SkippedUnderscoreParam:
 def test_add_class_skipped_underscore_parameter(parser, logger):
     parser.logger = logger
     with capture_logs(logger) as logs:
-        assert [] == parser.add_class_arguments(SkippedUnderscoreParam)
+        assert parser.add_class_arguments(SkippedUnderscoreParam) == []
     assert 'Skipping parameter "_a0"' in logs.getvalue()
     assert "because of: Name starts with '_' and the parameter is not required." in logs.getvalue()
 
@@ -310,13 +311,14 @@ def test_add_class_with_required_parameters(parser):
     parser.add_class_arguments(RequiredParams, "model")
     parser.add_argument("--config", action="config")
 
-    for args in [
-        [],
-        ["--model.n=2"],
-        ["--model.m=0.1"],
-        ["--model.n=x", "--model.m=0.1"],
+    for args, match in [
+        ([], r"required: model\.n, model\.m"),
+        (["--model.n=2"], r"required: model\.m"),
+        (["--model.m=0.1"], r"required: model\.n"),
+        (["--model.n=x", "--model.m=0.1"], r"Expected type: int\. Got value: x"),
     ]:
-        pytest.raises(ArgumentError, lambda: parser.parse_args(args))
+        with pytest.raises(ArgumentError, match=match):
+            parser.parse_args(args)
 
     out = get_parse_args_stdout(parser, ["--model.m=0.1", "--print_config"])
     assert json_or_yaml_load(out) == {"model": {"n": None, "m": 0.1}}
@@ -396,7 +398,7 @@ def test_add_class_skip_parameter_debug_logging(parser, logger):
     parser.logger = logger
     with capture_logs(logger) as logs:
         parser.add_class_arguments(Debug2, skip={"c2_a2"})
-    assert 2 == len(logs.getvalue().strip().split("\n"))
+    assert len(logs.getvalue().strip().split("\n")) == 2
     assert "*args is not used, so its values would be discarded" in logs.getvalue()
     assert 'Skipping parameter "c2_a2"' in logs.getvalue()
     assert "because of: Parameter requested to be skipped" in logs.getvalue()
@@ -798,16 +800,16 @@ def test_add_method_normal_and_static(parser):
 
     cfg = parser.parse_args(["--m.a1=x", "--s.a1=y"]).clone(with_meta=False).as_dict()
     assert cfg == {"m": {"a1": "x", "a2": 2.0, "a3": False}, "s": {"a1": "y", "a2": 2.0}}
-    assert "x" == WithMethods().normal_method(**cfg["m"])
-    assert "y" == WithMethods.static_method(**cfg["s"])
+    assert WithMethods().normal_method(**cfg["m"]) == "x"
+    assert WithMethods.static_method(**cfg["s"]) == "y"
 
     if docstring_parser_support:
-        assert "normal_method short description" == parser.groups["m"].title
+        assert parser.groups["m"].title == "normal_method short description"
         assert str(WithMethods.static_method) == parser.groups["s"].title
         for key in ["m.a1", "m.a2"]:
-            assert f"{key.split('.')[1]} description" == find_action(parser, key).help
+            assert find_action(parser, key).help == f"{key.split('.')[1]} description"
         for key in ["m.a3", "s.a1", "s.a2"]:
-            assert f"{key.split('.')[1]} description" != find_action(parser, key).help
+            assert find_action(parser, key).help != f"{key.split('.')[1]} description"
 
 
 class WithPartialMethod(WithMethods):
@@ -819,10 +821,10 @@ def test_add_method_partialmethod(parser):
     assert added_args == ["m.a1", "m.a2", "m.a3"]
     assert parser.get_defaults().m == Namespace(a1="1", a2=3.0, a3=False)
     cfg = parser.parse_args(["--m.a1=x"])
-    assert "x" == WithPartialMethod().partial_method(**cfg.m)
+    assert WithPartialMethod().partial_method(**cfg.m) == "x"
     if docstring_parser_support:
-        assert "normal_method short description" == parser.groups["m"].title
-        assert "a2 description" == find_action(parser, "m.a2").help
+        assert parser.groups["m"].title == "normal_method short description"
+        assert find_action(parser, "m.a2").help == "a2 description"
 
 
 class SubWithMethod(WithMethods):
@@ -902,12 +904,12 @@ def test_add_function_arguments(parser):
 
     cfg = parser.parse_args(["--a1=x"]).clone(with_meta=False).as_dict()
     assert cfg == {"a1": "x", "a2": 2.0, "a3": False, "a4": None}
-    assert "x" == func(**cfg)
+    assert func(**cfg) == "x"
 
     if docstring_parser_support:
-        assert "func short description" == parser.groups["func"].title
+        assert parser.groups["func"].title == "func short description"
         for key in ["a1", "a2", "a4"]:
-            assert f"{key} description" == find_action(parser, key).help
+            assert find_action(parser, key).help == f"{key} description"
 
 
 def func_skip_params(a1="1", a2: float = 2.0, a3: bool = False, a4: int = 4):
@@ -936,7 +938,7 @@ def func_unsupported_type(a1: None):
 
 def test_add_function_unsupported_type(parser):
     # not a supported type, so added without validation
-    assert ["a1"] == parser.add_function_arguments(func_unsupported_type)
+    assert parser.add_function_arguments(func_unsupported_type) == ["a1"]
     help_str = get_parser_help(parser, strip=True)
     # shown as null or None, depending on whether the annotation is postponed
     assert "--a1 A1 (required, type: Unvalidated<" in help_str
@@ -950,7 +952,7 @@ def test_add_function_implicit_optional(parser, logger):
     parser.logger = logger
     with capture_logs(logger) as logs:
         parser.add_function_arguments(func_implicit_optional)
-        assert None is parser.parse_args(["--a1=null"]).a1
+        assert parser.parse_args(["--a1=null"]).a1 is None
     if sys.version_info >= (3, 11):  # in python<3.11 get_type_hints already makes the type optional
         assert f'"a1" from "{__name__}.func_implicit_optional" has None as default, so its type is ' in logs.getvalue()
         assert f"changed to {type_to_str(Optional[int])}." in logs.getvalue()
@@ -962,7 +964,7 @@ def func_type_as_string(a2: "int"):
 
 def test_add_function_fail_untyped_true_str_type(parser):
     added_args = parser.add_function_arguments(func_type_as_string, fail_untyped=True)
-    assert ["a2"] == added_args
+    assert added_args == ["a2"]
 
 
 def func_untyped_params(a1, a2=None):
@@ -984,7 +986,7 @@ def test_add_function_fail_untyped_false(parser, logger):
         help_str = get_parser_help(parser)
         with pytest.raises(ArgumentError, match="the following arguments are required: a1"):
             parser.parse_args([])
-    assert ["a1", "a2"] == added_args
+    assert added_args == ["a1", "a2"]
     assert f"--a1 A1     (required, type: {type_to_str(Untyped)})" in help_str
     assert f"--a2 A2     (type: {type_to_str(Union[NoneType, Untyped])}, default: null)" in help_str
     assert f'"a2" from "{__name__}.func_untyped_params" does not have a type annotation. Added as ' in logs.getvalue()
@@ -997,7 +999,7 @@ def func_untyped_optional(a1: int, a2=None):
 
 def test_add_function_fail_untyped_true_untyped_optional(parser):
     added_args = parser.add_function_arguments(func_untyped_optional, fail_untyped=True)
-    assert ["a1", "a2"] == added_args
+    assert added_args == ["a1", "a2"]
     assert parser.parse_args(["--a1=123"]) == Namespace(a1=123, a2=None)
     with pytest.raises(ArgumentError, match="Expected type: int. Got value: x"):
         parser.parse_args(["--a1=x"])
@@ -1013,9 +1015,9 @@ def test_add_function_untyped_default_type_from_default(parser, logger, fail_unt
     with capture_logs(logger) as logs:
         added_args = parser.add_function_arguments(func_untyped_default, fail_untyped=fail_untyped)
         help_str = get_parser_help(parser)
-        assert 4 == parser.parse_args(["--a1=x", "--a2=4"]).a2
-        assert "y" == parser.parse_args(["--a1=x", "--a2=y"]).a2
-    assert ["a1", "a2"] == added_args
+        assert parser.parse_args(["--a1=x", "--a2=4"]).a2 == 4
+        assert parser.parse_args(["--a1=x", "--a2=y"]).a2 == "y"
+    assert added_args == ["a1", "a2"]
     assert f"--a2 A2     (type: {type_to_str(Union[int, Untyped])}, default: 3)" in help_str
     assert f'"a2" from "{__name__}.func_untyped_default" does not have a type annotation. Added as ' in logs.getvalue()
     assert f"{type_to_str(Union[int, Untyped])}, thus any value is accepted" in logs.getvalue()
@@ -1030,7 +1032,7 @@ def test_add_function_fail_untyped_all(parser):
 
 def test_add_function_fail_untyped_all_typed(parser):
     added_args = parser.add_function_arguments(func_type_as_string, fail_untyped="all")
-    assert ["a2"] == added_args
+    assert added_args == ["a2"]
 
 
 def test_add_function_fail_untyped_unexpected_value(parser):

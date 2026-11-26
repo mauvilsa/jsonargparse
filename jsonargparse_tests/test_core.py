@@ -76,13 +76,15 @@ def test_add_argument_positional_with_default_nargs_question(parser):
 def test_parse_args_simple(parser):
     parser.add_argument("--op", type=int)
     assert parser.parse_args(["--op=1"]) == Namespace(op=1)
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op=1.1"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: int\. Got value: 1\.1"):
+        parser.parse_args(["--op=1.1"])
 
 
 def test_parse_args_nested(parser):
     parser.add_argument("--l1.l2.op", type=float)
     assert parser.parse_args(["--l1.l2.op=2.1"]).l1.l2.op == 2.1
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--l1.l2.op=x"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: float\. Got value: x"):
+        parser.parse_args(["--l1.l2.op=x"])
 
 
 def test_parse_args_unrecognized_arguments(parser):
@@ -116,21 +118,22 @@ def test_parse_args_unexpected_kwarg(parser):
 
 def test_parse_args_nargs_plus(parser):
     parser.add_argument("--val", nargs="+", type=int)
-    assert [9] == parser.parse_args(["--val", "9"]).val
-    assert [3, 6, 2] == parser.parse_args(["--val", "3", "6", "2"]).val
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--val"]))
+    assert parser.parse_args(["--val", "9"]).val == [9]
+    assert parser.parse_args(["--val", "3", "6", "2"]).val == [3, 6, 2]
+    with pytest.raises(ArgumentError, match="argument --val: expected at least one argument"):
+        parser.parse_args(["--val"])
 
 
 def test_parse_args_nargs_asterisk(parser):
     parser.add_argument("--val", nargs="*", type=float)
-    assert [5.2, 1.9] == parser.parse_args(["--val", "5.2", "1.9"]).val
-    assert [] == parser.parse_args(["--val"]).val
+    assert parser.parse_args(["--val", "5.2", "1.9"]).val == [5.2, 1.9]
+    assert parser.parse_args(["--val"]).val == []
 
 
 def test_parse_args_nargs_questionmark(parser):
     parser.add_argument("--val", nargs="?", type=str)
-    assert "~" == parser.parse_args(["--val", "~"]).val
-    assert None is parser.parse_args(["--val"]).val
+    assert parser.parse_args(["--val", "~"]).val == "~"
+    assert parser.parse_args(["--val"]).val is None
 
 
 def test_parse_args_nargs_number(parser):
@@ -138,7 +141,8 @@ def test_parse_args_nargs_number(parser):
     parser.add_argument("--two", nargs=2)
     assert parser.parse_args(["--one", "-"]) == Namespace(one=["-"], two=None)
     assert parser.parse_args(["--two", "q", "p"]) == Namespace(one=None, two=["q", "p"])
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--two", "-"]))
+    with pytest.raises(ArgumentError, match="argument --two: expected 2 arguments"):
+        parser.parse_args(["--two", "-"])
 
 
 def test_parse_args_positional_nargs_questionmark(parser):
@@ -161,8 +165,9 @@ def test_parse_args_positional_nargs_plus(parser):
 def test_parse_args_missing_required_lists_all(parser):
     parser.add_argument("req_pos")
     parser.add_argument("--req_opt", required=True)
+    cfg = Namespace()
     with pytest.raises(TypeError, match="the following arguments are required: req_pos, req_opt"):
-        parser.validate(Namespace())
+        parser.validate(cfg)
 
 
 def test_public_required_action_state(parser):
@@ -184,8 +189,10 @@ def test_parse_args_choices(parser):
     parser.add_argument("--ch2", type=str, choices=["v1", "v2"])
     cfg = parser.parse_args(["--ch1", "C", "--ch2", "v1"])
     assert cfg.as_dict() == {"ch1": "C", "ch2": "v1"}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--ch1", "D"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--ch2", "v0"]))
+    with pytest.raises(ArgumentError, match="argument --ch1: invalid choice: 'D'"):
+        parser.parse_args(["--ch1", "D"])
+    with pytest.raises(ArgumentError, match="argument --ch2: invalid choice: 'v0'"):
+        parser.parse_args(["--ch2", "v0"])
 
 
 def test_parse_args_choices_config(parser):
@@ -194,8 +201,10 @@ def test_parse_args_choices_config(parser):
     parser.add_argument("--ch2", type=str, choices=["v1", "v2"])
     assert parser.parse_args(['--cfg={"ch1": "B"}']).ch1 == "B"
     assert parser.parse_args(['--cfg={"ch2": "v2"}']).ch2 == "v2"
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--cfg={"ch1": "D"}']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--cfg={"ch2": "v0"}']))
+    with pytest.raises(ArgumentError, match="'D' not among choices"):
+        parser.parse_args(['--cfg={"ch1": "D"}'])
+    with pytest.raises(ArgumentError, match="'v0' not among choices"):
+        parser.parse_args(['--cfg={"ch2": "v0"}'])
 
 
 def test_parse_args_non_hashable_choice(parser):
@@ -209,7 +218,7 @@ def test_parse_args_non_hashable_choice(parser):
 
 def test_parse_args_choices_nargs_plus(parser):
     parser.add_argument("--ch", nargs="+", choices=["A", "B"])
-    assert ["A", "B"] == parser.parse_args(["--ch", "A", "B"]).ch
+    assert parser.parse_args(["--ch", "A", "B"]).ch == ["A", "B"]
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--ch", "B", "X"])
     ctx.match("invalid choice")
@@ -217,20 +226,22 @@ def test_parse_args_choices_nargs_plus(parser):
 
 def test_parse_args_choices_type_int(parser):
     parser.add_argument("--ch", type=int, choices=[0, 1])
-    assert 0 == parser.parse_args(["--ch=0"]).ch
+    assert parser.parse_args(["--ch=0"]).ch == 0
 
 
 def test_parse_args_choices_type_union(parser):
     parser.add_argument("--ch", type=Union[int, str], choices=[0, 1, "x", "y"])
-    assert 0 == parser.parse_args(["--ch=0"]).ch
-    assert "x" == parser.parse_args(["--ch=x"]).ch
+    assert parser.parse_args(["--ch=0"]).ch == 0
+    assert parser.parse_args(["--ch=x"]).ch == "x"
 
 
 def test_parse_object_simple(parser):
     parser.add_argument("--op", type=int)
     assert parser.parse_object({"op": 1}) == Namespace(op=1)
-    pytest.raises(ArgumentError, lambda: parser.parse_object({"op": 1.1}))
-    pytest.raises(ArgumentError, lambda: parser.parse_object({"undefined": True}))
+    with pytest.raises(ArgumentError, match=r"Expected type: int\. Got value: 1\.1"):
+        parser.parse_object({"op": 1.1})
+    with pytest.raises(ArgumentError, match="Option 'undefined' is not accepted"):
+        parser.parse_object({"undefined": True})
 
 
 def test_parse_object_unknown_empty_mapping(parser):
@@ -261,7 +272,8 @@ def test_parse_object_config(parser, tmp_cwd):
 def test_parse_object_nested(parser):
     parser.add_argument("--l1.l2.op", type=float)
     assert parser.parse_object({"l1": {"l2": {"op": 2.1}}}).l1.l2.op == 2.1
-    pytest.raises(ArgumentError, lambda: parser.parse_object({"l1": {"l2": {"op": "x"}}}))
+    with pytest.raises(ArgumentError, match=r"Expected type: float\. Got value: x"):
+        parser.parse_object({"l1": {"l2": {"op": "x"}}})
 
 
 def test_env_prefix_from_prog_with_dashes():
@@ -275,14 +287,16 @@ def test_parse_env_simple():
     parser.add_argument("--op", type=int)
     with patch.dict(os.environ, {"APP_OP": "1"}):
         assert parser.parse_env() == Namespace(op=1)
-    pytest.raises(ArgumentError, lambda: parser.parse_env({"APP_OP": "1.1"}))
+    with pytest.raises(ArgumentError, match=r"Got value: 1\.1\n  Source: environment variable APP_OP"):
+        parser.parse_env({"APP_OP": "1.1"})
 
 
 def test_parse_env_nested():
     parser = ArgumentParser(prog="app", exit_on_error=False)
     parser.add_argument("--l1.l2.op", type=float)
     assert parser.parse_env({"APP_L1__L2__OP": "2.1"}).l1.l2.op == 2.1
-    pytest.raises(ArgumentError, lambda: parser.parse_env({"APP_L1__L2__OP": "x"}))
+    with pytest.raises(ArgumentError, match=r"Got value: x\n  Source: environment variable APP_L1__L2__OP"):
+        parser.parse_env({"APP_L1__L2__OP": "x"})
 
 
 def test_parse_env_config(parser):
@@ -292,7 +306,8 @@ def test_parse_env_config(parser):
     cfg = parser.parse_env({"APP_CFG": '{"l1": {"num": 1}}'})
     assert cfg.cfg == [None]
     assert cfg.l1 == Namespace(num=1)
-    pytest.raises(ArgumentError, lambda: parser.parse_env({"APP_CFG": '{"undefined": True}'}))
+    with pytest.raises(ArgumentError, match="Option 'undefined' is not accepted"):
+        parser.parse_env({"APP_CFG": '{"undefined": true}'})
 
 
 def test_parse_env_positional():
@@ -336,13 +351,13 @@ def test_parse_env_store_true_false(parser, env, key, expected):
 
 def test_default_env_property():
     parser = ArgumentParser()
-    assert False is parser.default_env
+    assert parser.default_env is False
     parser.default_env = True
-    assert True is parser.default_env
+    assert parser.default_env is True
     parser = ArgumentParser(default_env=True)
-    assert True is parser.default_env
+    assert parser.default_env is True
     parser.default_env = False
-    assert False is parser.default_env
+    assert parser.default_env is False
     with pytest.raises(ValueError) as ctx:
         parser.default_env = "invalid"
     ctx.match("default_env expects a boolean")
@@ -370,11 +385,12 @@ def test_env_prefix_true():
         parser.add_argument("--test_arg", type=str, required=True)
 
         with patch.dict(os.environ, {"TEST_ARG": "one"}):
-            pytest.raises(ArgumentError, lambda: parser.parse_args([]))
+            with pytest.raises(ArgumentError, match="the following arguments are required: test_arg"):
+                parser.parse_args([])
 
         with patch.dict(os.environ, {"FAKE_TEST_ARG": "one"}):
             cfg = parser.parse_args([])
-        assert "one" == cfg.test_arg
+        assert cfg.test_arg == "one"
 
 
 def test_env_prefix_false():
@@ -382,7 +398,7 @@ def test_env_prefix_false():
     parser.add_argument("--test_arg", type=str, required=True)
     with patch.dict(os.environ, {"TEST_ARG": "one"}):
         cfg = parser.parse_args([])
-    assert "one" == cfg.test_arg
+    assert cfg.test_arg == "one"
 
 
 def test_env_properties_set_invalid(parser):
@@ -414,7 +430,8 @@ def test_parse_string_simple_errors(parser, config):
 def test_parse_string_nested(parser):
     parser.add_argument("--l1.l2.op", type=float)
     assert parser.parse_string('{"l1": {"l2": {"op": 2.1}}}').l1.l2.op == 2.1
-    pytest.raises(ArgumentError, lambda: parser.parse_string('{"l1": {"l2": {"op": "x"}}}'))
+    with pytest.raises(ArgumentError, match=r"Expected type: float\. Got value: x\n  Source: config string"):
+        parser.parse_string('{"l1": {"l2": {"op": "x"}}}')
 
 
 def test_parse_path_simple(parser, tmp_cwd):
@@ -456,7 +473,8 @@ def test_parse_path_file_not_readable(parser, tmp_cwd):
     config_path = Path("config.json")
     config_path.touch()
     config_path.chmod(0)
-    pytest.raises(TypeError, lambda: parser.parse_path(config_path))
+    with pytest.raises(TypeError, match="File is not readable"):
+        parser.parse_path(config_path)
 
 
 def test_precedence_of_sources(tmp_cwd, subtests):
@@ -474,54 +492,54 @@ def test_precedence_of_sources(tmp_cwd, subtests):
 
     # parse_env precedence
     with subtests.test("parse_env parser default"):
-        assert "from parser default" == parser.parse_env({}).op1
+        assert parser.parse_env({}).op1 == "from parser default"
     with subtests.test("parse_env default config file"):
         default_config_file.write_text(json_or_yaml_dump({"op1": "from default config file"}))
-        assert "from default config file" == parser.parse_env({}).op1
+        assert parser.parse_env({}).op1 == "from default config file"
     with subtests.test("parse_env environment config string"):
         env = {"APP_CFG": '{"op1": "from env config"}'}
-        assert "from env config" == parser.parse_env(env).op1
+        assert parser.parse_env(env).op1 == "from env config"
     with subtests.test("parse_env environment variable"):
         env["APP_OP1"] = "from env var"
-        assert "from env var" == parser.parse_env(env).op1
+        assert parser.parse_env(env).op1 == "from env var"
     default_config_file.unlink()
 
     # parse_path precedence
     with subtests.test("parse_path parser default"):
-        assert "from parser default" == parser.parse_path(input2_config_file).op1
+        assert parser.parse_path(input2_config_file).op1 == "from parser default"
     with subtests.test("parse_path default config file"):
         default_config_file.write_text(json_or_yaml_dump({"op1": "from default config file"}))
-        assert "from default config file" == parser.parse_path(input2_config_file).op1
+        assert parser.parse_path(input2_config_file).op1 == "from default config file"
     env = {"APP_CFG": str(input1_config_file)}
     with subtests.test("parse_path environment config file"), patch.dict(os.environ, env):
-        assert "from input config file" == parser.parse_path(input2_config_file).op1
+        assert parser.parse_path(input2_config_file).op1 == "from input config file"
     env["APP_OP1"] = "from env var"
     with subtests.test("parse_path environment variable"), patch.dict(os.environ, env):
-        assert "from env var" == parser.parse_path(input2_config_file).op1
+        assert parser.parse_path(input2_config_file).op1 == "from env var"
     env["APP_CFG"] = str(input2_config_file)
     with subtests.test("parse_path input config file"), patch.dict(os.environ, env):
-        assert "from input config file" == parser.parse_path(input1_config_file).op1
+        assert parser.parse_path(input1_config_file).op1 == "from input config file"
     default_config_file.unlink()
 
     # parse_args precedence
     with subtests.test("parse_args parser default"):
-        assert "from parser default" == parser.parse_args([]).op1
+        assert parser.parse_args([]).op1 == "from parser default"
     with subtests.test("parse_args default config file"):
         default_config_file.write_text(json_or_yaml_dump({"op1": "from default config file"}))
-        assert "from default config file" == parser.parse_args([]).op1
+        assert parser.parse_args([]).op1 == "from default config file"
     env = {"APP_CFG": str(input1_config_file)}
     with subtests.test("parse_args environment config file"), patch.dict(os.environ, env):
-        assert "from input config file" == parser.parse_args([]).op1
+        assert parser.parse_args([]).op1 == "from input config file"
     env["APP_OP1"] = "from env var"
     with subtests.test("parse_args environment variable"), patch.dict(os.environ, env):
-        assert "from env var" == parser.parse_args([]).op1
+        assert parser.parse_args([]).op1 == "from env var"
     env["APP_CFG"] = str(input2_config_file)
     with subtests.test("parse_args input argument"), patch.dict(os.environ, env):
-        assert "from arg" == parser.parse_args(["--op1", "from arg"]).op1
+        assert parser.parse_args(["--op1", "from arg"]).op1 == "from arg"
     with subtests.test("parse_args argument override config"), patch.dict(os.environ, env):
-        assert "from arg" == parser.parse_args([f"--cfg={input1_config_file}", "--op1=from arg"]).op1
+        assert parser.parse_args([f"--cfg={input1_config_file}", "--op1=from arg"]).op1 == "from arg"
     with subtests.test("parse_args config override argument"), patch.dict(os.environ, env):
-        assert "from input config file" == parser.parse_args(["--op1=from arg", f"--cfg={input1_config_file}"]).op1
+        assert parser.parse_args(["--op1=from arg", f"--cfg={input1_config_file}"]).op1 == "from input config file"
 
     with subtests.test("parse_args config paths"), patch.dict(os.environ, env):
         cfg = parser.parse_args([f"--cfg={input1_config_file}"])
@@ -606,17 +624,20 @@ def test_non_positional_required(parser, subtests):
         parser.env_prefix = "APP"
         cfg = parser.parse_env({"APP_REQ1": "val5", "APP_LEV1__REQ2": "val6"})
         assert cfg == Namespace(lev1=Namespace(req2="val6"), req1="val5")
-        pytest.raises(ArgumentError, lambda: parser.parse_env({}))
+        with pytest.raises(ArgumentError, match=r"the following arguments are required: req1, lev1\.req2"):
+            parser.parse_env({})
 
     with subtests.test("parse_string"):
         cfg = parser.parse_string('{"req1":"val3","lev1":{"req2":"val4"}}')
         assert cfg == Namespace(lev1=Namespace(req2="val4"), req1="val3")
-        pytest.raises(ArgumentError, lambda: parser.parse_string('{"lev1":{"req2":"val4"}}'))
+        with pytest.raises(ArgumentError, match="the following arguments are required: req1$"):
+            parser.parse_string('{"lev1":{"req2":"val4"}}')
 
     with subtests.test("parse_args"):
         cfg = parser.parse_args(["--req1", "val1", "--lev1.req2", "val2"])
         assert cfg == Namespace(lev1=Namespace(req2="val2"), req1="val1")
-        pytest.raises(ArgumentError, lambda: parser.parse_args(["--req1", "val1"]))
+        with pytest.raises(ArgumentError, match=r"the following arguments are required: lev1\.req2"):
+            parser.parse_args(["--req1", "val1"])
 
     with subtests.test("parse_args config"):
         parser.add_argument("--cfg", action="config")
@@ -639,7 +660,7 @@ def test_dump_complete(dump_parser):
 
 def test_dump_incomplete(dump_parser):
     dump = dump_parser.dump(Namespace(op1=456))
-    assert {"op1": 456} == json_or_yaml_load(dump)
+    assert json_or_yaml_load(dump) == {"op1": 456}
 
 
 @pytest.mark.skipif(not is_cpython, reason="requires __setattr__ insertion order")
@@ -651,7 +672,8 @@ def test_dump_formats(dump_parser):
     assert dump_parser.dump(cfg, format="json") == '{\n  "op1": 123,\n  "op2": "abc"\n}\n'
     assert dump_parser.dump(cfg, format="json_indented") == dump_parser.dump(cfg, format="json")
     assert dump_parser.dump(cfg, format="json_compact") == '{"op1":123,"op2":"abc"}'
-    pytest.raises(ValueError, lambda: dump_parser.dump(cfg, format="invalid"))
+    with pytest.raises(ValueError, match='Unknown output format "invalid"'):
+        dump_parser.dump(cfg, format="invalid")
 
 
 def test_dump_skip_default_simple(dump_parser):
@@ -1001,8 +1023,8 @@ def test_default_config_files(parser, subtests, tmp_cwd):
 
     with subtests.test("get_defaults"):
         cfg = parser.get_defaults()
-        assert "from default config file" == cfg.op1
-        assert "from parser default" == cfg.op2
+        assert cfg.op1 == "from default config file"
+        assert cfg.op2 == "from parser default"
 
     with subtests.test("get_default"):
         assert parser.get_default("op1") == "from default config file"
@@ -1012,7 +1034,7 @@ def test_default_config_files(parser, subtests, tmp_cwd):
     with subtests.test("set invalid"):
         with pytest.raises(ValueError) as ctx:
             parser.default_config_files = False
-        assert "default_config_files expects None or List[str | os.PathLike]." == str(ctx.value)
+        assert str(ctx.value) == "default_config_files expects None or List[str | os.PathLike]."
 
 
 def test_default_config_file_help_message_no_existing(parser, tmp_cwd):
@@ -1094,7 +1116,7 @@ def test_default_config_files_pattern(parser, subtests, tmp_cwd):
 def test_named_argument_groups(parser):
     parser.add_argument_group("Group 1", name="group1")
     parser.add_argument_group("Group 2", name="group2")
-    assert {"group1", "group2"} == set(parser.groups)
+    assert set(parser.groups) == {"group1", "group2"}
     with pytest.raises(ValueError) as ctx:
         parser.add_argument_group("Bad", name="group1")
     ctx.match("Group with name group1 already exists")
@@ -1125,10 +1147,12 @@ def test_set_get_defaults_multiple(parser, subparser, subtests):
         assert parser.get_default("n.g2.v3") == cfg.n.g2.v3
 
     with subtests.test("set_defaults undefined key"):
-        pytest.raises(KeyError, lambda: parser.set_defaults(v4="d"))
+        with pytest.raises(KeyError, match='No action for key "v4" to set its default'):
+            parser.set_defaults(v4="d")
 
     with subtests.test("get_default undefined key"):
-        pytest.raises(KeyError, lambda: parser.get_default("v4"))
+        with pytest.raises(KeyError, match='No action for key "v4" to get its default'):
+            parser.get_default("v4")
 
 
 def test_set_get_default_suppress_optional(parser):
@@ -1211,8 +1235,9 @@ def test_exit_on_error():
     parser.add_argument("--val", type=int)
     err = StringIO()
     with redirect_stderr(err):
-        assert 8 == parser.parse_args(["--val", "8"]).val
-        pytest.raises(SystemExit, lambda: parser.parse_args(["--val", "eight"]))
+        assert parser.parse_args(["--val", "8"]).val == 8
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--val", "eight"])
     assert 'Parser key "val":' in err.getvalue()
 
 
@@ -1248,11 +1273,12 @@ def test_nested_error_logged_once(logger):
     parser.add_argument("--int", type=int)
     with pytest.raises(ArgumentError), capture_logs(logger) as logs:
         parser.parse_args(["--cfg", '{"int": "invalid"}'])
-    assert 1 == logs.getvalue().count('Parser key "int"')
+    assert logs.getvalue().count('Parser key "int"') == 1
 
 
 def test_parse_known_args_not_implemented(parser):
-    pytest.raises(NotImplementedError, lambda: parser.parse_known_args([]))
+    with pytest.raises(NotImplementedError, match="parse_known_args not supported"):
+        parser.parse_known_args([])
 
 
 @pytest.mark.skipif(sys.version_info[:3] == (3, 14, 3), reason="not pickleable in Python 3.14.3")
