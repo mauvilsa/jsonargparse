@@ -92,7 +92,8 @@ def test_contains_non_str_key(key):
 def test_pop():
     ns = Namespace()
     ns["x.y.z"] = 1
-    assert ns.pop("x.y.z") == 1
+    popped = ns.pop("x.y.z")
+    assert popped == 1
     assert ns == Namespace(x=Namespace(y=Namespace()))
 
 

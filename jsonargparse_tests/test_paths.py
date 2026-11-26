@@ -841,7 +841,8 @@ def test_sub_configs_dict(parser, tmp_cwd):
 
     parser.add_argument("--data", type=Dict[str, Any], sub_configs=True)
     cfg = parser.parse_args(["--data=data.yaml"])
-    assert str(cfg["data"].pop("__path__")) == "data.yaml"
+    path_value = cfg["data"].pop("__path__")
+    assert str(path_value) == "data.yaml"
     assert data == cfg["data"]
     with pytest.raises(ArgumentError) as ctx:
         parser.parse_args(["--data=does-not-exist.yaml"])
