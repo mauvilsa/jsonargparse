@@ -48,8 +48,10 @@ def test_schema_in_help(parser):
 @pytest.mark.usefixtures("parser_schema_array")
 def test_schema_array_parse_args(parser):
     assert [0, 1, 2] == parser.parse_args(["--op1", "[0, 1, 2]"]).op1
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op1", '[1, "two"]']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op1", "[1.5, 2]"]))
+    with pytest.raises(ArgumentError, match="'two' is not of type 'integer'"):
+        parser.parse_args(["--op1", '[1, "two"]'])
+    with pytest.raises(ArgumentError, match=r"1\.5 is not of type 'integer'"):
+        parser.parse_args(["--op1", "[1.5, 2]"])
 
 
 @pytest.mark.usefixtures("parser_schema_array")
@@ -93,9 +95,12 @@ def test_schema_object_parse_args(parser):
     op2_val = {"k1": "one", "k2": 2, "k3": 3.3}
     assert op2_val == parser.parse_args(["--op2", json_or_yaml_dump(op2_val)]).op2
     assert 17 == parser.parse_args(["--op2", '{"k2": 2}']).op2["k3"]
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op2", '{"k1": 1}']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op2", '{"k2": "2"}']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op2", '{"k4": 4}']))
+    with pytest.raises(ArgumentError, match="1 is not of type 'string'"):
+        parser.parse_args(["--op2", '{"k1": 1}'])
+    with pytest.raises(ArgumentError, match="'2' is not of type 'integer'"):
+        parser.parse_args(["--op2", '{"k2": "2"}'])
+    with pytest.raises(ArgumentError, match=r"Additional properties are not allowed \('k4' was unexpected\)"):
+        parser.parse_args(["--op2", '{"k4": 4}'])
 
 
 @pytest.mark.usefixtures("parser_schema_object")
@@ -155,10 +160,13 @@ def test_action_jsonschema_schema_dict_or_str():
 
 
 def test_action_jsonschema_init_failures():
-    pytest.raises(ValueError, ActionJsonSchema)
+    with pytest.raises(ValueError, match="Expected schema keyword argument"):
+        ActionJsonSchema()
     from jsonschema.exceptions import SchemaError
 
-    pytest.raises((ValueError, SchemaError), lambda: ActionJsonSchema(schema=":"))
-    pytest.raises((ValueError, SchemaError), lambda: ActionJsonSchema(schema="."))
+    with pytest.raises((ValueError, SchemaError), match="Problems parsing schema"):
+        ActionJsonSchema(schema=":")
+    with pytest.raises((ValueError, SchemaError), match="is not of type 'object', 'boolean'"):
+        ActionJsonSchema(schema=".")
     with pytest.raises(ValueError, match="does not accept the following parameters: {'unexpected'}"):
         ActionJsonSchema(schema=schema_array, unexpected=True)

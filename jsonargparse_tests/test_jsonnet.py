@@ -94,7 +94,8 @@ def test_parser_mode_jsonnet(tmp_path):
     assert "#8" == cfg.records[-2]["ref"]
     assert 15.5 == cfg.records[-2]["val"]
 
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cfg", "{}}"]))
+    with pytest.raises(ArgumentError, match="Failed to parse as Jsonnet"):
+        parser.parse_args(["--cfg", "{}}"])
 
 
 @skip_if_no_pyyaml
@@ -320,8 +321,11 @@ def test_action_jsonnet_unexpected_parameters():
 
 @skip_if_jsonschema_unavailable
 def test_action_jsonnet_init_failures():
-    pytest.raises(ValueError, lambda: ActionJsonnet(ext_vars=2))
+    with pytest.raises(ValueError, match="ext_vars has to be either None or a string"):
+        ActionJsonnet(ext_vars=2)
     from jsonschema.exceptions import SchemaError
 
-    pytest.raises((ValueError, SchemaError), lambda: ActionJsonnet(schema="." + json.dumps(example_schema)))
-    pytest.raises((ValueError, SchemaError), lambda: ActionJsonnet(schema="."))
+    with pytest.raises((ValueError, SchemaError), match="Problems parsing schema"):
+        ActionJsonnet(schema="." + json.dumps(example_schema))
+    with pytest.raises((ValueError, SchemaError), match="is not of type 'object', 'boolean'"):
+        ActionJsonnet(schema=".")

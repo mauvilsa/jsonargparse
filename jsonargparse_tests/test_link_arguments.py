@@ -200,7 +200,8 @@ def test_on_parse_add_class_arguments(subtests):
         assert dump == {"a": {"v1": 11, "v2": 7}, "b": {"v3": 2, "v1": 7, "v2": 18}}
 
     with subtests.test("argument error"):
-        pytest.raises(ArgumentError, lambda: parser.parse_args(["--b.v1=5"]))
+        with pytest.raises(ArgumentError, match=r'Linked "b\.v1" must be given via "a\.v2"'):
+            parser.parse_args(["--b.v1=5"])
 
 
 class ClassS1:

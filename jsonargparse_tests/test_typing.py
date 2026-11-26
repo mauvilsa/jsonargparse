@@ -71,57 +71,76 @@ def test_public_api():
 def test_positive_int():
     assert 1 == PositiveInt(1)
     assert 2 == PositiveInt("2")
-    pytest.raises(ValueError, lambda: PositiveInt(0))
-    pytest.raises(ValueError, lambda: PositiveInt("-3"))
-    pytest.raises(ValueError, lambda: PositiveInt("4.0"))
-    pytest.raises(ValueError, lambda: PositiveInt(5.6))
+    with pytest.raises(ValueError, match="0 does not conform to restriction v>0"):
+        PositiveInt(0)
+    with pytest.raises(ValueError, match="-3 does not conform to restriction v>0"):
+        PositiveInt("-3")
+    with pytest.raises(ValueError, match=r"invalid literal for int\(\) with base 10: '4\.0'"):
+        PositiveInt("4.0")
+    with pytest.raises(ValueError, match=r"5\.6 not an integer"):
+        PositiveInt(5.6)
 
 
 def test_non_negative_int():
     assert 0 == NonNegativeInt(0)
     assert 1 == NonNegativeInt("1")
-    pytest.raises(ValueError, lambda: NonNegativeInt(-1))
-    pytest.raises(ValueError, lambda: NonNegativeInt("-2"))
-    pytest.raises(ValueError, lambda: NonNegativeInt("3.0"))
-    pytest.raises(ValueError, lambda: NonNegativeInt(4.5))
+    with pytest.raises(ValueError, match="-1 does not conform to restriction v>=0"):
+        NonNegativeInt(-1)
+    with pytest.raises(ValueError, match="-2 does not conform to restriction v>=0"):
+        NonNegativeInt("-2")
+    with pytest.raises(ValueError, match=r"invalid literal for int\(\) with base 10: '3\.0'"):
+        NonNegativeInt("3.0")
+    with pytest.raises(ValueError, match=r"4\.5 not an integer"):
+        NonNegativeInt(4.5)
 
 
 def test_positive_float():
     assert 0.1 == PositiveFloat(0.1)
     assert 0.2 == PositiveFloat("0.2")
     assert 3.0 == PositiveFloat(3)
-    pytest.raises(ValueError, lambda: PositiveFloat(0))
-    pytest.raises(ValueError, lambda: PositiveFloat("-0.4"))
+    with pytest.raises(ValueError, match="0 does not conform to restriction v>0"):
+        PositiveFloat(0)
+    with pytest.raises(ValueError, match=r"-0\.4 does not conform to restriction v>0"):
+        PositiveFloat("-0.4")
 
 
 def test_non_negative_float():
     assert 0.0 == NonNegativeFloat(0.0)
     assert 0.1 == NonNegativeFloat("0.1")
     assert 2.0 == NonNegativeFloat(2)
-    pytest.raises(ValueError, lambda: NonNegativeFloat(-0.1))
-    pytest.raises(ValueError, lambda: NonNegativeFloat("-2"))
+    with pytest.raises(ValueError, match=r"-0\.1 does not conform to restriction v>=0"):
+        NonNegativeFloat(-0.1)
+    with pytest.raises(ValueError, match="-2 does not conform to restriction v>=0"):
+        NonNegativeFloat("-2")
 
 
 def test_closed_unit_interval():
     assert 0.0 == ClosedUnitInterval(0.0)
     assert 1.0 == ClosedUnitInterval("1")
     assert 0.5 == ClosedUnitInterval(0.5)
-    pytest.raises(ValueError, lambda: ClosedUnitInterval(-0.1))
-    pytest.raises(ValueError, lambda: ClosedUnitInterval("1.1"))
+    with pytest.raises(ValueError, match=r"-0\.1 does not conform to restriction v>=0 and v<=1"):
+        ClosedUnitInterval(-0.1)
+    with pytest.raises(ValueError, match=r"1\.1 does not conform to restriction v>=0 and v<=1"):
+        ClosedUnitInterval("1.1")
 
 
 def test_open_unit_interval():
     assert 0.1 == OpenUnitInterval(0.1)
     assert 0.9 == OpenUnitInterval("0.9")
     assert 0.5 == OpenUnitInterval(0.5)
-    pytest.raises(ValueError, lambda: OpenUnitInterval(0))
-    pytest.raises(ValueError, lambda: OpenUnitInterval("1.0"))
+    with pytest.raises(ValueError, match="0 does not conform to restriction v>0 and v<1"):
+        OpenUnitInterval(0)
+    with pytest.raises(ValueError, match=r"1\.0 does not conform to restriction v>0 and v<1"):
+        OpenUnitInterval("1.0")
 
 
 def test_restricted_number_invalid_type():
-    pytest.raises(ValueError, lambda: restricted_number_type("Invalid", str, ("<", 0)))
-    pytest.raises(ValueError, lambda: restricted_number_type("Invalid", int, ("<", 0), join="xor"))
-    pytest.raises(ValueError, lambda: restricted_number_type("Invalid", int, ["<", 0]))
+    with pytest.raises(ValueError, match=r"Expected base_type to be one of \{int, float\}"):
+        restricted_number_type("Invalid", str, ("<", 0))
+    with pytest.raises(ValueError, match="Expected join to be one of"):
+        restricted_number_type("Invalid", int, ("<", 0), join="xor")
+    with pytest.raises(ValueError, match="Expected restrictions to be a list of tuples"):
+        restricted_number_type("Invalid", int, ["<", 0])
 
 
 def test_restricted_number_already_registered():
@@ -135,29 +154,35 @@ def test_restricted_number_name_from_restrictions():
     NumberType = restricted_number_type(None, float, [(">=", 0.5), ("<", 2)], join="and")
     assert NumberType.__name__ == "float_ge05_and_lt2"
     assert 1.0 == NumberType(1)
-    pytest.raises(ValueError, lambda: NumberType(0.4))
+    with pytest.raises(ValueError, match=r"0\.4 does not conform to restriction v>=0\.5 and v<2"):
+        NumberType(0.4)
 
 
 def test_restricted_number_not_equal_operator():
     NotTwoOrThree = restricted_number_type("NotTwoOrThree", float, [("!=", 2), ("!=", 3)])
     assert 1.0 == NotTwoOrThree(1)
-    pytest.raises(ValueError, lambda: NotTwoOrThree(2))
-    pytest.raises(ValueError, lambda: NotTwoOrThree("3"))
+    with pytest.raises(ValueError, match="2 does not conform to restriction v!=2 and v!=3"):
+        NotTwoOrThree(2)
+    with pytest.raises(ValueError, match="3 does not conform to restriction v!=2 and v!=3"):
+        NotTwoOrThree("3")
 
 
 def test_restricted_number_operator_join():
     PositiveOrMinusOne = restricted_number_type("PositiveOrMinusOne", float, [(">", 0), ("==", -1)], join="or")
     assert 1.0 == PositiveOrMinusOne(1)
     assert -1.0 == PositiveOrMinusOne("-1.0")
-    pytest.raises(ValueError, lambda: PositiveOrMinusOne(-0.5))
-    pytest.raises(ValueError, lambda: PositiveOrMinusOne("-2"))
+    with pytest.raises(ValueError, match=r"-0\.5 does not conform to restriction v>0 or v==-1"):
+        PositiveOrMinusOne(-0.5)
+    with pytest.raises(ValueError, match="-2 does not conform to restriction v>0 or v==-1"):
+        PositiveOrMinusOne("-2")
 
 
 def test_non_negative_float_add_argument(parser):
     parser.add_argument("--le0", type=NonNegativeFloat)
     assert 0.0 == parser.parse_args(["--le0", "0"]).le0
     assert 5.6 == parser.parse_args(["--le0", "5.6"]).le0
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--le0", "-2.1"]))
+    with pytest.raises(ArgumentError, match=r"NonNegativeFloat: -2\.1 does not conform to restriction v>=0"):
+        parser.parse_args(["--le0", "-2.1"])
 
 
 def test_restricted_number_add_argument_optional(parser):
@@ -166,7 +191,8 @@ def test_restricted_number_add_argument_optional(parser):
     parser.add_argument("--val", type=larger_than, default=limit_val + 1, help="Help")
 
     assert limit_val + 1 == parser.parse_args([f"--val={limit_val + 1}"]).val
-    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--val={limit_val - 1}"]))
+    with pytest.raises(ArgumentError, match=f"{limit_val - 1} does not conform to restriction v>{limit_val}"):
+        parser.parse_args([f"--val={limit_val - 1}"])
 
     help_str = get_parser_help(parser)
     assert f"Help (type: larger_than_{limit_val}, default: {limit_val + 1})" in help_str
@@ -176,9 +202,12 @@ def test_restricted_number_add_argument_optional_nargs_plus(parser):
     TenToTwenty = restricted_number_type("TenToTwenty", int, [(">=", 10), ("<=", 20)])
     parser.add_argument("--f10t20", type=TenToTwenty, nargs="+")
     assert [11, 14, 16] == parser.parse_args(["--f10t20", "11", "14", "16"]).f10t20
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--f10t20", "9"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--f10t20", "21"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--f10t20", "10.5"]))
+    with pytest.raises(ArgumentError, match="Not of type TenToTwenty: 9 does not conform to restriction"):
+        parser.parse_args(["--f10t20", "9"])
+    with pytest.raises(ArgumentError, match="Not of type TenToTwenty: 21 does not conform to restriction"):
+        parser.parse_args(["--f10t20", "21"])
+    with pytest.raises(ArgumentError, match=r"TenToTwenty: invalid literal for int\(\) with base 10: '10\.5'"):
+        parser.parse_args(["--f10t20", "10.5"])
 
 
 def test_restricted_number_positional_nargs_questionmark(parser):
@@ -186,7 +215,8 @@ def test_restricted_number_positional_nargs_questionmark(parser):
     parser.add_argument("p2", nargs="?", type=OpenUnitInterval)
     assert None is parser.parse_args(["a"]).p2
     assert 0.5 == parser.parse_args(["a", "0.5"]).p2
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["a", "b"]))
+    with pytest.raises(ArgumentError, match="Not of type OpenUnitInterval: could not convert string to float: 'b'"):
+        parser.parse_args(["a", "b"])
 
 
 def test_restricted_number_optional_union(parser):
@@ -196,8 +226,10 @@ def test_restricted_number_optional_union(parser):
     assert 1 == parser.parse_args(["--num", "1"]).num
     assert 12 == parser.parse_args(["--num", "12"]).num
     assert None is parser.parse_args(["--num=null"]).num
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--num", "0.0"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--num", "4.5"]))
+    with pytest.raises(ArgumentError, match=r"PositiveInt.*OpenUnitInterval.*Got value: 0\.0"):
+        parser.parse_args(["--num", "0.0"])
+    with pytest.raises(ArgumentError, match=r"PositiveInt.*OpenUnitInterval.*Got value: 4\.5"):
+        parser.parse_args(["--num", "4.5"])
 
 
 def test_restricted_number_dump(parser):
@@ -214,12 +246,16 @@ def test_type_function_parse(parser):
 
     assert 1 == parser.parse_args(["--gt0_or_off", "1"]).gt0_or_off
     assert "off" == parser.parse_args(["--gt0_or_off", "off"]).gt0_or_off
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--gt0_or_off", "0"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--gt0_or_off", "on"]))
+    with pytest.raises(ArgumentError, match="invalid gt0_or_off value: '0'"):
+        parser.parse_args(["--gt0_or_off", "0"])
+    with pytest.raises(ArgumentError, match="invalid gt0_or_off value: 'on'"):
+        parser.parse_args(["--gt0_or_off", "on"])
 
     assert [1, "off"] == parser.parse_args(["--multi_gt0_or_off", "1", "off"]).multi_gt0_or_off
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--multi_gt0_or_off", "1", "0"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_object({"multi_gt0_or_off": [1, 0]}))
+    with pytest.raises(ArgumentError, match="argument --multi_gt0_or_off: invalid gt0_or_off value: '0'"):
+        parser.parse_args(["--multi_gt0_or_off", "1", "0"])
+    with pytest.raises(ArgumentError, match='Parser key "multi_gt0_or_off": 0 does not conform to restriction v>0'):
+        parser.parse_object({"multi_gt0_or_off": [1, 0]})
 
 
 def test_extend_base_type(parser):
@@ -230,7 +266,8 @@ def test_extend_base_type(parser):
     EvenInt = extend_base_type("EvenInt", int, is_even)
     parser.add_argument("--even_int", type=EvenInt)
     assert 2 == parser.parse_args(["--even_int=2"]).even_int
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--even_int=3"]))
+    with pytest.raises(ArgumentError, match="Not of type EvenInt: 3 is not even"):
+        parser.parse_args(["--even_int=3"])
 
 
 # restricted string tests
@@ -238,40 +275,47 @@ def test_extend_base_type(parser):
 
 def test_email():
     assert "name@eg.org" == Email("name@eg.org")
-    pytest.raises(ValueError, lambda: Email(""))
-    pytest.raises(ValueError, lambda: Email("name @ eg.org"))
-    pytest.raises(ValueError, lambda: Email("name_at_eg.org"))
+    with pytest.raises(ValueError, match="^ does not match regular expression"):
+        Email("")
+    with pytest.raises(ValueError, match=r"^name @ eg\.org does not match regular expression"):
+        Email("name @ eg.org")
+    with pytest.raises(ValueError, match=r"^name_at_eg\.org does not match regular expression"):
+        Email("name_at_eg.org")
 
 
 def test_optional_email_parse(parser):
     parser.add_argument("--email", type=Optional[Email])
     assert "a@b.c" == parser.parse_args(["--email", "a@b.c"]).email
     assert None is parser.parse_args(["--email=null"]).email
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--email", "abc"]))
+    with pytest.raises(ArgumentError, match="Not of type Email: does not match regular expression"):
+        parser.parse_args(["--email", "abc"])
 
 
 def test_non_empty_string():
     assert " value " == NotEmptyStr(" value ")
-    pytest.raises(ValueError, lambda: NotEmptyStr(""))
-    pytest.raises(ValueError, lambda: NotEmptyStr(" "))
+    with pytest.raises(ValueError, match="^ does not match regular expression"):
+        NotEmptyStr("")
+    with pytest.raises(ValueError, match="^  does not match regular expression"):
+        NotEmptyStr(" ")
 
 
 def test_restricted_string_already_registered():
     NewEmail = restricted_string_type("Email", r"^[^@ ]+@[^@ ]+\.[^@ ]+$")
     assert Email is NewEmail
-    pytest.raises(
-        ValueError,
-        lambda: restricted_string_type("NewName", r"^[^@ ]+@[^@ ]+\.[^@ ]+$"),
-    )
+    with pytest.raises(ValueError, match="Same type already registered with a different name: Email"):
+        restricted_string_type("NewName", r"^[^@ ]+@[^@ ]+\.[^@ ]+$")
 
 
 def test_restricted_string_parse(parser):
     FourDigits = restricted_string_type("FourDigits", "^[0-9]{4}$")
     parser.add_argument("--op", type=FourDigits)
     assert "1234" == parser.parse_args(["--op", "1234"]).op
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op", "123"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op", "12345"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--op", "abcd"]))
+    with pytest.raises(ArgumentError, match="Not of type FourDigits: 123 does not match regular expression"):
+        parser.parse_args(["--op", "123"])
+    with pytest.raises(ArgumentError, match="Not of type FourDigits: 12345 does not match regular expression"):
+        parser.parse_args(["--op", "12345"])
+    with pytest.raises(ArgumentError, match="Not of type FourDigits: abcd does not match regular expression"):
+        parser.parse_args(["--op", "abcd"])
 
 
 def test_restricted_string_dump(parser):
@@ -370,7 +414,8 @@ def test_pickle_module_type(class_type):
 
 
 def test_module_name_clash():
-    pytest.raises(ValueError, lambda: restricted_string_type("Callable", "^clash$"))
+    with pytest.raises(ValueError, match='Type name "Callable" clashes with name already defined'):
+        restricted_string_type("Callable", "^clash$")
 
 
 def test_register_non_bool_cast_type(parser):
@@ -381,7 +426,8 @@ def test_register_non_bool_cast_type(parser):
         def __bool__(self):
             raise TypeError("bool not supported")
 
-    pytest.raises(TypeError, lambda: not Elems(1, 2))
+    with pytest.raises(TypeError, match="bool not supported"):
+        not Elems(1, 2)
     register_type(Elems, lambda x: x.elems, lambda x: Elems(*x))
 
     parser.add_argument("--elems", type=Elems)

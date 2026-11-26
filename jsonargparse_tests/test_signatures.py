@@ -310,13 +310,14 @@ def test_add_class_with_required_parameters(parser):
     parser.add_class_arguments(RequiredParams, "model")
     parser.add_argument("--config", action="config")
 
-    for args in [
-        [],
-        ["--model.n=2"],
-        ["--model.m=0.1"],
-        ["--model.n=x", "--model.m=0.1"],
+    for args, match in [
+        ([], r"required: model\.n, model\.m"),
+        (["--model.n=2"], r"required: model\.m"),
+        (["--model.m=0.1"], r"required: model\.n"),
+        (["--model.n=x", "--model.m=0.1"], r"Expected type: int\. Got value: x"),
     ]:
-        pytest.raises(ArgumentError, lambda: parser.parse_args(args))
+        with pytest.raises(ArgumentError, match=match):
+            parser.parse_args(args)
 
     out = get_parse_args_stdout(parser, ["--model.m=0.1", "--print_config"])
     assert json_or_yaml_load(out) == {"model": {"n": None, "m": 0.1}}

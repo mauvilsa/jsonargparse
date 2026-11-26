@@ -114,9 +114,12 @@ def test_path_init(paths):
 
 
 def test_path_init_failures(paths):
-    pytest.raises(TypeError, lambda: Path(True))
-    pytest.raises(ValueError, lambda: Path(paths.file_rw, "-"))
-    pytest.raises(ValueError, lambda: Path(paths.file_rw, "frr"))
+    with pytest.raises(TypeError, match="Expected path to be a string, os.PathLike or a Path object"):
+        Path(True)
+    with pytest.raises(ValueError, match=r"Expected mode to only include \[fdrwxcusFDRWX\] flags"):
+        Path(paths.file_rw, "-")
+    with pytest.raises(ValueError, match=r'Too many occurrences \(2\) for flag "r"'):
+        Path(paths.file_rw, "frr")
 
 
 def test_path_cwd(paths):
@@ -150,12 +153,18 @@ def test_path_file_access_mode(paths):
     Path(paths.file_, "f")
     Path(paths.dir_file_rx, "fr")
     if is_posix:
-        pytest.raises(TypeError, lambda: Path(paths.file_rw, "fx"))
-        pytest.raises(TypeError, lambda: Path(paths.file_, "fr"))
-    pytest.raises(TypeError, lambda: Path(paths.file_r, "fw"))
-    pytest.raises(TypeError, lambda: Path(paths.dir_file_rx, "fw"))
-    pytest.raises(TypeError, lambda: Path(paths.dir_rx, "fr"))
-    pytest.raises(TypeError, lambda: Path("file_ne", "fr"))
+        with pytest.raises(TypeError, match="File is not executable"):
+            Path(paths.file_rw, "fx")
+        with pytest.raises(TypeError, match="File is not readable"):
+            Path(paths.file_, "fr")
+    with pytest.raises(TypeError, match="File is not writable"):
+        Path(paths.file_r, "fw")
+    with pytest.raises(TypeError, match="File is not writable"):
+        Path(paths.dir_file_rx, "fw")
+    with pytest.raises(TypeError, match="Path is not a file"):
+        Path(paths.dir_rx, "fr")
+    with pytest.raises(TypeError, match="File does not exist"):
+        Path("file_ne", "fr")
 
 
 @skip_if_running_as_root
@@ -164,9 +173,12 @@ def test_path_dir_access_mode(paths):
     Path(paths.dir_rx, "drx")
     Path(paths.dir_x, "dx")
     if is_posix:
-        pytest.raises(TypeError, lambda: Path(paths.dir_rx, "dw"))
-        pytest.raises(TypeError, lambda: Path(paths.dir_x, "dr"))
-    pytest.raises(TypeError, lambda: Path(paths.file_r, "dr"))
+        with pytest.raises(TypeError, match="Directory is not writable"):
+            Path(paths.dir_rx, "dw")
+        with pytest.raises(TypeError, match="Directory is not readable"):
+            Path(paths.dir_x, "dr")
+    with pytest.raises(TypeError, match="Path is not a directory"):
+        Path(paths.file_r, "dr")
 
 
 def test_path_read_text(paths):
@@ -183,12 +195,18 @@ def test_path_create_mode(paths):
     Path(paths.dir_rwx, "dcrwx")
     Path(paths.tmp_path / "dir_c", "dc")
     if is_posix:
-        pytest.raises(TypeError, lambda: Path(paths.dir_rx / "file_c", "fc"))
-        pytest.raises(TypeError, lambda: Path(paths.dir_rx / "dir_c", "dc"))
-        pytest.raises(TypeError, lambda: Path(paths.dir_rx / "not_existing_dir" / "file_c", "fcc"))
-    pytest.raises(TypeError, lambda: Path(paths.file_rw, "dc"))
-    pytest.raises(TypeError, lambda: Path(paths.dir_rwx, "fc"))
-    pytest.raises(TypeError, lambda: Path(paths.dir_rwx / "ne" / "file_c", "fc"))
+        with pytest.raises(TypeError, match="File is not creatable since parent directory not writable"):
+            Path(paths.dir_rx / "file_c", "fc")
+        with pytest.raises(TypeError, match="Directory is not creatable since parent directory not writable"):
+            Path(paths.dir_rx / "dir_c", "dc")
+        with pytest.raises(TypeError, match="File is not creatable since parent directory not writable"):
+            Path(paths.dir_rx / "not_existing_dir" / "file_c", "fcc")
+    with pytest.raises(TypeError, match="Directory is not creatable since path already exists"):
+        Path(paths.file_rw, "dc")
+    with pytest.raises(TypeError, match="File is not creatable since path already exists"):
+        Path(paths.dir_rwx, "fc")
+    with pytest.raises(TypeError, match="File is not creatable since parent directory does not exist"):
+        Path(paths.dir_rwx / "ne" / "file_c", "fc")
 
 
 @pytest.mark.parametrize(
@@ -678,7 +696,8 @@ def test_path_fr(file_r):
     path = Path_fr(file_r)
     assert path == file_r
     assert path.absolute == os.path.realpath(file_r)
-    pytest.raises(TypeError, lambda: Path_fr("does_not_exist"))
+    with pytest.raises(TypeError, match="File does not exist"):
+        Path_fr("does_not_exist")
 
 
 def test_path_fc_with_kwargs(tmpdir):
@@ -709,8 +728,10 @@ def test_paths_config_relative_absolute(parser, tmp_cwd):
     assert str(abs_yaml_file) == os.path.realpath(cfg.file)
     assert str(tmp_cwd) == os.path.realpath(cfg.dir)
 
-    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--dir={abs_yaml_file}"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--file={tmp_cwd}"]))
+    with pytest.raises(ArgumentError, match="Not of type Path_drw: Path is not a directory"):
+        parser.parse_args([f"--dir={abs_yaml_file}"])
+    with pytest.raises(ArgumentError, match="Not of type Path_fr: Path is not a file"):
+        parser.parse_args([f"--file={tmp_cwd}"])
 
 
 def test_path_fc_nargs_plus(parser, tmp_cwd):
@@ -736,7 +757,8 @@ def test_optional_path_fr(parser, file_r):
     cfg = parser.parse_args([f"--path={file_r}"])
     assert file_r == cfg.path
     assert isinstance(cfg.path, Path_fr)
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--path=not_exist"]))
+    with pytest.raises(ArgumentError, match="Path_fr: Not of type Path_fr: File does not exist"):
+        parser.parse_args(["--path=not_exist"])
 
 
 def test_register_path_dcc_default_path(parser, tmp_cwd):
@@ -1216,7 +1238,8 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
         assert [[]] == cfg.lists
 
     with subtests.test("paths list nargs='+' path not exist"):
-        pytest.raises(ArgumentError, lambda: parser.parse_args(["--lists", str(list_file4)]))
+        with pytest.raises(ArgumentError, match=r'(?s)"lists" element 1:.*Not of type Path_fr: File does not exist'):
+            parser.parse_args(["--lists", str(list_file4)])
 
     with subtests.test("paths list nargs='+' list not exist"):
         with pytest.raises(ArgumentError) as ctx:

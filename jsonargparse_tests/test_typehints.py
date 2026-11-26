@@ -190,7 +190,8 @@ def test_bool_parse(parser):
     assert False is parser.parse_args(["--val", "false"]).val
     if pyyaml_available:
         assert False is parser.parse_args(["--val", "FALSE"]).val
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--val", "1"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: bool\. Got value: 1"):
+        parser.parse_args(["--val", "1"])
 
 
 @pytest.mark.parametrize("num_type", [int, float, PositiveInt, PositiveFloat])
@@ -245,14 +246,18 @@ def test_literal(parser):
     parser.add_argument("--false", type=Literal[False])
     assert "a" == parser.parse_args(["--str=a"]).str
     assert "b" == parser.parse_args(["--str=b"]).str
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--str=x"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: Literal\['a', 'b', null\]\. Got value: x"):
+        parser.parse_args(["--str=x"])
     assert None is parser.parse_args(["--str=null"]).str
     assert 4 == parser.parse_args(["--int=4"]).int
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--int=5"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: Literal\[3, 4\]\. Got value: 5"):
+        parser.parse_args(["--int=5"])
     assert True is parser.parse_args(["--true=true"]).true
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--true=false"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: Literal\[True\]\. Got value: False"):
+        parser.parse_args(["--true=false"])
     assert False is parser.parse_args(["--false=false"]).false
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--false=true"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: Literal\[False\]\. Got value: True"):
+        parser.parse_args(["--false=true"])
     help_str = get_parser_help(parser)
     for value in ["--str {a,b,null}", "--int {3,4}", "--true True", "--false False"]:
         assert value in help_str
@@ -478,7 +483,8 @@ def test_type_typehint_with_arg(parser):
     cfg = parser.parse_args([f"--cls={__name__}.BaseC"])
     assert cfg.cls is BaseC
     assert json_or_yaml_load(parser.dump(cfg)) == {"cls": f"{__name__}.BaseC"}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=uuid.UUID"]))
+    with pytest.raises(ArgumentError, match=r"given as an import path\. Got value: uuid\.UUID"):
+        parser.parse_args(["--cls=uuid.UUID"])
 
 
 def test_type_typehint_any_arg(parser):
@@ -487,13 +493,15 @@ def test_type_typehint_any_arg(parser):
     cfg = parser.parse_args(["--cls=uuid.UUID"])
     assert cfg.cls is uuid.UUID
     assert json_or_yaml_load(parser.dump(cfg)) == {"cls": "uuid.UUID"}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=time.time"]))
+    with pytest.raises(ArgumentError, match=r"given as an import path\. Got value: time\.time"):
+        parser.parse_args(["--cls=time.time"])
 
 
 def test_type_typehint_object_arg(parser):
     parser.add_argument("--cls", type=type[object])
     assert parser.parse_args(["--cls=uuid.UUID"]).cls is uuid.UUID
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=time.time"]))
+    with pytest.raises(ArgumentError, match=r"given as an import path\. Got value: time\.time"):
+        parser.parse_args(["--cls=time.time"])
 
 
 def test_type_typehint_help_known_subclasses(parser):
@@ -511,14 +519,16 @@ def test_type_typehint_unbound_typevar_arg(parser):
     parser.add_argument("--cls", type=type[UnboundVar])
     assert parser.parse_args([f"--cls={__name__}.SubC"]).cls is SubC
     assert parser.parse_args(["--cls=uuid.UUID"]).cls is uuid.UUID
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=time.time"]))
+    with pytest.raises(ArgumentError, match=r"given as an import path\. Got value: time\.time"):
+        parser.parse_args(["--cls=time.time"])
     assert "(type: type[object], default: null)" in get_parser_help(parser)
 
 
 def test_type_typehint_bound_typevar_arg(parser):
     parser.add_argument("--cls", type=Optional[type[BoundVar]])
     assert parser.parse_args([f"--cls={__name__}.SubC"]).cls is SubC
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=uuid.UUID"]))
+    with pytest.raises(ArgumentError, match=r"Got value: uuid\.UUID"):
+        parser.parse_args(["--cls=uuid.UUID"])
     help_str = get_parser_help(parser)
     assert f"(type: {type_to_str(Optional[type[BaseC]])}, default: null" in help_str
     assert f"known subclasses: {__name__}.BaseC, {__name__}.SubC" in help_str
@@ -527,7 +537,8 @@ def test_type_typehint_bound_typevar_arg(parser):
 def test_type_typehint_constrained_typevar_arg(parser):
     parser.add_argument("--cls", type=type[ConstrainedVar])
     assert parser.parse_args(["--cls=builtins.str"]).cls is str
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=uuid.UUID"]))
+    with pytest.raises(ArgumentError, match=r"given as an import path\. Got value: uuid\.UUID"):
+        parser.parse_args(["--cls=uuid.UUID"])
     expected = type_to_str(type[Union[int, str]])
     assert f"(type: {expected}, default: null)" in get_parser_help(parser)
 
@@ -578,7 +589,8 @@ if generic_typed_dict_support:
 def test_typevar_bound_argument(parser):
     parser.add_argument("--options", type=Optional[BoundTypedDictVar])
     assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'unknown'\}"):
+        parser.parse_args(['--options={"unknown": 1}'])
     assert f"(type: {type_to_str(Optional[TypeVarTypedDict])}, default: null)" in get_parser_help(parser)
 
 
@@ -589,7 +601,8 @@ def function_typevar_bound(options: Optional[BoundTypedDictVar] = None):
 def test_typevar_bound_signature_parameter(parser):
     parser.add_function_arguments(function_typevar_bound, "x")
     assert parser.parse_args(['--x.options={"temperature": 0.5}']).x.options == {"temperature": 0.5}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--x.options={"unknown": 1}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'unknown'\}"):
+        parser.parse_args(['--x.options={"unknown": 1}'])
     assert "Unvalidated" not in get_parser_help(parser)
 
 
@@ -617,7 +630,8 @@ def test_typevar_default_argument(parser):
     default_var = TypeVarExt("default_var", bound=Mapping[str, Any], default=TypeVarTypedDict)
     parser.add_argument("--options", type=Optional[default_var])
     assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'unknown'\}"):
+        parser.parse_args(['--options={"unknown": 1}'])
     assert f"(type: {type_to_str(Optional[TypeVarTypedDict])}, default: null)" in get_parser_help(parser)
 
 
@@ -628,7 +642,8 @@ def test_typevar_default_forward_ref(parser):
     default_var = TypeVarExt("default_var", bound=Mapping[str, Any], default="TypeVarTypedDict")
     parser.add_argument("--options", type=Optional[default_var])
     assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'unknown'\}"):
+        parser.parse_args(['--options={"unknown": 1}'])
     assert f"(type: {type_to_str(Optional[TypeVarTypedDict])}, default: null)" in get_parser_help(parser)
 
 
@@ -640,7 +655,8 @@ def test_typevar_default_forward_ref_subscripted_generic_typeddict(parser):
     default_var = TypeVarExt("default_var", bound=Mapping[str, Any], default="GenericTypedDict[int]")
     parser.add_argument("--options", type=Optional[default_var])
     assert parser.parse_args(['--options={"extra": 1}']).options == {"extra": 1}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"extra": "x"}']))
+    with pytest.raises(ArgumentError, match=r"GenericTypedDict\[int\]: Expected type: int\. Got value: x"):
+        parser.parse_args(['--options={"extra": "x"}'])
     help_str = get_parser_help(parser)
     assert f"(type: {type_to_str(Optional[GenericTypedDict[int]])}, default: null)" in help_str
     assert "Unvalidated" not in help_str
@@ -663,7 +679,8 @@ def test_typevar_bound_forward_ref(parser):
     bound_var = TypeVar("bound_var", bound="TypeVarTypedDict")
     parser.add_argument("--options", type=Optional[bound_var])
     assert parser.parse_args(['--options={"temperature": 0.5}']).options == {"temperature": 0.5}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'unknown'\}"):
+        parser.parse_args(['--options={"unknown": 1}'])
 
 
 def test_typevar_unresolvable_forward_ref_argument(parser):
@@ -687,7 +704,8 @@ def test_type_typevar_unresolvable_forward_ref_bound(parser):
     parser.add_argument("--cls", type=type[UnresolvableBoundVar])
     # the bound fails to resolve, so any class is accepted
     assert parser.parse_args(["--cls=calendar.Calendar"]).cls is calendar.Calendar
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cls=not_a_class"]))
+    with pytest.raises(ArgumentError, match="Expected a dot import path string: not_a_class"):
+        parser.parse_args(["--cls=not_a_class"])
     assert "(type: type[Unvalidated<MisspelledOptions>], default: null)" in get_parser_help(parser)
 
 
@@ -706,7 +724,8 @@ def test_enum_parse(parser):
     for val in ["A", "B", "C"]:
         assert EnumABC[val] == parser.parse_args([f"--enum={val}"]).enum
     for val in ["X", "b", 2]:
-        pytest.raises(ArgumentError, lambda: parser.parse_args([f"--enum={val}"]))
+        with pytest.raises(ArgumentError, match=f"Expected a member of EnumABC: .* Got value: {val}"):
+            parser.parse_args([f"--enum={val}"])
 
 
 def test_enum_dump(parser):
@@ -859,7 +878,8 @@ def test_tuple_ellipsis(parser):
     assert (1.2,) == parser.parse_args(["--tuple=[1.2]"]).tuple
     assert (1.2, 3.4) == parser.parse_args(["--tuple=[1.2, 3.4]"]).tuple
     assert () == parser.parse_args(["--tuple=[]"]).tuple
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--tuple=[2, "a"]']))
+    with pytest.raises(ArgumentError, match=r"Expected type: float\. Got value: a"):
+        parser.parse_args(['--tuple=[2, "a"]'])
 
 
 def test_tuples_nested_ellipsis(parser):
@@ -915,10 +935,14 @@ def test_tuple_union(parser, tmp_cwd):
     cfg = parser.parse_args(['--tuple=[2, "a", "b"]'])
     assert (2, "a", "b") == cfg.tuple
     assert isinstance(cfg.tuple[1], Path_fc)
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--tuple=[]"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--tuple=[2, "a", "b", 5]']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--tuple=[2, "a"]']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--tuple={"a":1, "b":"2"}']))
+    with pytest.raises(ArgumentError, match=r"Expected a tuple with 3 elements\. Got value: \[\]"):
+        parser.parse_args(["--tuple=[]"])
+    with pytest.raises(ArgumentError, match=r"Expected a tuple with 3 elements\. Got value: \[2, 'a', 'b', 5\]"):
+        parser.parse_args(['--tuple=[2, "a", "b", 5]'])
+    with pytest.raises(ArgumentError, match=r"Expected a tuple with 3 elements\. Got value: \[2, 'a'\]"):
+        parser.parse_args(['--tuple=[2, "a"]'])
+    with pytest.raises(ArgumentError, match=r"Got value: \{'a': 1, 'b': '2'\}"):
+        parser.parse_args(['--tuple={"a":1, "b":"2"}'])
     help_str = get_parser_help(parser, strip=True)
     if sys.version_info < (3, 14):
         assert "--tuple [ITEM,...] (type: Tuple[Union[int, EnumABC], Path_fc, NotEmptyStr], default: null)" in help_str
@@ -991,7 +1015,8 @@ def test_list_union(parser):
     parser.add_argument("--list2", type=List[Union[int, EnumABC]])
     assert [1.2, "B"] == parser.parse_args(['--list1=[1.2, "B"]']).list1
     assert [3, EnumABC.B] == parser.parse_args(['--list2=[3, "B"]']).list2
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--list1={"a":1, "b":"2"}']))
+    with pytest.raises(ArgumentError, match=r"Got value: \{'a': 1, 'b': '2'\}"):
+        parser.parse_args(['--list1={"a":1, "b":"2"}'])
 
 
 def test_list_str_positional(parser):
@@ -1019,7 +1044,8 @@ def test_list_append(parser):
     assert [1, 2, 3] == parser.parse_args(["--val=[1,2]", "--val+=3"]).val
     assert [1] == parser.parse_args(["--val=0.1", "--val+=1"]).val
     assert 3 == parser.parse_args(["--val=[1,2]", "--val=3"]).val
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--val=a", "--val+=1"]))
+    with pytest.raises(ArgumentError, match="Got value: a"):
+        parser.parse_args(["--val=a", "--val+=1"])
 
 
 class CountingEnviron(dict):
@@ -1096,8 +1122,10 @@ def test_list_append_config(parser):
     assert [3, 4] == parser.parse_args(["--cfg", '{"val": [3, 4]}']).val
     assert [1, 2, 3] == parser.parse_args(["--cfg", '{"val+": 3}']).val
     assert [1, 2, 3, 4] == parser.parse_args(["--cfg", '{"val+": [3, 4]}']).val
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--cfg", '{"val+": "a"}']))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--val=2", "--cfg", '{"val+": 3}']))
+    with pytest.raises(ArgumentError, match=r"Expected type: int\. Got value: a\n  Source: config string"):
+        parser.parse_args(["--cfg", '{"val+": "a"}'])
+    with pytest.raises(ArgumentError, match=r"Expected type: List\[int\]\. Got value: 2"):
+        parser.parse_args(["--val=2", "--cfg", '{"val+": 3}'])
 
 
 def test_list_append_default_config_files(parser, tmp_cwd, subtests):
@@ -1195,7 +1223,8 @@ def test_dict_without_arg(parser):
     parser.add_argument("--dict", type=dict)
     assert {} == parser.parse_args(["--dict={}"])["dict"]
     assert {"a": 1, "b": "2"} == parser.parse_args(['--dict={"a":1, "b":"2"}'])["dict"]
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--dict=1"]))
+    with pytest.raises(ArgumentError, match=r"Expected type: dict\. Got value: 1"):
+        parser.parse_args(["--dict=1"])
 
 
 @parser_modes
@@ -1204,7 +1233,8 @@ def test_dict_int_keys(parser):
     parser.add_argument("--cfg", action="config")
     cfg = {"d": {1: "val1", 2: "val2"}}
     assert cfg["d"] == parser.parse_args(["--cfg", json.dumps(cfg)]).d
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--cfg={"d": {"a": "b"}}']))
+    with pytest.raises(ArgumentError, match=r"invalid literal for int\(\) with base 10: 'a'"):
+        parser.parse_args(['--cfg={"d": {"a": "b"}}'])
 
 
 def test_dict_union(parser, tmp_cwd):
@@ -1215,7 +1245,8 @@ def test_dict_union(parser, tmp_cwd):
     assert {"a": True, "b": "f"} == cfg.dict2
     assert isinstance(cfg.dict2["b"], Path_fc)
     assert {5: None} == parser.parse_args(['--dict1={"5":null}']).dict1
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--dict1=["a", "b"]']))
+    with pytest.raises(ArgumentError, match=r"Got value: \['a', 'b'\]"):
+        parser.parse_args(['--dict1=["a", "b"]'])
     cfg = json_or_yaml_load(parser.dump(cfg))
     assert {"dict1": {"2": 4.5, "6": "C"}, "dict2": {"a": True, "b": "f"}} == cfg
 
@@ -1287,7 +1318,8 @@ def test_typeddict_with_args(parser):
     assert {"a": 1} == parser.parse_args(['--typeddict={"a": 1}'])["typeddict"]
     with pytest.raises(ArgumentError, match="Unexpected keys"):
         parser.parse_args(['--typeddict={"a":1, "b":2}'])
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--typeddict={"a":1, "b":2}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'b'\}"):
+        parser.parse_args(['--typeddict={"a":1, "b":2}'])
     with pytest.raises(ArgumentError, match="Missing required keys"):
         parser.parse_args(["--typeddict={}"])
     with pytest.raises(ArgumentError, match="Expected type: int"):
@@ -2008,7 +2040,8 @@ def test_typevar_default_subscripted_generic_typeddict(parser):
     options_var = TypeVarExt("options_var", bound=Mapping[str, Any], default=GenericTypedDict[int])
     parser.add_argument("--options", type=Optional[options_var])
     assert parser.parse_args(['--options={"extra": 1}']).options == {"extra": 1}
-    pytest.raises(ArgumentError, lambda: parser.parse_args(['--options={"unknown": 1}']))
+    with pytest.raises(ArgumentError, match=r"Unexpected keys: \{'unknown'\}"):
+        parser.parse_args(['--options={"unknown": 1}'])
     help_str = get_parser_help(parser)
     assert f"(type: {type_to_str(Optional[GenericTypedDict[int]])}, default: null)" in help_str
     assert "Unvalidated" not in help_str
@@ -3123,7 +3156,8 @@ def test_union_new_syntax_simple_types(parser):
     parser.add_argument("--val", type=int | None)
     assert 123 == parser.parse_args(["--val=123"]).val
     assert None is parser.parse_args(["--val=null"]).val
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--val=abc"]))
+    with pytest.raises(ArgumentError, match="Got value: abc"):
+        parser.parse_args(["--val=abc"])
 
 
 def test_union_new_syntax_subclass_type(parser):
@@ -3250,11 +3284,15 @@ def test_callable_class_path_simple(parser):
     assert isinstance(init.callable, CallableClassPath)
     assert 2 == init.callable()
 
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable={}"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--callable=time.timezone"]))
-    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--callable={__name__}.BaseC"]))
+    with pytest.raises(ArgumentError, match=r"Dict must include a class_path and optionally init_args, but got \{\}"):
+        parser.parse_args(["--callable={}"])
+    with pytest.raises(ArgumentError, match="Unexpected import object"):
+        parser.parse_args(["--callable=time.timezone"])
+    with pytest.raises(ArgumentError, match="to be a class that instantiates into callable or a subclass of Callable"):
+        parser.parse_args([f"--callable={__name__}.BaseC"])
     value = {"class_path": f"{__name__}.CallableClassPath", "key": "val"}
-    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--callable={json.dumps(value)}"]))
+    with pytest.raises(ArgumentError, match=r"optionally init_args, but got \{'class_path'"):
+        parser.parse_args([f"--callable={json.dumps(value)}"])
 
 
 class CallableParent(CallableClassPath):

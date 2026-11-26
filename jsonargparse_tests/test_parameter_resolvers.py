@@ -1363,9 +1363,12 @@ def test_get_params_var_positional_from_assumptions():
 
 
 def test_get_params_failures():
-    pytest.raises(ValueError, lambda: get_params("invalid"))
-    pytest.raises(ValueError, lambda: get_params(Param, "p1"))
-    pytest.raises(AttributeError, lambda: get_params(Param, "p2"))
+    with pytest.raises(ValueError, match="Non-callable input: function=invalid"):
+        get_params("invalid")
+    with pytest.raises(ValueError, match="Invalid or unsupported input: .*method_or_property=p1"):
+        get_params(Param, "p1")
+    with pytest.raises(AttributeError, match="Attribute 'p2' not found"):
+        get_params(Param, "p2")
 
 
 # non-runtime-checkable protocol tests

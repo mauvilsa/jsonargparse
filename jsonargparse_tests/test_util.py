@@ -93,9 +93,12 @@ def test_logger_name():
 
 
 def test_logger_failure_cases():
-    pytest.raises(ValueError, lambda: WithLogger(logger={"level": "invalid"}))
-    pytest.raises(ValueError, lambda: WithLogger(logger=WithLogger))
-    pytest.raises(ValueError, lambda: WithLogger(logger={"invalid": "value"}))
+    with pytest.raises(ValueError, match="Got logger level 'invalid' but must be one of"):
+        WithLogger(logger={"level": "invalid"})
+    with pytest.raises(ValueError, match="Expected logger to be an instance of"):
+        WithLogger(logger=WithLogger)
+    with pytest.raises(ValueError, match=r"Unexpected data to configure logger: \{'invalid': 'value'\}"):
+        WithLogger(logger={"invalid": "value"})
 
 
 levels = {0: "DEBUG", 1: "INFO", 2: "WARNING", 3: "ERROR", 4: "CRITICAL"}
@@ -214,7 +217,8 @@ def unresolvable_import():
 @patch.dict("jsonargparse._util.unresolvable_import_paths")
 def test_register_unresolvable_import_paths():
     unresolvable_import.__module__ = None
-    pytest.raises(ValueError, lambda: get_import_path(unresolvable_import))
+    with pytest.raises(ValueError, match="Not possible to determine the import path for object"):
+        get_import_path(unresolvable_import)
     register_unresolvable_import_paths(import_module(__name__))
     assert get_import_path(unresolvable_import) == f"{__name__}.unresolvable_import"
 
@@ -239,7 +243,8 @@ def test_object_path_serializer_reimport_differs():
 
     FakeClass.__module__ = Class.__module__
     FakeClass.__qualname__ = Class.__qualname__
-    pytest.raises(ValueError, lambda: object_path_serializer(FakeClass))
+    with pytest.raises(ValueError, match="Only possible to serialize an importable object"):
+        object_path_serializer(FakeClass)
 
 
 # other tests

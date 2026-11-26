@@ -75,7 +75,8 @@ def test_yaml_implicit_numbers(parser, value, expected):
 
 
 def test_invalid_parser_mode():
-    pytest.raises(ValueError, lambda: ArgumentParser(parser_mode="invalid"))
+    with pytest.raises(ValueError, match="The only accepted values for parser_mode are"):
+        ArgumentParser(parser_mode="invalid")
 
 
 def test_parser_mode_none():

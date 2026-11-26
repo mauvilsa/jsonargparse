@@ -254,7 +254,8 @@ def test_action_parser_defaults(composed_parsers):
 
 def test_action_parser_unexpected_group_value(composed_parsers):
     parser = composed_parsers[0]
-    pytest.raises(ArgumentError, lambda: parser.parse_args(["--inner2=x"]))
+    with pytest.raises(ArgumentError, match="Unable to load config 'x'"):
+        parser.parse_args(["--inner2=x"])
 
 
 def test_action_parser_parse_path(composed_parsers):
@@ -354,12 +355,14 @@ def test_action_parser_required_argument(parser, subparser):
 
 
 def test_action_parser_init_failures(parser, subparser):
-    pytest.raises(TypeError, ActionParser)
-    pytest.raises(ValueError, lambda: ActionParser(parser=object))
-    pytest.raises(Exception, lambda: parser.add_argument("--missing-subparser", action=ActionParser))
-    pytest.raises(
-        ValueError, lambda: parser.add_argument("--unexpected-type", type=str, action=ActionParser(subparser))
-    )
+    with pytest.raises(TypeError, match="missing 1 required positional argument: 'parser'"):
+        ActionParser()
+    with pytest.raises(ValueError, match="Expected parser keyword argument to be an ArgumentParser"):
+        ActionParser(parser=object)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'dest'"):
+        parser.add_argument("--missing-subparser", action=ActionParser)
+    with pytest.raises(ValueError, match=r"does not accept the following parameters: \{'type'\}"):
+        parser.add_argument("--unexpected-type", type=str, action=ActionParser(subparser))
 
 
 def test_action_parser_failure_add_parser_to_self(parser):
@@ -377,7 +380,8 @@ def test_action_parser_failure_only_single_optional(parser, subparser):
 def test_action_parser_conflict_subparser_key(parser, subparser):
     subparser.add_argument("--op")
     parser.add_argument("--inner.op")
-    pytest.raises(ValueError, lambda: parser.add_argument("--inner", action=ActionParser(subparser)))
+    with pytest.raises(ValueError, match=r"ActionParser conflicting keys: \{'--inner\.op'\}"):
+        parser.add_argument("--inner", action=ActionParser(subparser))
 
 
 def test_action_parser_nested_dash_names(parser, subparser, subsubparser):

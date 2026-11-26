@@ -1250,8 +1250,10 @@ def test_subclass_list_append_multiple(parser):
     cfg = parser.parse_args([f"--a={json.dumps(cfg.a.as_dict())}", "--a.objs.p=4"])
     assert Namespace(p=4) == cfg.a.objs[-1].init_args
     args = ["--a.objs+=Invalid", "--a.objs+=SubA"]
-    pytest.raises(ArgumentError, lambda: parser.parse_args(args))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(args + ["--print_config"]))
+    with pytest.raises(ArgumentError, match="Expected a dot import path or the name of a known subclass of BaseC"):
+        parser.parse_args(args)
+    with pytest.raises(ArgumentError, match="Expected a dot import path or the name of a known subclass of BaseC"):
+        parser.parse_args(args + ["--print_config"])
 
 
 def test_subcommand_subclass_list_append_multiple(parser, subparser):
@@ -1272,8 +1274,10 @@ def test_subcommand_subclass_list_append_multiple(parser, subparser):
     cfg = parser.parse_args(["cmd", f"--a={json.dumps(cfg.cmd.a.as_dict())}", "--a.objs.p=4"])
     assert Namespace(p=4) == cfg.cmd.a.objs[-1].init_args
     args = ["cmd", "--a.objs+=Invalid", "--a.objs+=SubA"]
-    pytest.raises(ArgumentError, lambda: parser.parse_args(args))
-    pytest.raises(ArgumentError, lambda: parser.parse_args(args + ["--print_config"]))
+    with pytest.raises(ArgumentError, match="Expected a dot import path or the name of a known subclass of BaseC"):
+        parser.parse_args(args)
+    with pytest.raises(ArgumentError, match="Expected a dot import path or the name of a known subclass of BaseC"):
+        parser.parse_args(args + ["--print_config"])
 
 
 # type Any tests
@@ -2286,9 +2290,11 @@ def test_add_subclass_tuple(parser):
 
 
 def test_add_subclass_required_group(parser):
-    pytest.raises(ValueError, lambda: parser.add_subclass_arguments(BaseC, None, required=True))
+    with pytest.raises(ValueError, match="A nested_key is mandatory to make required"):
+        parser.add_subclass_arguments(BaseC, None, required=True)
     parser.add_subclass_arguments(BaseC, "obj", required=True)
-    pytest.raises(ArgumentError, lambda: parser.parse_args([]))
+    with pytest.raises(ArgumentError, match="the following arguments are required: obj"):
+        parser.parse_args([])
     help_str = get_parser_help(parser)
     assert "--obj.help [CLASS_PATH_OR_NAME]" in help_str
     assert "--obj CONFIG | CLASS_PATH_OR_NAME | .INIT_ARG_NAME VALUE" in help_str
@@ -3377,13 +3383,11 @@ def test_subclass_invalid_class_path_value(parser):
 
 
 def test_subclass_invalid_init_args_in_yaml(parser):
-    value = f"""obj:
-        class_path: {__name__}.BaseC
-        init_args:
-    """
+    value = json.dumps({"obj": {"class_path": f"{__name__}.BaseC", "init_args": None}})
     parser.add_argument("--cfg", action="config")
     parser.add_argument("--obj", type=BaseC)
-    pytest.raises(ArgumentError, lambda: parser.parse_args([f"--cfg={value}"]))
+    with pytest.raises(ArgumentError, match="Problem with given class_path"):
+        parser.parse_args([f"--cfg={value}"])
 
 
 class RequiredParamsMissing:
