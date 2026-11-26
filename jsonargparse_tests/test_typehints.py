@@ -732,8 +732,9 @@ def test_enum_dump(parser):
     parser.add_argument("--enum", type=EnumABC)
     cfg = parser.parse_args(["--enum=C"])
     assert json_or_yaml_load(parser.dump(cfg)) == {"enum": "C"}
+    cfg = Namespace(enum="x")
     with pytest.raises(TypeError):
-        parser.dump(Namespace(enum="x"))
+        parser.dump(cfg)
 
 
 def test_enum_help(parser):
@@ -994,13 +995,14 @@ def test_list_dump(parser):
     parser.add_argument("--list", type=Union[PositiveInt, List[PositiveInt]])
     dump = json_or_yaml_load(parser.dump(Namespace(list=[1, 2])))
     assert dump["list"] == [1, 2]
+    cfg = Namespace(list=[1, -2])
     with pytest.raises(TypeError):
-        parser.dump(Namespace(list=[1, -2]))
+        parser.dump(cfg)
 
 
 def test_list_enum(parser):
     parser.add_argument("--list", type=List[EnumABC])
-    assert [EnumABC.B, EnumABC.A] == parser.parse_args(['--list=["B", "A"]']).list
+    assert parser.parse_args(['--list=["B", "A"]']).list == [EnumABC.B, EnumABC.A]
 
 
 @parser_modes
@@ -1014,7 +1016,7 @@ def test_list_union(parser):
     parser.add_argument("--list1", type=List[Union[float, str, type(None)]])
     parser.add_argument("--list2", type=List[Union[int, EnumABC]])
     assert parser.parse_args(['--list1=[1.2, "B"]']).list1 == [1.2, "B"]
-    assert [3, EnumABC.B] == parser.parse_args(['--list2=[3, "B"]']).list2
+    assert parser.parse_args(['--list2=[3, "B"]']).list2 == [3, EnumABC.B]
     with pytest.raises(ArgumentError, match=r"Got value: \{'a': 1, 'b': '2'\}"):
         parser.parse_args(['--list1={"a":1, "b":"2"}'])
 
@@ -1241,7 +1243,7 @@ def test_dict_union(parser, tmp_cwd):
     parser.add_argument("--dict1", type=Dict[int, Optional[Union[float, EnumABC]]])
     parser.add_argument("--dict2", type=Dict[str, Union[bool, Path_fc]])
     cfg = parser.parse_args(['--dict1={"2":4.5, "6":"C"}', '--dict2={"a":true, "b":"f"}'])
-    assert {2: 4.5, 6: EnumABC.C} == cfg.dict1
+    assert cfg.dict1 == {2: 4.5, 6: EnumABC.C}
     assert cfg.dict2 == {"a": True, "b": "f"}
     assert isinstance(cfg.dict2["b"], Path_fc)
     assert parser.parse_args(['--dict1={"5":null}']).dict1 == {5: None}
@@ -2731,8 +2733,9 @@ def test_valid_unpack_typeddict(parser, init_args):
 def test_invalid_unpack_typeddict(parser, init_args):
     parser.add_argument("--testclass", type=MyTestUnpackClass)
     test_config = {"test": {"class_path": f"{__name__}.UnpackClass", "init_args": init_args}}
+    arg = f"--testclass={json.dumps(test_config)}"
     with pytest.raises(ArgumentError):
-        parser.parse_args([f"--testclass={json.dumps(test_config)}"])
+        parser.parse_args([arg])
 
 
 @pytest.mark.skipif(not Unpack, reason="Unpack introduced in python 3.11 or backported in typing_extensions")
@@ -2772,8 +2775,9 @@ def test_valid_inherited_unpack_typeddict(parser, init_args):
 def test_invalid_inherited_unpack_typeddict(parser, init_args):
     parser.add_argument("--testclass", type=MyTestInheritedUnpackClass)
     test_config = {"class_path": f"{__name__}.MyTestInheritedUnpackClass", "init_args": init_args}
+    arg = f"--testclass={json.dumps(test_config)}"
     with pytest.raises(ArgumentError):
-        parser.parse_args([f"--testclass={json.dumps(test_config)}"])
+        parser.parse_args([arg])
 
 
 if Unpack:
@@ -3127,7 +3131,7 @@ def test_union_subtypes_sorted_accept_any_last_parse(parser, typehint):
 
 def test_union_subtypes_sorted_nested_parse(parser):
     parser.add_argument("--val", type=List[Union[Any, EnumABC]])
-    assert [EnumABC.A] == parser.parse_args(['--val=["A"]']).val
+    assert parser.parse_args(['--val=["A"]']).val == [EnumABC.A]
 
 
 class TypedDictUnionValue(TypedDict):
@@ -3137,7 +3141,7 @@ class TypedDictUnionValue(TypedDict):
 def test_union_subtypes_sorted_typed_dict_value(parser):
     # the type of the key is only resolved when parsing, so it is sorted there
     parser.add_argument("--val", type=TypedDictUnionValue)
-    assert {"key": EnumABC.A} == parser.parse_args(['--val={"key": "A"}']).val
+    assert parser.parse_args(['--val={"key": "A"}']).val == {"key": EnumABC.A}
 
 
 def test_union_subtypes_sorted_optional_enum_metavar(parser):
@@ -3236,7 +3240,7 @@ def test_callable_list_of_function_paths(parser):
     parser.add_argument("--callables", type=List[Callable])
 
     cfg = parser.parse_args(['--callables=["random.randint", "time.time"]'])
-    assert [random.randint, time.time] == cfg.callables
+    assert cfg.callables == [random.randint, time.time]
 
     with pytest.raises(ArgumentError, match="Callable expects a function or a callable class"):
         parser.parse_args(['--callables=["calendar.not_exist"]'])
@@ -3262,7 +3266,7 @@ def test_callable_not_a_function_path(parser):
 def test_callable_union_with_list_of_callables(parser, callable_type):
     parser.add_argument("--callables", type=callable_type)
     cfg = parser.parse_args(['--callables=["random.randint", "time.time"]'])
-    assert [random.randint, time.time] == cfg.callables
+    assert cfg.callables == [random.randint, time.time]
 
 
 class CallableClassPath:
@@ -3291,8 +3295,9 @@ def test_callable_class_path_simple(parser):
     with pytest.raises(ArgumentError, match="to be a class that instantiates into callable or a subclass of Callable"):
         parser.parse_args([f"--callable={__name__}.BaseC"])
     value = {"class_path": f"{__name__}.CallableClassPath", "key": "val"}
+    arg = f"--callable={json.dumps(value)}"
     with pytest.raises(ArgumentError, match=r"optionally init_args, but got \{'class_path'"):
-        parser.parse_args([f"--callable={json.dumps(value)}"])
+        parser.parse_args([arg])
 
 
 class CallableParent(CallableClassPath):
@@ -3825,7 +3830,8 @@ def test_factory_return_protocol_lambda_default_not_forwarding_inputs(parser, cl
     cfg = parser.get_defaults()
     assert cfg.main.step.__name__ == "<lambda>"
     step = parser.instantiate(cfg).main.step(*args)
-    assert (getattr(step, "params", None), step.lr) == expected
+    actual = (getattr(step, "params", None), step.lr)
+    assert actual == expected
 
 
 def test_factory_return_protocol_lambda_default_optional_two_positionals(parser):

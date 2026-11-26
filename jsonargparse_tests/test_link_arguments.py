@@ -686,8 +686,8 @@ def test_on_instantiate_failing_compute_fn(parser):
     parser.add_class_arguments(FailingComputeFn2, "c2")
     parser.link_arguments("c1.a", "c2.b", compute_fn=_to_str_empty_error, apply_on="instantiate")
 
+    cfg = parser.parse_args([])
     with pytest.raises(ValueError) as ctx:
-        cfg = parser.parse_args([])
         parser.instantiate(cfg)
     ctx.match("Call to compute_fn of link '_to_str_empty_error.*failed: value is empty")
 

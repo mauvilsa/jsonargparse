@@ -201,8 +201,9 @@ def test_add_class_without_parameters(parser):
     assert isinstance(init.no_params, NoParams)
 
     config = {"no_params": {"class_path": f"{__name__}.NoParams"}}
+    arg = f"--cfg={json.dumps(config)}"
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args([f"--cfg={json.dumps(config)}"])
+        parser.parse_args([arg])
     ctx.match("Group 'no_params' does not accept option 'class_path'")
 
 

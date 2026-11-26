@@ -118,34 +118,34 @@ def test_stubs_resolver_get_imported_info():
 
 def test_get_params_class_without_inheritance():
     params = get_params(Calendar)
-    assert [("firstweekday", int)] == get_param_types(params)
+    assert get_param_types(params) == [("firstweekday", int)]
     with mock_stubs_missing_types():
         params = get_params(Calendar)
-    assert [("firstweekday", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("firstweekday", inspect._empty)]
 
 
 def test_get_params_class_with_inheritance():
     params = get_params(TextCalendar)
-    assert [("firstweekday", int)] == get_param_types(params)
+    assert get_param_types(params) == [("firstweekday", int)]
     with mock_stubs_missing_types():
         params = get_params(TextCalendar)
-    assert [("firstweekday", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("firstweekday", inspect._empty)]
 
 
 def test_get_params_method(parametrize_allow_py_files):
     params = get_params(Random, "randint")
-    assert [("a", int), ("b", int)] == get_param_types(params)
+    assert get_param_types(params) == [("a", int), ("b", int)]
     with mock_stubs_missing_types():
         params = get_params(Random, "randint")
-    assert [("a", inspect._empty), ("b", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("a", inspect._empty), ("b", inspect._empty)]
 
 
 def test_get_params_object_instance_method():
     params = get_params(uniform)
-    assert [("a", float), ("b", float)] == get_param_types(params)
+    assert get_param_types(params) == [("a", float), ("b", float)]
     with mock_stubs_missing_types():
         params = get_params(uniform)
-    assert [("a", inspect._empty), ("b", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("a", inspect._empty), ("b", inspect._empty)]
 
 
 def test_get_params_conditional_python_version():
@@ -155,14 +155,14 @@ def test_get_params_conditional_python_version():
     assert int is params[1].annotation
     with mock_stubs_missing_types():
         params = get_params(Random, "seed")
-    assert [("a", inspect._empty), ("version", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("a", inspect._empty), ("version", inspect._empty)]
 
 
 @patch("jsonargparse._parameter_resolvers.get_stub_types")
 def test_get_params_exec_failure(mock_get_stub_types):
     mock_get_stub_types.return_value = None
     params = get_params(Random, "seed")
-    assert [("a", inspect._empty), ("version", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("a", inspect._empty), ("version", inspect._empty)]
 
 
 def test_get_params_classmethod(parametrize_allow_py_files):
@@ -202,10 +202,10 @@ def test_get_params_classmethod(parametrize_allow_py_files):
 
 def test_get_params_staticmethod():
     params = get_params(DateHeader, "value_parser")
-    assert [("value", str)] == get_param_types(params)
+    assert get_param_types(params) == [("value", str)]
     with mock_stubs_missing_types():
         params = get_params(DateHeader, "value_parser")
-    assert [("value", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("value", inspect._empty)]
 
 
 def test_get_params_function(parametrize_allow_py_files):
@@ -215,7 +215,7 @@ def test_get_params_function(parametrize_allow_py_files):
     assert bool is params[1].annotation
     with mock_stubs_missing_types():
         params = get_params(ip_network)
-    assert [("address", inspect._empty), ("strict", inspect._empty)] == get_param_types(params)
+    assert get_param_types(params) == [("address", inspect._empty), ("strict", inspect._empty)]
 
 
 @skip_if_no_pyyaml
@@ -234,7 +234,7 @@ def test_get_params_relative_import_from_init():
 def test_get_params_non_unique_alias(logger):
     params = get_params(uuid5)
     name_type = str if sys.version_info < (3, 12) else (str | bytes)
-    assert [("namespace", UUID), ("name", name_type)] == get_param_types(params)
+    assert get_param_types(params) == [("namespace", UUID), ("name", name_type)]
 
     def alias_is_unique(aliases, name, source, value):
         if name == "UUID":
@@ -244,7 +244,7 @@ def test_get_params_non_unique_alias(logger):
     with patch("jsonargparse._stubs_resolver.alias_is_unique", alias_is_unique):
         with capture_logs(logger) as logs:
             params = get_params(uuid5, logger=logger)
-        assert [("namespace", inspect._empty), ("name", name_type)] == get_param_types(params)
+        assert get_param_types(params) == [("namespace", inspect._empty), ("name", name_type)]
         assert "non-unique alias 'UUID': problem (module)" in logs.getvalue()
 
 
@@ -332,7 +332,7 @@ def test_get_params_inspect_signature_failure_var_keyword():
 def test_get_params_inspect_signature_failure_method(logger):
     with inspect_signature_failure(Random.randint), capture_logs(logger) as logs:
         params = get_params(Random, "randint", logger=logger)
-    assert [("a", int), ("b", int)] == get_param_types(params)
+    assert get_param_types(params) == [("a", int), ("b", int)]
     assert "get_parameters_from_ast failed" in logs.getvalue()
     assert "get_parameters_by_assumptions failed" not in logs.getvalue()
 

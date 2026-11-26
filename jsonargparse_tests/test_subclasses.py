@@ -714,8 +714,9 @@ def test_importable_instances(parser):
 def test_importable_instance_with_init_args(parser):
     parser.add_argument("--dtype", type=dtype)
     value = {"class_path": f"{__name__}.float32", "init_args": {"a": 1}}
+    arg = f"--dtype={json.dumps(value)}"
     with pytest.raises(ArgumentError) as ctx:
-        parser.parse_args([f"--dtype={json.dumps(value)}"])
+        parser.parse_args([arg])
     ctx.match("float32 does not correspond to a subclass of dtype")
 
 
@@ -2122,8 +2123,9 @@ def test_subclass_dict_kwargs_skipped_parameter(parser):
     assert cfg.cls.dict_kwargs == {"p1": 3}
 
     value["dict_kwargs"]["p9"] = 4
+    arg = f"--cls={json.dumps(value)}"
     with pytest.raises(ArgumentError, match=dict_kwargs_not_accepted + "p9"):
-        parser.parse_args([f"--cls={json.dumps(value)}"])
+        parser.parse_args([arg])
 
 
 # positional-only and var-positional parameters tests
@@ -2347,14 +2349,16 @@ def test_add_subclass_list_of_union(parser):
 
 def test_add_subclass_set_defaults_instance_default(parser):
     parser.add_subclass_arguments(BaseC, "obj")
+    default = BaseC(p=2)
     with pytest.raises(ValueError) as ctx:
-        parser.set_defaults({"obj": BaseC(p=2)})
+        parser.set_defaults({"obj": default})
     ctx.match("Subclass types require as default either a dict with class_path or a lazy instance")
 
 
 def test_add_argument_subclass_instance_default(parser):
+    default = BaseC(p=2)
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--obj", type=BaseC, default=BaseC(p=2))
+        parser.add_argument("--obj", type=BaseC, default=default)
     ctx.match("Subclass types require as default either a dict with class_path or a lazy instance")
 
 

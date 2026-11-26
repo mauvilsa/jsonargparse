@@ -214,8 +214,9 @@ def test_without_pyyaml_parser_mode_yaml_error():
 @pytest.mark.skipif(pyyaml_available, reason="PyYAML package should not be installed")
 def test_without_pyyaml_dump_yaml_error(parser):
     parser.add_argument("--int", type=int, default=1)
+    cfg = parser.get_defaults()
     with pytest.raises(ImportError) as ctx:
-        parser.dump(parser.get_defaults(), format="yaml")
+        parser.dump(cfg, format="yaml")
     ctx.match("PyYAML package is required by yaml_dump")
 
 

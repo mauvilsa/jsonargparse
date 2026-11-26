@@ -174,14 +174,16 @@ def test_yes_no_action_prefixes(parser):
 
 
 def test_yes_no_action_invalid_yes_prefix(parser):
+    action = ActionYesNo(yes_prefix="yes_")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--arg", action=ActionYesNo(yes_prefix="yes_"))
+        parser.add_argument("--arg", action=action)
     ctx.match('Expected option string to start with "--yes_"')
 
 
 def test_yes_no_action_invalid_no_prefix(parser):
+    action = ActionYesNo(no_prefix=None)
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--arg", nargs="?", action=ActionYesNo(no_prefix=None))
+        parser.add_argument("--arg", nargs="?", action=action)
     ctx.match("no_prefix=None only supports nargs=1")
 
 
@@ -361,27 +363,31 @@ def test_action_parser_init_failures(parser, subparser):
         ActionParser(parser=object)
     with pytest.raises(TypeError, match="unexpected keyword argument 'dest'"):
         parser.add_argument("--missing-subparser", action=ActionParser)
+    action = ActionParser(subparser)
     with pytest.raises(ValueError, match=r"does not accept the following parameters: \{'type'\}"):
-        parser.add_argument("--unexpected-type", type=str, action=ActionParser(subparser))
+        parser.add_argument("--unexpected-type", type=str, action=action)
 
 
 def test_action_parser_failure_add_parser_to_self(parser):
+    action = ActionParser(parser=parser)
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--subparser", action=ActionParser(parser=parser))
+        parser.add_argument("--subparser", action=action)
     ctx.match("cannot be added as a subparser of itself")
 
 
 def test_action_parser_failure_only_single_optional(parser, subparser):
+    action = ActionParser(subparser)
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("-b", "--bad", action=ActionParser(subparser))
+        parser.add_argument("-b", "--bad", action=action)
     ctx.match("only accepts a single optional")
 
 
 def test_action_parser_conflict_subparser_key(parser, subparser):
     subparser.add_argument("--op")
     parser.add_argument("--inner.op")
+    action = ActionParser(subparser)
     with pytest.raises(ValueError, match=r"ActionParser conflicting keys: \{'--inner\.op'\}"):
-        parser.add_argument("--inner", action=ActionParser(subparser))
+        parser.add_argument("--inner", action=action)
 
 
 def test_action_parser_nested_dash_names(parser, subparser, subsubparser):

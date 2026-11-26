@@ -165,8 +165,9 @@ def test_parse_args_positional_nargs_plus(parser):
 def test_parse_args_missing_required_lists_all(parser):
     parser.add_argument("req_pos")
     parser.add_argument("--req_opt", required=True)
+    cfg = Namespace()
     with pytest.raises(TypeError, match="the following arguments are required: req_pos, req_opt"):
-        parser.validate(Namespace())
+        parser.validate(cfg)
 
 
 def test_public_required_action_state(parser):

@@ -344,8 +344,9 @@ def test_timedelta_deserializer(delta_in, delta_out):
 
 @pytest.mark.parametrize("delta_in", ["not delta", 1234])
 def test_timedelta_deserializer_failure(delta_in):
+    deserializer = get_registered_type(timedelta).deserializer
     with pytest.raises(ValueError):
-        get_registered_type(timedelta).deserializer(delta_in)
+        deserializer(delta_in)
 
 
 @pytest.mark.parametrize("delta_in", ["1:2:3 trailing", "1 day, 2:03:04 trailing"])
@@ -400,8 +401,9 @@ def test_range(serialized, expected, reserialized):
 
 
 def test_range_deserialize_failure():
+    deserializer = get_registered_type(range).deserializer
     with pytest.raises(ValueError) as ex:
-        get_registered_type(range).deserializer("not a range")
+        deserializer("not a range")
     ex.match("Expected 'range")
 
 
@@ -612,7 +614,7 @@ def test_uuid(parser):
     cfg = parser.parse_args([f"--uuid={id1}", f'--uuids=["{id1}", "{id2}"]'])
     assert cfg.uuid == id1
     assert cfg.uuids == [id1, id2]
-    assert {"uuid": str(id1), "uuids": [str(id1), str(id2)]} == json_or_yaml_load(parser.dump(cfg))
+    assert json_or_yaml_load(parser.dump(cfg)) == {"uuid": str(id1), "uuids": [str(id1), str(id2)]}
 
 
 @pytest.mark.parametrize(
@@ -671,8 +673,9 @@ def test_re_pattern_flags(parser):
 
 def test_re_pattern_bytes_not_supported(parser):
     parser.add_argument("--pattern", type=re.Pattern)
+    pattern = re.compile(b"a")
     with pytest.raises(ArgumentError, match="Expected a str pattern"):
-        parser.parse_object({"pattern": re.compile(b"a")})
+        parser.parse_object({"pattern": pattern})
 
 
 def test_fraction(parser):

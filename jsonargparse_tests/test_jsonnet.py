@@ -273,8 +273,9 @@ def test_action_jsonnet_parse_method_path(tmp_cwd):
     parsed = ActionJsonnet().parse(path, ext_vars={"param": 123}, with_meta=True)
     assert parsed["param"] == 123
     assert path == parsed["__path__"]
+    action = ActionJsonnet()
     with pytest.raises(ArgumentError, match="Problems evaluating Jsonnet 'example.jsonnet'"):
-        ActionJsonnet().parse(path)
+        action.parse(path)
 
 
 def test_action_jsonnet_ext_vars_default(parser):
@@ -285,22 +286,25 @@ def test_action_jsonnet_ext_vars_default(parser):
 
 
 def test_action_jsonnet_ext_vars_not_defined(parser):
+    action = ActionJsonnet(ext_vars="ext_vars")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
+        parser.add_argument("--jsonnet", action=action)
     ctx.match("No argument found for ext_vars")
 
 
 def test_action_jsonnet_ext_vars_invalid_type(parser):
     parser.add_argument("--ext_vars", type=list)
+    action = ActionJsonnet(ext_vars="ext_vars")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
+        parser.add_argument("--jsonnet", action=action)
     ctx.match("Type for ext_vars='ext_vars' argument must be dict")
 
 
 def test_action_jsonnet_ext_vars_invalid_default(parser):
     parser.add_argument("--ext_vars", type=dict, default="none")
+    action = ActionJsonnet(ext_vars="ext_vars")
     with pytest.raises(ValueError) as ctx:
-        parser.add_argument("--jsonnet", action=ActionJsonnet(ext_vars="ext_vars"))
+        parser.add_argument("--jsonnet", action=action)
     ctx.match("Default value for the ext_vars='ext_vars' argument must be dict or None")
 
 
@@ -325,7 +329,8 @@ def test_action_jsonnet_init_failures():
         ActionJsonnet(ext_vars=2)
     from jsonschema.exceptions import SchemaError
 
+    schema = "." + json.dumps(example_schema)
     with pytest.raises((ValueError, SchemaError), match="Problems parsing schema"):
-        ActionJsonnet(schema="." + json.dumps(example_schema))
+        ActionJsonnet(schema=schema)
     with pytest.raises((ValueError, SchemaError), match="is not of type 'object', 'boolean'"):
         ActionJsonnet(schema=".")

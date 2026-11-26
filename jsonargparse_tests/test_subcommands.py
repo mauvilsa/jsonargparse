@@ -139,8 +139,9 @@ def test_subcommands_parse_config_alias(subcommands_parser, config):
 def test_subcommands_parse_config_alias_collision(subcommands_parser, config):
     subcommands_parser.add_argument("--cfg", action="config")
     config = {**config, "b": {"nums": {"val1": 2}}, "B": {"nums": {"val1": 3}}}
+    arg = f"--cfg={json.dumps(config)}"
     with pytest.raises(ArgumentError) as ctx:
-        subcommands_parser.parse_args([f"--cfg={json.dumps(config)}"])
+        subcommands_parser.parse_args([arg])
     ctx.match("Subcommand 'b' settings given more than once, as 'b' and alias 'B'")
 
 

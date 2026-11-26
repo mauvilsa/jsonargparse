@@ -237,8 +237,9 @@ def test_init_from_argparse_flat_namespace():
 def test_init_invalid():
     with pytest.raises(ValueError):
         Namespace(1)
+    ns = argparse.Namespace()
     with pytest.raises(ValueError):
-        Namespace(argparse.Namespace(), x=1)
+        Namespace(ns, x=1)
 
 
 def test_use_for_kwargs():

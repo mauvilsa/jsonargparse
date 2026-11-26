@@ -220,8 +220,9 @@ def test_path_create_mode(paths):
     ],
 )
 def test_path_complement_modes(paths, path_attr, mode):
+    path = getattr(paths, path_attr)
     with pytest.raises(TypeError):
-        Path(getattr(paths, path_attr), mode)
+        Path(path, mode)
 
 
 @pytest.mark.parametrize(
@@ -1238,8 +1239,9 @@ def test_sub_configs_list_path_fr(parser, tmp_cwd, mock_stdin, subtests):
         assert cfg.lists == [[]]
 
     with subtests.test("paths list nargs='+' path not exist"):
+        arg = str(list_file4)
         with pytest.raises(ArgumentError, match=r'(?s)"lists" element 1:.*Not of type Path_fr: File does not exist'):
-            parser.parse_args(["--lists", str(list_file4)])
+            parser.parse_args(["--lists", arg])
 
     with subtests.test("paths list nargs='+' list not exist"):
         with pytest.raises(ArgumentError) as ctx:

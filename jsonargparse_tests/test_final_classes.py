@@ -34,5 +34,6 @@ def test_add_class_final(parser):
         parser.parse_args(['--b.b2={"bad": "value"}'])
     with pytest.raises(ArgumentError, match=r"""Unable to load config '"bad"'"""):
         parser.parse_args(['--b.b2="bad"'])
+    default = FinalClass()
     with pytest.raises(ValueError, match="Expected 'default' to be dict, Namespace, lazy instance or dataclass-like"):
-        parser.add_class_arguments(FinalClass, "a", default=FinalClass())
+        parser.add_class_arguments(FinalClass, "a", default=default)
