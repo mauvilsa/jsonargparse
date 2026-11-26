@@ -9,7 +9,7 @@ import sys
 import typing
 from argparse import ArgumentError
 from collections import ChainMap, Counter, OrderedDict, abc, defaultdict, deque
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from contextvars import ContextVar
 from copy import copy, deepcopy
 from enum import Enum
@@ -335,7 +335,7 @@ def cached_get_class_parser(*, val_class, sub_add_kwargs, skip_args, parent_pars
 
     kwargs = dict(sub_add_kwargs) if sub_add_kwargs else {}
     if skip_args:
-        kwargs.setdefault("skip", set()).update(skip_args)
+        kwargs["skip"] = set(kwargs.get("skip") or ()) | set(skip_args)  # a new set, since kwargs is a shallow copy
 
     parser = parser_class(exit_on_error=False, logger=parent_parser.logger, parser_mode=parent_parser.parser_mode)
     remove_actions(parser, (ActionConfigFile, _ActionPrintConfig))
@@ -1792,22 +1792,19 @@ def adapt_typehints(
         elif not isinstance(val, list):
             raise_unexpected_value(f"Expected type: {type_to_str(typehint)}", val)
         if subtypehints is not None:
-            # orig_val is only read and prev_val is replaced, so they are not copied, which per item is quadratic
-            shared = {k: adapt_kwargs[k] for k in ("orig_val", "prev_val") if k in adapt_kwargs}
-            copied = deepcopy({k: v for k, v in adapt_kwargs.items() if k not in shared})
-            for n, v in enumerate(val):
-                if isinstance(prev_val, list) and len(prev_val) == len(val):
-                    adapt_kwargs_n = {**deepcopy(copied), **shared, "prev_val": prev_val[n]}
-                else:
-                    adapt_kwargs_n = {**deepcopy(copied), **shared}
-                try:
-                    with path_dir_context(list_path):
+            # the kwargs are not copied, since nothing modifies them, and copies per item are costly
+            with path_dir_context(list_path) if list_path is not None else nullcontext():
+                for n, v in enumerate(val):
+                    adapt_kwargs_n = adapt_kwargs
+                    if isinstance(prev_val, list) and len(prev_val) == len(val):
+                        adapt_kwargs_n = {**adapt_kwargs, "prev_val": prev_val[n]}
+                    try:
                         val[n] = adapt_typehints(v, subtypehints[0], **adapt_kwargs_n)
-                except ValueError as ex:
-                    if list_path is not None:
-                        ex.value_source = ValueSource("list of paths file", list_path, line=n + 1)
-                    prepend_error_subkey(ex, f"[{n}]")
-                    raise
+                    except ValueError as ex:
+                        if list_path is not None:
+                            ex.value_source = ValueSource("list of paths file", list_path, line=n + 1)
+                        prepend_error_subkey(ex, f"[{n}]")
+                        raise
         if typehint_origin is deque:
             val = list(val) if serialize else deque(val)
         elif typehint_origin is abc.Iterator and instantiate_classes:

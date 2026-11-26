@@ -572,14 +572,19 @@ def object_path_serializer(value):
         raise ValueError(f"Only possible to serialize an importable object, given {value}: {ex}") from ex
 
 
+_class_typehint_origins = {
+    "types.UnionType": Union,
+    "typing._TypedDictMeta": dict,
+    "typing_extensions._TypedDictMeta": dict,
+}
+
+
 def get_typehint_origin(typehint):
     if not hasattr(typehint, "__origin__"):
-        typehint_class = get_import_path(typehint.__class__)
-        if typehint_class == "types.UnionType":
-            return Union
-        if typehint_class in {"typing._TypedDictMeta", "typing_extensions._TypedDictMeta"}:
-            return dict
-    return getattr(typehint, "__origin__", None)
+        # module and qualname instead of get_import_path, which is too costly for how often this is called
+        typehint_class = typehint.__class__
+        return _class_typehint_origins.get(f"{typehint_class.__module__}.{typehint_class.__qualname__}")
+    return typehint.__origin__
 
 
 def hash_item(item):

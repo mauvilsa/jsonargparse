@@ -3,6 +3,7 @@ from __future__ import annotations
 import calendar
 import importlib.util
 import json
+import os
 import pickle
 import random
 import sys
@@ -61,6 +62,7 @@ from warnings import catch_warnings, simplefilter
 import pytest
 
 from jsonargparse import ArgumentError, Namespace, lazy_instance
+from jsonargparse._common import parser_context
 from jsonargparse._optionals import (
     LiteralString,
     pyyaml_available,
@@ -1018,6 +1020,63 @@ def test_list_append(parser):
     assert [1] == parser.parse_args(["--val=0.1", "--val+=1"]).val
     assert 3 == parser.parse_args(["--val=[1,2]", "--val=3"]).val
     pytest.raises(ArgumentError, lambda: parser.parse_args(["--val=a", "--val+=1"]))
+
+
+class CountingEnviron(dict):
+    contains_calls = 0
+
+    def __contains__(self, key):
+        self.contains_calls += 1
+        return super().__contains__(key)
+
+
+@pytest.mark.parametrize(
+    ["typehint", "item"],
+    [
+        (List[int], lambda n: n),
+        (List[List[int]], lambda n: [n]),
+    ],
+)
+def test_list_items_parse_without_per_item_overhead(parser, typehint, item):
+    # Copying the parse kwargs, resolving import paths, entering a path context and reading environment variables
+    # should be done once per list, not for each of its items, since lists can have many items.
+    from copy import deepcopy
+
+    from jsonargparse._paths import path_dir_context
+    from jsonargparse._util import get_import_path
+
+    parser.add_argument("--list", type=typehint)
+    counts = {}
+    for size in [10, 20]:
+        environ = CountingEnviron(os.environ)
+        with (
+            mock.patch("jsonargparse._typehints.deepcopy", side_effect=deepcopy) as deepcopy_mock,
+            mock.patch("jsonargparse._util.get_import_path", side_effect=get_import_path) as import_path_mock,
+            mock.patch("jsonargparse._typehints.path_dir_context", side_effect=path_dir_context) as path_dir_mock,
+            mock.patch.dict(os.__dict__, {"environ": environ}),
+        ):
+            value = [item(n) for n in range(size)]
+            assert parser.parse_object({"list": value}).list == value
+        counts[size] = (
+            deepcopy_mock.call_count,
+            import_path_mock.call_count,
+            path_dir_mock.call_count,
+            environ.contains_calls,
+        )
+    assert counts[10] == counts[20]
+
+
+class SkipArgs:
+    def __init__(self, p1: int = 1, p2: int = 2, p3: int = 3):
+        pass
+
+
+def test_get_class_parser_does_not_modify_sub_add_kwargs(parser):
+    sub_add_kwargs = {"skip": {"p1"}}
+    with parser_context(parent_parser=parser):
+        class_parser = ActionTypeHint.get_class_parser(SkipArgs, sub_add_kwargs, skip_args={"p2"})
+    assert sub_add_kwargs == {"skip": {"p1"}}
+    assert [a.dest for a in class_parser._actions if a.dest.startswith("p")] == ["p3"]
 
 
 @parser_modes
