@@ -533,8 +533,8 @@ parsing_settings_env_vars = {
 def get_parsing_setting(name: str):
     if name not in parsing_settings:
         raise ValueError(f"Unknown parsing setting {name}.")
-    var_name = parsing_settings_env_vars.get(name, "")
-    if var_name in os.environ:
+    var_name = parsing_settings_env_vars.get(name)
+    if var_name and var_name in os.environ:
         return get_env_var_bool(var_name)
     return parsing_settings[name]
 

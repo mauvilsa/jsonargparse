@@ -277,6 +277,9 @@ Fixed
 - Subclass values inside tuples, or inside lists of lists, were missing the
   defaults of their ``init_args`` in ``--print_config`` and ``dump`` output
   (`#1040 <https://github.com/mauvilsa/jsonargparse/pull/1040>`__).
+- Parsing lists with many items was slow, e.g. a list of 200k integers took
+  about 12 seconds (`#1041
+  <https://github.com/mauvilsa/jsonargparse/pull/1041>`__).
 
 Changed
 ^^^^^^^
