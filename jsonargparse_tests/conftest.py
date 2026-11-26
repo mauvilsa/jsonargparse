@@ -204,10 +204,10 @@ def tmp_cwd(tmpdir) -> Iterator[Path]:
 
 
 @pytest.fixture
-def file_r(tmp_cwd) -> Iterator[str]:
+def file_r(tmp_cwd) -> str:
     filename = "file_r"
     Path(filename).touch()
-    yield filename
+    return filename
 
 
 @pytest.fixture
