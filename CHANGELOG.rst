@@ -249,8 +249,8 @@ Fixed
   rather than becoming a ``class_path`` with ``init_args`` (`#1033
   <https://github.com/mauvilsa/jsonargparse/pull/1033>`__).
 - ``Callable`` and callable ``Protocol`` types accepted an abstract class when
-  parsing, which then failed with a ``TypeError`` on instantiation or when calling
-  the factory, instead of failing with a parse error (`#1033
+  parsing, which then failed with a ``TypeError`` on instantiation or when
+  calling the factory, instead of failing with a parse error (`#1033
   <https://github.com/mauvilsa/jsonargparse/pull/1033>`__).
 - A default like ``lambda p: Impl(p, lr=0.5)`` for a callable ``Protocol`` type,
   or like ``lambda p, lr: Impl(p, lr)`` for an ``Optional[Callable]`` with more
@@ -262,17 +262,21 @@ Fixed
   ``class_path`` with ``init_args``. The factory then called ``Impl`` with the
   arguments as given, e.g. not reversed, or failed for a dropped one (`#1034
   <https://github.com/mauvilsa/jsonargparse/pull/1034>`__).
-- Config files were saved and read with the locale encoding instead of UTF-8,
-  so on Windows ``save`` failed for characters outside the code page and UTF-8
+- Config files were saved and read with the locale encoding instead of UTF-8, so
+  on Windows ``save`` failed for characters outside the code page and UTF-8
   config files were misread (`#1035
   <https://github.com/mauvilsa/jsonargparse/pull/1035>`__).
 - Parsing nested subclass values, of classes and of dataclasses with subclasses
   enabled, took time exponential in the depth of nesting, so that a few levels
   could take minutes (`#1036
-  <https://github.com/mauvilsa/jsonargparse/pull/1036>`__).
-- ``timedelta`` values with trailing text after a valid duration, e.g.
-  ``1:2:3 trailing``, being accepted with the trailing text silently ignored
-  (`#1039 <https://github.com/mauvilsa/jsonargparse/pull/1039>`__).
+  <https://github.com/mauvilsa/jsonargparse/pull/1036>`__, `#1040
+  <https://github.com/mauvilsa/jsonargparse/pull/1040>`__).
+- ``timedelta`` values with trailing text after a valid duration, e.g. ``1:2:3
+  trailing``, being accepted with the trailing text silently ignored (`#1039
+  <https://github.com/mauvilsa/jsonargparse/pull/1039>`__).
+- Subclass values inside tuples, or inside lists of lists, were missing the
+  defaults of their ``init_args`` in ``--print_config`` and ``dump`` output
+  (`#1040 <https://github.com/mauvilsa/jsonargparse/pull/1040>`__).
 
 Changed
 ^^^^^^^

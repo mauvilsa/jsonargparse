@@ -2467,12 +2467,14 @@ _subclass_spec_keys = {
 
 
 def has_subclass_spec(val) -> bool:
-    """Whether a value is a subclass spec, or a list or dict with one."""
-    return (
-        is_subclass_spec(val)
-        or (isinstance(val, list) and any(is_subclass_spec(e) for e in val))
-        or (isinstance(val, dict) and any(is_subclass_spec(e) for e in val.values()))
-    )
+    """Whether a value is a subclass spec, or a list, tuple or dict with one at any depth."""
+    if is_subclass_spec(val):
+        return True
+    if isinstance(val, dict):
+        val = val.values()
+    elif not isinstance(val, (list, tuple)):
+        return False
+    return any(has_subclass_spec(e) for e in val)
 
 
 def is_subclass_spec(val):
