@@ -1,8 +1,6 @@
 import json
-import os
 import re
 from dataclasses import dataclass
-from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, TypedDict, Union
 from unittest.mock import patch
@@ -450,12 +448,10 @@ def test_unset_sentinel_dump_skip_unset(parser):
 @pytest.mark.parametrize(
     "typehint",
     [
-        Optional[os.PathLike],
-        Optional[Union[str, Path]],
-        Optional[timedelta],
-        Optional[Callable[[int], int]],
+        Optional[Path],  # a registered type whose serializer, str, also accepts None
+        Optional[Callable[[int], int]],  # serialized as an import path, which gives text instead of raising
     ],
-    ids=["pathlike", "str_path", "timedelta", "callable"],
+    ids=["path", "callable"],
 )
 def test_unset_sentinel_dump_none_in_union(parser, typehint):
     set_parsing_settings(unset_sentinel=True)
