@@ -284,6 +284,10 @@ Fixed
   ``__call__`` that returns a class was rejected, and a protocol whose
   ``__call__`` has no return annotation rejected all classes and functions
   (`#1043 <https://github.com/mauvilsa/jsonargparse/pull/1043>`__).
+- With ``unset_sentinel=True``, ``None`` in some unions with ``None``, e.g.
+  ``Union[Path, None]``, was dumped as text instead of ``null``, so the dump
+  could not be loaded back (`#1044
+  <https://github.com/mauvilsa/jsonargparse/pull/1044>`__).
 
 Changed
 ^^^^^^^

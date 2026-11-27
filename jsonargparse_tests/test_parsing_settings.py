@@ -1,7 +1,10 @@
 import json
+import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Literal, Optional, TypedDict, Union
 from unittest.mock import patch
 from warnings import catch_warnings
 
@@ -442,6 +445,29 @@ def test_unset_sentinel_dump_skip_unset(parser):
 
     dump_no_skip = parser.dump(cfg, skip_unset=False)
     assert json_or_yaml_load(dump_no_skip) == {"num": "==UNSET==", "name": "hello"}
+
+
+@pytest.mark.parametrize(
+    "typehint",
+    [
+        Optional[os.PathLike],
+        Optional[Union[str, Path]],
+        Optional[timedelta],
+        Optional[Callable[[int], int]],
+    ],
+    ids=["pathlike", "str_path", "timedelta", "callable"],
+)
+def test_unset_sentinel_dump_none_in_union(parser, typehint):
+    set_parsing_settings(unset_sentinel=True)
+
+    parser.add_argument("--val", type=typehint, default=None)
+
+    cfg = parser.parse_args([])
+    assert cfg.val is None
+    dump = parser.dump(cfg)
+    assert json_or_yaml_load(dump) == {"val": None}
+    assert parser.parse_string(dump).val is None
+    assert parser.parse_args(["--val=null"]).val is None
 
 
 @dataclass
