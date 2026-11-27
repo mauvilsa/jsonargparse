@@ -1050,6 +1050,12 @@ def test_list_append(parser):
         parser.parse_args(["--val=a", "--val+=1"])
 
 
+def test_list_append_null_item(parser):
+    parser.add_argument("--val", type=Optional[List[Optional[int]]], default=[1])
+    assert parser.parse_args(["--val+=null"]).val == [1, None]
+    assert parser.parse_args(["--val=null"]).val is None
+
+
 class CountingEnviron(dict):
     contains_calls = 0
 

@@ -3284,12 +3284,16 @@ def sort_subtypes_for_union(subtypes, val, prev_val, append):
     see sort_unions_in_typehint. It is still needed for type hints resolved
     while parsing, e.g. the types of the keys of a TypedDict. Then, only when
     appending to a list, the sequence subtypes are moved to the front, since
-    the value must extend the previous list instead of replacing it.
+    the value must extend the previous list instead of replacing it. Otherwise,
+    when the value is None, NoneType is moved to the front, since other subtypes
+    can accept None, e.g. a registered type whose serializer is str.
     """
     if len(subtypes) > 1:
         subtypes = sorted(subtypes, key=union_subtype_sort_key)
         if append or (isinstance(prev_val, list) and isinstance(val, NestedArg)):
             subtypes = sorted(subtypes, key=lambda x: get_typehint_origin(x) not in sequence_origin_types)
+        elif val is None:
+            subtypes = sorted(subtypes, key=lambda x: x is not NoneType)
     return subtypes
 
 
