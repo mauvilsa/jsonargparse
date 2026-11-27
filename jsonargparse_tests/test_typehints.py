@@ -3545,6 +3545,45 @@ def test_callable_return_type_bounds_the_accepted_class(parser, typehint):
         parser.parse_args([f"--optimizer={__name__}.CallableClassPath"])
 
 
+class CallResult:
+    pass
+
+
+class CallProtocol(Protocol):
+    def __call__(self, value: int) -> CallResult: ...
+
+
+class CallProtocolWithoutReturnType(Protocol):
+    def __call__(self, value: int): ...
+
+
+class CallImplementer:
+    def __call__(self, value: int) -> CallResult:
+        return CallResult()  # pragma: no cover
+
+
+def call_function(value: int) -> CallResult:
+    return CallResult()  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    "typehint",
+    [CallProtocol, CallProtocolWithoutReturnType],
+    ids=["return_type_class", "return_type_not_annotated"],
+)
+def test_callable_protocol_accepts_class_whose_instances_implement_it(parser, typehint):
+    parser.add_argument("--call", type=typehint)
+    cfg = parser.parse_args([f"--call={__name__}.CallImplementer"])
+    init = parser.instantiate(cfg)
+    assert isinstance(init.call, CallImplementer)
+
+
+def test_callable_protocol_without_return_type_accepts_function(parser):
+    parser.add_argument("--call", type=CallProtocolWithoutReturnType)
+    cfg = parser.parse_args([f"--call={__name__}.call_function"])
+    assert cfg.call is call_function
+
+
 class NoArgsOptimizerFactory(Protocol):
     def __call__(self) -> Optimizer: ...
 
